@@ -4,11 +4,11 @@ import "@typespec/openapi";
 using Http;
 using OpenAPI;
 
-namespace ProjectTemplate;
+namespace SitconBoard;
 
-@example(#{ name: "Project Template API", version: "0.1.0" })
+@example(#{ name: "SITCON Board API", version: "0.1.0" })
 model APIStatusResponse {
-	name: "Project Template API";
+	name: "SITCON Board API";
 	version: string;
 }
 
@@ -25,9 +25,15 @@ interface SystemService {
 	@route("/")
 	getAPIStatus(): OkJson<APIStatusResponse>;
 
-	@operationId("getHealth")
-	@summary("Get health status")
+	@operationId("getLiveness")
+	@summary("Get process liveness")
 	@get
-	@route("/healthz")
-	getHealth(): OkJson<HealthResponse> | ServiceUnavailableProblem;
+	@route("/health/live")
+	getLiveness(): OkJson<HealthResponse>;
+
+	@operationId("getReadiness")
+	@summary("Check database and snapshot readiness")
+	@get
+	@route("/health/ready")
+	getReadiness(): OkJson<HealthResponse> | ServiceUnavailableProblem;
 }

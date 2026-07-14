@@ -1,26 +1,30 @@
 {
 	"openapi": "3.1.0",
 	"info": {
-		"title": "Project Template API",
+		"title": "SITCON Board API",
 		"version": "0.1.0",
-		"description": "Contract for the Project Template modular monolith."
+		"description": "GitLab-backed board for the SITCON 2027 preparation team."
 	},
 	"tags": [
 		{
-			"name": "Tasks",
-			"description": "Workspace-scoped task workflow."
+			"name": "Sync",
+			"description": "Durable operations and background snapshot refresh."
 		},
 		{
-			"name": "Workspace Members",
-			"description": "Workspace membership and role management."
+			"name": "Cards",
+			"description": "Optimistic GitLab issue board mutations."
 		},
 		{
-			"name": "Workspaces",
-			"description": "Workspace lifecycle operations."
+			"name": "Directory",
+			"description": "Normalized SITCON teams and GitLab project members."
+		},
+		{
+			"name": "Bootstrap",
+			"description": "Complete initial state for a loading-free first render."
 		},
 		{
 			"name": "Auth",
-			"description": "Registration, login, logout, CSRF, and current-session identity."
+			"description": "GitLab OAuth and current browser session."
 		},
 		{
 			"name": "System",
@@ -93,26 +97,69 @@
 				]
 			}
 		},
-		"/auth/login": {
-			"post": {
-				"operationId": "loginUser",
-				"summary": "Log in user",
+		"/auth/gitlab": {
+			"get": {
+				"operationId": "startGitLabOAuth",
+				"summary": "Start GitLab OAuth",
 				"parameters": [],
 				"responses": {
-					"200": {
-						"description": "The request has succeeded.",
+					"302": {
+						"description": "Redirection",
 						"headers": {
-							"Set-Cookie": {
+							"Location": {
 								"required": true,
 								"schema": {
 									"type": "string"
 								}
-							}
-						},
-						"content": {
-							"application/json": {
+							},
+							"Set-Cookie": {
+								"required": false,
 								"schema": {
-									"$ref": "#/components/schemas/AuthResponse"
+									"type": "string"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Auth"]
+			}
+		},
+		"/auth/gitlab/callback": {
+			"get": {
+				"operationId": "completeGitLabOAuth",
+				"summary": "Complete GitLab OAuth",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/GitLabOAuthCallbackQuery.code"
+					},
+					{
+						"$ref": "#/components/parameters/GitLabOAuthCallbackQuery.state"
+					}
+				],
+				"responses": {
+					"302": {
+						"description": "Redirection",
+						"headers": {
+							"Location": {
+								"required": true,
+								"schema": {
+									"type": "string"
+								}
+							},
+							"Set-Cookie": {
+								"required": false,
+								"schema": {
+									"type": "string"
 								}
 							}
 						}
@@ -137,16 +184,6 @@
 							}
 						}
 					},
-					"422": {
-						"description": "Client error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
 					"500": {
 						"description": "Server error",
 						"content": {
@@ -156,19 +193,19 @@
 								}
 							}
 						}
-					}
-				},
-				"tags": ["Auth"],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/LoginRequest"
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
 							}
 						}
 					}
-				}
+				},
+				"tags": ["Auth"]
 			}
 		},
 		"/auth/logout": {
@@ -276,32 +313,215 @@
 				]
 			}
 		},
-		"/auth/register": {
-			"post": {
-				"operationId": "registerUser",
-				"summary": "Register user",
+		"/bootstrap": {
+			"get": {
+				"operationId": "getBootstrap",
+				"summary": "Get all state required for the first Board render",
 				"parameters": [],
 				"responses": {
-					"201": {
-						"description": "The request has succeeded and a new resource has been created as a result.",
-						"headers": {
-							"Set-Cookie": {
-								"required": true,
-								"schema": {
-									"type": "string"
-								}
-							}
-						},
+					"200": {
+						"description": "The request has succeeded.",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/AuthResponse"
+									"$ref": "#/components/schemas/BootstrapResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Bootstrap"],
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
+		"/cards": {
+			"post": {
+				"operationId": "createCard",
+				"summary": "Optimistically create a card",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"202": {
+						"description": "The request has been accepted for processing, but processing has not yet completed.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CardMutationResponse"
 								}
 							}
 						}
 					},
 					"400": {
 						"description": "The server could not understand the request due to invalid syntax.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with the current state of the server.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateCardRequest"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
+		"/cards/{issueIid}/assignee": {
+			"put": {
+				"operationId": "updateCardAssignee",
+				"summary": "Optimistically change a card assignee",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					},
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"202": {
+						"description": "The request has been accepted for processing, but processing has not yet completed.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CardMutationResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
 						"content": {
 							"application/problem+json": {
 								"schema": {
@@ -341,23 +561,409 @@
 						}
 					}
 				},
-				"tags": ["Auth"],
+				"tags": ["Cards"],
 				"requestBody": {
 					"required": true,
 					"content": {
 						"application/json": {
 							"schema": {
-								"$ref": "#/components/schemas/RegisterRequest"
+								"$ref": "#/components/schemas/UpdateCardAssigneeRequest"
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
 			}
 		},
-		"/healthz": {
+		"/cards/{issueIid}/due-date": {
+			"put": {
+				"operationId": "updateCardDueDate",
+				"summary": "Optimistically change a card due date",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					},
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"202": {
+						"description": "The request has been accepted for processing, but processing has not yet completed.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CardMutationResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with the current state of the server.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateCardDueDateRequest"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
+		"/cards/{issueIid}/position": {
+			"put": {
+				"operationId": "moveCard",
+				"summary": "Optimistically move or close a card",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					},
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"202": {
+						"description": "The request has been accepted for processing, but processing has not yet completed.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CardMutationResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with the current state of the server.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/MoveCardRequest"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
+		"/cards/{issueIid}/team": {
+			"put": {
+				"operationId": "updateCardTeam",
+				"summary": "Optimistically change a card team",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					},
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"202": {
+						"description": "The request has been accepted for processing, but processing has not yet completed.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CardMutationResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with the current state of the server.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateCardTeamRequest"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
+		"/directory": {
 			"get": {
-				"operationId": "getHealth",
-				"summary": "Get health status",
+				"operationId": "getDirectory",
+				"summary": "Get the normalized SITCON team directory",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "The request has succeeded.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DirectoryResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Directory"],
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
+		"/health/live": {
+			"get": {
+				"operationId": "getLiveness",
+				"summary": "Get process liveness",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "The request has succeeded.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HealthResponse"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["System"]
+			}
+		},
+		"/health/ready": {
+			"get": {
+				"operationId": "getReadiness",
+				"summary": "Check database and snapshot readiness",
 				"parameters": [],
 				"responses": {
 					"200": {
@@ -384,75 +990,22 @@
 				"tags": ["System"]
 			}
 		},
-		"/workspaces": {
-			"get": {
-				"operationId": "listWorkspaces",
-				"summary": "List workspaces",
-				"parameters": [],
-				"responses": {
-					"200": {
-						"description": "The request has succeeded.",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/WorkspaceListResponse"
-								}
-							}
-						}
-					},
-					"401": {
-						"description": "Access is unauthorized.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					}
-				},
-				"tags": ["Workspaces"],
-				"security": [
-					{
-						"SessionCookieAuth": []
-					}
-				]
-			},
-			"post": {
-				"operationId": "createWorkspace",
-				"summary": "Create workspace",
+		"/me/preferences": {
+			"put": {
+				"operationId": "updateMyPreferences",
+				"summary": "Confirm the current user's primary team",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/CSRFHeader"
 					}
 				],
 				"responses": {
-					"201": {
-						"description": "The request has succeeded and a new resource has been created as a result.",
+					"200": {
+						"description": "The request has succeeded.",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/WorkspaceResponse"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "The server could not understand the request due to invalid syntax.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
+									"$ref": "#/components/schemas/PreferencesResponse"
 								}
 							}
 						}
@@ -467,8 +1020,8 @@
 							}
 						}
 					},
-					"403": {
-						"description": "Access is forbidden.",
+					"404": {
+						"description": "The server cannot find the requested resource.",
 						"content": {
 							"application/problem+json": {
 								"schema": {
@@ -498,13 +1051,13 @@
 						}
 					}
 				},
-				"tags": ["Workspaces"],
+				"tags": ["Directory"],
 				"requestBody": {
 					"required": true,
 					"content": {
 						"application/json": {
 							"schema": {
-								"$ref": "#/components/schemas/CreateWorkspaceRequest"
+								"$ref": "#/components/schemas/UpdatePreferencesRequest"
 							}
 						}
 					}
@@ -516,364 +1069,25 @@
 				]
 			}
 		},
-		"/workspaces/{workspaceId}": {
-			"get": {
-				"operationId": "getWorkspace",
-				"summary": "Get workspace",
-				"parameters": [
-					{
-						"$ref": "#/components/parameters/WorkspaceIdPath"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "The request has succeeded.",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/WorkspaceResponse"
-								}
-							}
-						}
-					},
-					"401": {
-						"description": "Access is unauthorized.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"403": {
-						"description": "Access is forbidden.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "The server cannot find the requested resource.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"422": {
-						"description": "Client error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					}
-				},
-				"tags": ["Workspaces"],
-				"security": [
-					{
-						"SessionCookieAuth": []
-					}
-				]
-			},
-			"patch": {
-				"operationId": "updateWorkspace",
-				"summary": "Update workspace",
-				"parameters": [
-					{
-						"$ref": "#/components/parameters/WorkspaceIdPath"
-					},
-					{
-						"$ref": "#/components/parameters/CSRFHeader"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "The request has succeeded.",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/WorkspaceResponse"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "The server could not understand the request due to invalid syntax.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"401": {
-						"description": "Access is unauthorized.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"403": {
-						"description": "Access is forbidden.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "The server cannot find the requested resource.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"422": {
-						"description": "Client error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					}
-				},
-				"tags": ["Workspaces"],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/UpdateWorkspaceRequest"
-							}
-						}
-					}
-				},
-				"security": [
-					{
-						"SessionCookieAuth": []
-					}
-				]
-			},
-			"delete": {
-				"operationId": "deleteWorkspace",
-				"summary": "Delete workspace",
-				"parameters": [
-					{
-						"$ref": "#/components/parameters/WorkspaceIdPath"
-					},
-					{
-						"$ref": "#/components/parameters/CSRFHeader"
-					}
-				],
-				"responses": {
-					"204": {
-						"description": "There is no content to send for this request, but the headers may be useful. "
-					},
-					"401": {
-						"description": "Access is unauthorized.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"403": {
-						"description": "Access is forbidden.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "The server cannot find the requested resource.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"422": {
-						"description": "Client error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					}
-				},
-				"tags": ["Workspaces"],
-				"security": [
-					{
-						"SessionCookieAuth": []
-					}
-				]
-			}
-		},
-		"/workspaces/{workspaceId}/members": {
-			"get": {
-				"operationId": "listWorkspaceMembers",
-				"summary": "List workspace members",
-				"parameters": [
-					{
-						"$ref": "#/components/parameters/WorkspaceIdPath"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "The request has succeeded.",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/WorkspaceMemberListResponse"
-								}
-							}
-						}
-					},
-					"401": {
-						"description": "Access is unauthorized.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"403": {
-						"description": "Access is forbidden.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "The server cannot find the requested resource.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"422": {
-						"description": "Client error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					}
-				},
-				"tags": ["Workspace Members"],
-				"security": [
-					{
-						"SessionCookieAuth": []
-					}
-				]
-			},
+		"/operations/{operationId}/retry": {
 			"post": {
-				"operationId": "addWorkspaceMember",
-				"summary": "Add workspace member",
+				"operationId": "retryOperation",
+				"summary": "Retry a failed durable operation",
 				"parameters": [
 					{
-						"$ref": "#/components/parameters/WorkspaceIdPath"
+						"$ref": "#/components/parameters/OperationIdPath"
 					},
 					{
 						"$ref": "#/components/parameters/CSRFHeader"
 					}
 				],
 				"responses": {
-					"201": {
-						"description": "The request has succeeded and a new resource has been created as a result.",
+					"202": {
+						"description": "The request has been accepted for processing, but processing has not yet completed.",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/WorkspaceMemberResponse"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "The server could not understand the request due to invalid syntax.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
+									"$ref": "#/components/schemas/RetryOperationResponse"
 								}
 							}
 						}
@@ -918,16 +1132,6 @@
 							}
 						}
 					},
-					"422": {
-						"description": "Client error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
 					"500": {
 						"description": "Server error",
 						"content": {
@@ -939,17 +1143,7 @@
 						}
 					}
 				},
-				"tags": ["Workspace Members"],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/AddWorkspaceMemberRequest"
-							}
-						}
-					}
-				},
+				"tags": ["Sync"],
 				"security": [
 					{
 						"SessionCookieAuth": []
@@ -957,316 +1151,22 @@
 				]
 			}
 		},
-		"/workspaces/{workspaceId}/members/{userId}": {
-			"patch": {
-				"operationId": "updateWorkspaceMember",
-				"summary": "Update workspace member",
-				"parameters": [
-					{
-						"$ref": "#/components/parameters/WorkspaceIdPath"
-					},
-					{
-						"$ref": "#/components/parameters/UserIdPath"
-					},
-					{
-						"$ref": "#/components/parameters/CSRFHeader"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "The request has succeeded.",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/WorkspaceMemberResponse"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "The server could not understand the request due to invalid syntax.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"401": {
-						"description": "Access is unauthorized.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"403": {
-						"description": "Access is forbidden.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "The server cannot find the requested resource.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "The request conflicts with the current state of the server.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"422": {
-						"description": "Client error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					}
-				},
-				"tags": ["Workspace Members"],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/UpdateWorkspaceMemberRequest"
-							}
-						}
-					}
-				},
-				"security": [
-					{
-						"SessionCookieAuth": []
-					}
-				]
-			},
-			"delete": {
-				"operationId": "removeWorkspaceMember",
-				"summary": "Remove workspace member",
-				"parameters": [
-					{
-						"$ref": "#/components/parameters/WorkspaceIdPath"
-					},
-					{
-						"$ref": "#/components/parameters/UserIdPath"
-					},
-					{
-						"$ref": "#/components/parameters/CSRFHeader"
-					}
-				],
-				"responses": {
-					"204": {
-						"description": "There is no content to send for this request, but the headers may be useful. "
-					},
-					"401": {
-						"description": "Access is unauthorized.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"403": {
-						"description": "Access is forbidden.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "The server cannot find the requested resource.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "The request conflicts with the current state of the server.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"422": {
-						"description": "Client error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					}
-				},
-				"tags": ["Workspace Members"],
-				"security": [
-					{
-						"SessionCookieAuth": []
-					}
-				]
-			}
-		},
-		"/workspaces/{workspaceId}/tasks": {
-			"get": {
-				"operationId": "listTasks",
-				"summary": "List tasks",
-				"parameters": [
-					{
-						"$ref": "#/components/parameters/WorkspaceIdPath"
-					},
-					{
-						"$ref": "#/components/parameters/TaskListQuery"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "The request has succeeded.",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/TaskListResponse"
-								}
-							}
-						}
-					},
-					"401": {
-						"description": "Access is unauthorized.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"403": {
-						"description": "Access is forbidden.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "The server cannot find the requested resource.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"422": {
-						"description": "Client error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					}
-				},
-				"tags": ["Tasks"],
-				"security": [
-					{
-						"SessionCookieAuth": []
-					}
-				]
-			},
+		"/sync/refresh": {
 			"post": {
-				"operationId": "createTask",
-				"summary": "Create task",
+				"operationId": "refreshSnapshots",
+				"summary": "Request a background GitLab refresh",
 				"parameters": [
-					{
-						"$ref": "#/components/parameters/WorkspaceIdPath"
-					},
 					{
 						"$ref": "#/components/parameters/CSRFHeader"
 					}
 				],
 				"responses": {
-					"201": {
-						"description": "The request has succeeded and a new resource has been created as a result.",
+					"202": {
+						"description": "The request has been accepted for processing, but processing has not yet completed.",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/TaskResponse"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "The server could not understand the request due to invalid syntax.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
+									"$ref": "#/components/schemas/RefreshSyncResponse"
 								}
 							}
 						}
@@ -1291,18 +1191,8 @@
 							}
 						}
 					},
-					"404": {
-						"description": "The server cannot find the requested resource.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"422": {
-						"description": "Client error",
+					"409": {
+						"description": "The request conflicts with the current state of the server.",
 						"content": {
 							"application/problem+json": {
 								"schema": {
@@ -1322,278 +1212,7 @@
 						}
 					}
 				},
-				"tags": ["Tasks"],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/CreateTaskRequest"
-							}
-						}
-					}
-				},
-				"security": [
-					{
-						"SessionCookieAuth": []
-					}
-				]
-			}
-		},
-		"/workspaces/{workspaceId}/tasks/{taskId}": {
-			"get": {
-				"operationId": "getTask",
-				"summary": "Get task",
-				"parameters": [
-					{
-						"$ref": "#/components/parameters/WorkspaceIdPath"
-					},
-					{
-						"$ref": "#/components/parameters/TaskIdPath"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "The request has succeeded.",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/TaskResponse"
-								}
-							}
-						}
-					},
-					"401": {
-						"description": "Access is unauthorized.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"403": {
-						"description": "Access is forbidden.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "The server cannot find the requested resource.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"422": {
-						"description": "Client error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					}
-				},
-				"tags": ["Tasks"],
-				"security": [
-					{
-						"SessionCookieAuth": []
-					}
-				]
-			},
-			"patch": {
-				"operationId": "updateTask",
-				"summary": "Update task",
-				"parameters": [
-					{
-						"$ref": "#/components/parameters/WorkspaceIdPath"
-					},
-					{
-						"$ref": "#/components/parameters/TaskIdPath"
-					},
-					{
-						"$ref": "#/components/parameters/CSRFHeader"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "The request has succeeded.",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/TaskResponse"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "The server could not understand the request due to invalid syntax.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"401": {
-						"description": "Access is unauthorized.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"403": {
-						"description": "Access is forbidden.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "The server cannot find the requested resource.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"422": {
-						"description": "Client error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					}
-				},
-				"tags": ["Tasks"],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/UpdateTaskRequest"
-							}
-						}
-					}
-				},
-				"security": [
-					{
-						"SessionCookieAuth": []
-					}
-				]
-			},
-			"delete": {
-				"operationId": "deleteTask",
-				"summary": "Delete task",
-				"parameters": [
-					{
-						"$ref": "#/components/parameters/WorkspaceIdPath"
-					},
-					{
-						"$ref": "#/components/parameters/TaskIdPath"
-					},
-					{
-						"$ref": "#/components/parameters/CSRFHeader"
-					}
-				],
-				"responses": {
-					"204": {
-						"description": "There is no content to send for this request, but the headers may be useful. "
-					},
-					"401": {
-						"description": "Access is unauthorized.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"403": {
-						"description": "Access is forbidden.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "The server cannot find the requested resource.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"422": {
-						"description": "Client error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					}
-				},
-				"tags": ["Tasks"],
+				"tags": ["Sync"],
 				"security": [
 					{
 						"SessionCookieAuth": []
@@ -1613,34 +1232,37 @@
 					"minLength": 1
 				}
 			},
-			"TaskIdPath": {
-				"name": "taskId",
-				"in": "path",
+			"GitLabOAuthCallbackQuery.code": {
+				"name": "code",
+				"in": "query",
 				"required": true,
 				"schema": {
-					"$ref": "#/components/schemas/uuid"
-				}
-			},
-			"TaskListQuery": {
-				"name": "status",
-				"in": "query",
-				"required": false,
-				"schema": {
 					"type": "string",
-					"enum": ["todo", "in_progress", "done"]
+					"minLength": 1
 				},
 				"explode": false
 			},
-			"UserIdPath": {
-				"name": "userId",
+			"GitLabOAuthCallbackQuery.state": {
+				"name": "state",
+				"in": "query",
+				"required": true,
+				"schema": {
+					"type": "string",
+					"minLength": 1
+				},
+				"explode": false
+			},
+			"IssueIidPath": {
+				"name": "issueIid",
 				"in": "path",
 				"required": true,
 				"schema": {
-					"$ref": "#/components/schemas/uuid"
+					"type": "integer",
+					"format": "int64"
 				}
 			},
-			"WorkspaceIdPath": {
-				"name": "workspaceId",
+			"OperationIdPath": {
+				"name": "operationId",
 				"in": "path",
 				"required": true,
 				"schema": {
@@ -1655,7 +1277,7 @@
 				"properties": {
 					"name": {
 						"type": "string",
-						"enum": ["Project Template API"]
+						"enum": ["SITCON Board API"]
 					},
 					"version": {
 						"type": "string"
@@ -1663,27 +1285,8 @@
 				},
 				"examples": [
 					{
-						"name": "Project Template API",
+						"name": "SITCON Board API",
 						"version": "0.1.0"
-					}
-				]
-			},
-			"AddWorkspaceMemberRequest": {
-				"type": "object",
-				"required": ["email", "role"],
-				"properties": {
-					"email": {
-						"$ref": "#/components/schemas/email"
-					},
-					"role": {
-						"type": "string",
-						"enum": ["owner", "editor", "viewer"]
-					}
-				},
-				"examples": [
-					{
-						"email": "editor@example.com",
-						"role": "editor"
 					}
 				]
 			},
@@ -1692,20 +1295,218 @@
 				"required": ["user"],
 				"properties": {
 					"user": {
-						"$ref": "#/components/schemas/User"
+						"$ref": "#/components/schemas/CurrentUser"
 					}
 				},
 				"examples": [
 					{
 						"user": {
 							"id": "11111111-1111-1111-1111-111111111111",
-							"email": "owner@example.com",
-							"displayName": "Alex Morgan",
-							"createdAt": "2026-07-10T08:00:00Z",
-							"updatedAt": "2026-07-10T08:00:00Z"
+							"gitLabUserId": 123456,
+							"username": "yorukot",
+							"displayName": "Yorukot",
+							"avatarUrl": null,
+							"profileUrl": "https://gitlab.com/yorukot",
+							"accessLevel": 40
 						}
 					}
 				]
+			},
+			"BoardCard": {
+				"type": "object",
+				"required": [
+					"issueIid",
+					"issueId",
+					"title",
+					"webUrl",
+					"listKey",
+					"position",
+					"teamKey",
+					"assigneeGitLabUserId",
+					"dueDate",
+					"labels",
+					"syncState",
+					"syncError",
+					"pendingOperationId",
+					"updatedAt"
+				],
+				"properties": {
+					"issueIid": {
+						"type": "integer",
+						"format": "int64"
+					},
+					"issueId": {
+						"anyOf": [
+							{
+								"type": "integer",
+								"format": "int64"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"title": {
+						"type": "string"
+					},
+					"webUrl": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"listKey": {
+						"type": "string"
+					},
+					"position": {
+						"type": "integer",
+						"format": "int32"
+					},
+					"teamKey": {
+						"type": "string"
+					},
+					"assigneeGitLabUserId": {
+						"anyOf": [
+							{
+								"type": "integer",
+								"format": "int64"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"dueDate": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "date"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"labels": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"syncState": {
+						"type": "string",
+						"enum": ["pending", "processing", "synced", "failed"]
+					},
+					"syncError": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"pendingOperationId": {
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/uuid"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"updatedAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
+			},
+			"BoardList": {
+				"type": "object",
+				"required": ["key", "name", "gitLabLabel", "position", "closed", "color"],
+				"properties": {
+					"key": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"gitLabLabel": {
+						"type": "string"
+					},
+					"position": {
+						"type": "integer",
+						"format": "int32"
+					},
+					"closed": {
+						"type": "boolean"
+					},
+					"color": {
+						"type": "string"
+					}
+				}
+			},
+			"BoardSnapshot": {
+				"type": "object",
+				"required": ["lists", "cards", "syncedAt"],
+				"properties": {
+					"lists": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/BoardList"
+						}
+					},
+					"cards": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/BoardCard"
+						}
+					},
+					"syncedAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
+			},
+			"BootstrapResponse": {
+				"type": "object",
+				"required": ["me", "csrfToken", "teams", "members", "board", "preferences", "sync"],
+				"properties": {
+					"me": {
+						"$ref": "#/components/schemas/CurrentUser"
+					},
+					"csrfToken": {
+						"type": "string",
+						"format": "password"
+					},
+					"teams": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/DirectoryTeam"
+						}
+					},
+					"members": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/DirectoryMember"
+						}
+					},
+					"board": {
+						"$ref": "#/components/schemas/BoardSnapshot"
+					},
+					"preferences": {
+						"$ref": "#/components/schemas/UserPreferences"
+					},
+					"sync": {
+						"$ref": "#/components/schemas/SyncStatus"
+					}
+				}
 			},
 			"CSRFResponse": {
 				"type": "object",
@@ -1718,61 +1519,299 @@
 				},
 				"examples": [
 					{
-						"token": "a-one-time-readable-csrf-token"
+						"token": "csrf-token-readable-by-the-browser-session"
 					}
 				]
 			},
-			"CreateTaskRequest": {
+			"CardMutationResponse": {
 				"type": "object",
-				"required": ["title"],
+				"required": ["card", "operation"],
 				"properties": {
+					"card": {
+						"$ref": "#/components/schemas/BoardCard"
+					},
+					"operation": {
+						"$ref": "#/components/schemas/DurableOperation"
+					}
+				}
+			},
+			"CreateCardRequest": {
+				"type": "object",
+				"required": ["operationId", "title", "teamKey", "assigneeGitLabUserId", "dueDate"],
+				"properties": {
+					"operationId": {
+						"$ref": "#/components/schemas/uuid"
+					},
 					"title": {
 						"type": "string",
 						"minLength": 1,
-						"maxLength": 160
+						"maxLength": 255
 					},
-					"description": {
+					"teamKey": {
 						"type": "string",
-						"maxLength": 4000
+						"minLength": 1
 					},
-					"status": {
-						"type": "string",
-						"enum": ["todo", "in_progress", "done"]
-					},
-					"assigneeId": {
+					"assigneeGitLabUserId": {
 						"anyOf": [
 							{
-								"$ref": "#/components/schemas/uuid"
+								"type": "integer",
+								"format": "int64"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"dueDate": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "date"
 							},
 							{
 								"type": "null"
 							}
 						]
 					}
+				}
+			},
+			"CurrentUser": {
+				"type": "object",
+				"required": ["id", "gitLabUserId", "username", "displayName", "avatarUrl", "profileUrl", "accessLevel"],
+				"properties": {
+					"id": {
+						"$ref": "#/components/schemas/uuid"
+					},
+					"gitLabUserId": {
+						"type": "integer",
+						"format": "int64"
+					},
+					"username": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 255
+					},
+					"displayName": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 255
+					},
+					"avatarUrl": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"format": "uri"
+					},
+					"profileUrl": {
+						"type": "string",
+						"format": "uri"
+					},
+					"accessLevel": {
+						"type": "integer",
+						"format": "int32",
+						"minimum": 0,
+						"maximum": 100
+					}
 				},
 				"examples": [
 					{
-						"title": "Publish architecture decision record",
-						"description": "Document transaction ownership for workspace creation.",
-						"assigneeId": "11111111-1111-1111-1111-111111111111"
+						"id": "11111111-1111-1111-1111-111111111111",
+						"gitLabUserId": 123456,
+						"username": "yorukot",
+						"displayName": "Yorukot",
+						"avatarUrl": "https://gitlab.com/uploads/-/system/user/avatar/123456/avatar.png",
+						"profileUrl": "https://gitlab.com/yorukot",
+						"accessLevel": 40
 					}
 				]
 			},
-			"CreateWorkspaceRequest": {
+			"DirectoryMember": {
 				"type": "object",
-				"required": ["name"],
+				"required": ["gitLabUserId", "username", "displayName", "avatarUrl", "profileUrl", "accessLevel", "state", "teamKeys"],
 				"properties": {
+					"gitLabUserId": {
+						"type": "integer",
+						"format": "int64"
+					},
+					"username": {
+						"type": "string"
+					},
+					"displayName": {
+						"type": "string"
+					},
+					"avatarUrl": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"format": "uri"
+					},
+					"profileUrl": {
+						"type": "string",
+						"format": "uri"
+					},
+					"accessLevel": {
+						"type": "integer",
+						"format": "int32",
+						"minimum": 0,
+						"maximum": 100
+					},
+					"state": {
+						"type": "string",
+						"enum": ["active", "blocked", "deactivated"]
+					},
+					"teamKeys": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"examples": [
+					{
+						"gitLabUserId": 123456,
+						"username": "yorukot",
+						"displayName": "Yorukot",
+						"avatarUrl": null,
+						"profileUrl": "https://gitlab.com/yorukot",
+						"accessLevel": 40,
+						"state": "active",
+						"teamKeys": ["development"]
+					}
+				]
+			},
+			"DirectoryResponse": {
+				"type": "object",
+				"required": ["directory"],
+				"properties": {
+					"directory": {
+						"$ref": "#/components/schemas/DirectorySnapshot"
+					}
+				}
+			},
+			"DirectorySnapshot": {
+				"type": "object",
+				"required": ["teams", "members", "sourceRevision", "syncedAt"],
+				"properties": {
+					"teams": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/DirectoryTeam"
+						}
+					},
+					"members": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/DirectoryMember"
+						}
+					},
+					"sourceRevision": {
+						"type": "string"
+					},
+					"syncedAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
+			},
+			"DirectoryTeam": {
+				"type": "object",
+				"required": ["key", "name", "titlePrefix", "gitLabLabel", "active", "sortOrder", "memberGitLabUserIds"],
+				"properties": {
+					"key": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 80
+					},
 					"name": {
 						"type": "string",
 						"minLength": 1,
 						"maxLength": 80
+					},
+					"titlePrefix": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 120
+					},
+					"gitLabLabel": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 255
+					},
+					"active": {
+						"type": "boolean"
+					},
+					"sortOrder": {
+						"type": "integer",
+						"format": "int32"
+					},
+					"memberGitLabUserIds": {
+						"type": "array",
+						"items": {
+							"type": "integer",
+							"format": "int64"
+						}
 					}
 				},
 				"examples": [
 					{
-						"name": "Product Engineering"
+						"key": "development",
+						"name": "開發組",
+						"titlePrefix": "[開發組]",
+						"gitLabLabel": "組別::開發",
+						"active": true,
+						"sortOrder": 7,
+						"memberGitLabUserIds": [123456]
 					}
 				]
+			},
+			"DurableOperation": {
+				"type": "object",
+				"required": ["id", "kind", "state", "attempts", "lastError", "createdAt", "updatedAt"],
+				"properties": {
+					"id": {
+						"$ref": "#/components/schemas/uuid"
+					},
+					"kind": {
+						"type": "string",
+						"enum": ["create_card", "update_team", "update_assignee", "update_due_date", "move_card"]
+					},
+					"state": {
+						"type": "string",
+						"enum": ["pending", "processing", "synced", "failed"]
+					},
+					"attempts": {
+						"type": "integer",
+						"format": "int32"
+					},
+					"lastError": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"updatedAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
 			},
 			"HealthResponse": {
 				"type": "object",
@@ -1789,26 +1828,32 @@
 					}
 				]
 			},
-			"LoginRequest": {
+			"MoveCardRequest": {
 				"type": "object",
-				"required": ["email", "password"],
+				"required": ["operationId", "listKey", "position"],
 				"properties": {
-					"email": {
-						"$ref": "#/components/schemas/email"
+					"operationId": {
+						"$ref": "#/components/schemas/uuid"
 					},
-					"password": {
+					"listKey": {
 						"type": "string",
-						"minLength": 12,
-						"maxLength": 128,
-						"format": "password"
+						"minLength": 1
+					},
+					"position": {
+						"type": "integer",
+						"format": "int32",
+						"minimum": 0
 					}
-				},
-				"examples": [
-					{
-						"email": "owner@example.com",
-						"password": "correct-horse-battery-staple"
+				}
+			},
+			"PreferencesResponse": {
+				"type": "object",
+				"required": ["preferences"],
+				"properties": {
+					"preferences": {
+						"$ref": "#/components/schemas/UserPreferences"
 					}
-				]
+				}
 			},
 			"ProblemDetails": {
 				"type": "object",
@@ -1839,16 +1884,16 @@
 							"METHOD_NOT_ALLOWED",
 							"AUTH_MISSING_SESSION",
 							"AUTH_INVALID_SESSION",
-							"AUTH_INVALID_CREDENTIALS",
 							"AUTH_INVALID_CSRF",
-							"INSUFFICIENT_ROLE",
-							"EMAIL_ALREADY_EXISTS",
-							"WORKSPACE_NOT_FOUND",
-							"WORKSPACE_MEMBER_NOT_FOUND",
-							"WORKSPACE_MEMBER_ALREADY_EXISTS",
-							"WORKSPACE_LAST_OWNER",
-							"TASK_ASSIGNEE_NOT_MEMBER",
-							"TASK_NOT_FOUND"
+							"AUTH_OAUTH_FAILED",
+							"DIRECTORY_NOT_READY",
+							"TEAM_NOT_FOUND",
+							"MEMBER_NOT_ASSIGNABLE",
+							"CARD_NOT_FOUND",
+							"OPERATION_NOT_FOUND",
+							"OPERATION_CONFLICT",
+							"SNAPSHOT_NOT_READY",
+							"GITLAB_UNAVAILABLE"
 						]
 					},
 					"detail": {
@@ -1866,7 +1911,7 @@
 				},
 				"examples": [
 					{
-						"type": "https://project-template.example/problems/validation-failed",
+						"type": "https://board.sitcon.org/problems/validation-failed",
 						"title": "Validation failed",
 						"status": 422,
 						"code": "VALIDATION_FAILED",
@@ -1894,10 +1939,11 @@
 							"INVALID_LENGTH",
 							"INVALID_FORMAT",
 							"INVALID_ENUM",
-							"NOT_A_WORKSPACE_MEMBER",
 							"REQUIRED",
 							"VALUE_TOO_SHORT",
-							"VALUE_TOO_LONG"
+							"VALUE_TOO_LONG",
+							"UNKNOWN_TEAM",
+							"UNKNOWN_MEMBER"
 						]
 					},
 					"message": {
@@ -1915,164 +1961,107 @@
 					}
 				]
 			},
-			"RegisterRequest": {
+			"RefreshSyncResponse": {
 				"type": "object",
-				"required": ["email", "displayName", "password"],
+				"required": ["acceptedAt"],
 				"properties": {
-					"email": {
-						"$ref": "#/components/schemas/email"
-					},
-					"displayName": {
-						"type": "string",
-						"minLength": 1,
-						"maxLength": 64
-					},
-					"password": {
-						"type": "string",
-						"minLength": 12,
-						"maxLength": 128,
-						"format": "password"
-					}
-				},
-				"examples": [
-					{
-						"email": "owner@example.com",
-						"displayName": "Alex Morgan",
-						"password": "correct-horse-battery-staple"
-					}
-				]
-			},
-			"Task": {
-				"type": "object",
-				"required": ["id", "workspaceId", "title", "description", "status", "assigneeId", "createdAt", "updatedAt"],
-				"properties": {
-					"id": {
-						"$ref": "#/components/schemas/uuid"
-					},
-					"workspaceId": {
-						"$ref": "#/components/schemas/uuid"
-					},
-					"title": {
-						"type": "string",
-						"minLength": 1,
-						"maxLength": 160
-					},
-					"description": {
-						"type": "string",
-						"maxLength": 4000
-					},
-					"status": {
-						"type": "string",
-						"enum": ["todo", "in_progress", "done"]
-					},
-					"assigneeId": {
-						"anyOf": [
-							{
-								"$ref": "#/components/schemas/uuid"
-							},
-							{
-								"type": "null"
-							}
-						]
-					},
-					"createdAt": {
-						"type": "string",
-						"format": "date-time"
-					},
-					"updatedAt": {
+					"acceptedAt": {
 						"type": "string",
 						"format": "date-time"
 					}
-				},
-				"examples": [
-					{
-						"id": "33333333-3333-3333-3333-333333333333",
-						"workspaceId": "22222222-2222-2222-2222-222222222222",
-						"title": "Publish architecture decision record",
-						"description": "Document transaction ownership for workspace creation.",
-						"status": "in_progress",
-						"assigneeId": "11111111-1111-1111-1111-111111111111",
-						"createdAt": "2026-07-10T09:00:00Z",
-						"updatedAt": "2026-07-10T09:30:00Z"
-					}
-				]
+				}
 			},
-			"TaskListResponse": {
+			"RetryOperationResponse": {
 				"type": "object",
-				"required": ["tasks"],
+				"required": ["operation"],
 				"properties": {
-					"tasks": {
-						"type": "array",
-						"items": {
-							"$ref": "#/components/schemas/Task"
-						}
+					"operation": {
+						"$ref": "#/components/schemas/DurableOperation"
 					}
 				}
 			},
-			"TaskResponse": {
+			"SyncStatus": {
 				"type": "object",
-				"required": ["task"],
+				"required": ["state", "lastSuccessAt", "message"],
 				"properties": {
-					"task": {
-						"$ref": "#/components/schemas/Task"
-					}
-				}
-			},
-			"UpdateTaskRequest": {
-				"type": "object",
-				"properties": {
-					"title": {
+					"state": {
 						"type": "string",
-						"minLength": 1,
-						"maxLength": 160
+						"enum": ["synced", "syncing", "offline"]
 					},
-					"description": {
+					"lastSuccessAt": {
 						"type": "string",
-						"maxLength": 4000
+						"format": "date-time"
 					},
-					"status": {
-						"type": "string",
-						"enum": ["todo", "in_progress", "done"]
-					},
-					"assigneeId": {
+					"message": {
 						"anyOf": [
 							{
-								"$ref": "#/components/schemas/uuid"
+								"type": "string"
 							},
 							{
 								"type": "null"
 							}
 						]
 					}
-				},
-				"examples": [
-					{
-						"title": "Publish the architecture decision record",
-						"status": "done",
-						"assigneeId": "11111111-1111-1111-1111-111111111111"
-					}
-				]
+				}
 			},
-			"UpdateWorkspaceMemberRequest": {
+			"UpdateCardAssigneeRequest": {
 				"type": "object",
-				"required": ["role"],
+				"required": ["operationId", "assigneeGitLabUserId"],
 				"properties": {
-					"role": {
+					"operationId": {
+						"$ref": "#/components/schemas/uuid"
+					},
+					"assigneeGitLabUserId": {
+						"anyOf": [
+							{
+								"type": "integer",
+								"format": "int64"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				}
+			},
+			"UpdateCardDueDateRequest": {
+				"type": "object",
+				"required": ["operationId", "dueDate"],
+				"properties": {
+					"operationId": {
+						"$ref": "#/components/schemas/uuid"
+					},
+					"dueDate": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "date"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				}
+			},
+			"UpdateCardTeamRequest": {
+				"type": "object",
+				"required": ["operationId", "teamKey"],
+				"properties": {
+					"operationId": {
+						"$ref": "#/components/schemas/uuid"
+					},
+					"teamKey": {
 						"type": "string",
-						"enum": ["owner", "editor", "viewer"]
+						"minLength": 1
 					}
-				},
-				"examples": [
-					{
-						"role": "viewer"
-					}
-				]
+				}
 			},
-			"UpdateWorkspaceRequest": {
+			"UpdatePreferencesRequest": {
 				"type": "object",
-				"required": ["name"],
+				"required": ["defaultTeamKey"],
 				"properties": {
-					"name": {
+					"defaultTeamKey": {
 						"type": "string",
 						"minLength": 1,
 						"maxLength": 80
@@ -2080,160 +2069,49 @@
 				},
 				"examples": [
 					{
-						"name": "Platform Engineering"
+						"defaultTeamKey": "development"
 					}
 				]
 			},
-			"User": {
+			"UserPreferences": {
 				"type": "object",
-				"required": ["id", "email", "displayName", "createdAt", "updatedAt"],
+				"required": ["defaultTeamKey", "confirmedAt", "directoryTeamKeys"],
 				"properties": {
-					"id": {
-						"$ref": "#/components/schemas/uuid"
+					"defaultTeamKey": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
 					},
-					"email": {
-						"$ref": "#/components/schemas/email"
+					"confirmedAt": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "date-time"
+							},
+							{
+								"type": "null"
+							}
+						]
 					},
-					"displayName": {
-						"type": "string",
-						"minLength": 1,
-						"maxLength": 64
-					},
-					"createdAt": {
-						"type": "string",
-						"format": "date-time"
-					},
-					"updatedAt": {
-						"type": "string",
-						"format": "date-time"
-					}
-				},
-				"examples": [
-					{
-						"id": "11111111-1111-1111-1111-111111111111",
-						"email": "owner@example.com",
-						"displayName": "Alex Morgan",
-						"createdAt": "2026-07-10T08:00:00Z",
-						"updatedAt": "2026-07-10T08:00:00Z"
-					}
-				]
-			},
-			"Workspace": {
-				"type": "object",
-				"required": ["id", "name", "role", "createdByUserId", "createdAt", "updatedAt"],
-				"properties": {
-					"id": {
-						"$ref": "#/components/schemas/uuid"
-					},
-					"name": {
-						"type": "string",
-						"minLength": 1,
-						"maxLength": 80
-					},
-					"role": {
-						"type": "string",
-						"enum": ["owner", "editor", "viewer"]
-					},
-					"createdByUserId": {
-						"$ref": "#/components/schemas/uuid"
-					},
-					"createdAt": {
-						"type": "string",
-						"format": "date-time"
-					},
-					"updatedAt": {
-						"type": "string",
-						"format": "date-time"
-					}
-				},
-				"examples": [
-					{
-						"id": "22222222-2222-2222-2222-222222222222",
-						"name": "Product Engineering",
-						"role": "owner",
-						"createdByUserId": "11111111-1111-1111-1111-111111111111",
-						"createdAt": "2026-07-10T08:10:00Z",
-						"updatedAt": "2026-07-10T08:10:00Z"
-					}
-				]
-			},
-			"WorkspaceListResponse": {
-				"type": "object",
-				"required": ["workspaces"],
-				"properties": {
-					"workspaces": {
+					"directoryTeamKeys": {
 						"type": "array",
 						"items": {
-							"$ref": "#/components/schemas/Workspace"
+							"type": "string"
 						}
-					}
-				}
-			},
-			"WorkspaceMember": {
-				"type": "object",
-				"required": ["userId", "email", "displayName", "role", "createdAt"],
-				"properties": {
-					"userId": {
-						"$ref": "#/components/schemas/uuid"
-					},
-					"email": {
-						"$ref": "#/components/schemas/email"
-					},
-					"displayName": {
-						"type": "string"
-					},
-					"role": {
-						"type": "string",
-						"enum": ["owner", "editor", "viewer"]
-					},
-					"createdAt": {
-						"type": "string",
-						"format": "date-time"
 					}
 				},
 				"examples": [
 					{
-						"userId": "11111111-1111-1111-1111-111111111111",
-						"email": "owner@example.com",
-						"displayName": "Alex Morgan",
-						"role": "owner",
-						"createdAt": "2026-07-10T08:10:00Z"
+						"defaultTeamKey": "development",
+						"confirmedAt": "2026-07-14T08:00:00Z",
+						"directoryTeamKeys": ["development"]
 					}
 				]
-			},
-			"WorkspaceMemberListResponse": {
-				"type": "object",
-				"required": ["members"],
-				"properties": {
-					"members": {
-						"type": "array",
-						"items": {
-							"$ref": "#/components/schemas/WorkspaceMember"
-						}
-					}
-				}
-			},
-			"WorkspaceMemberResponse": {
-				"type": "object",
-				"required": ["member"],
-				"properties": {
-					"member": {
-						"$ref": "#/components/schemas/WorkspaceMember"
-					}
-				}
-			},
-			"WorkspaceResponse": {
-				"type": "object",
-				"required": ["workspace"],
-				"properties": {
-					"workspace": {
-						"$ref": "#/components/schemas/Workspace"
-					}
-				}
-			},
-			"email": {
-				"type": "string",
-				"format": "email"
 			},
 			"uuid": {
 				"type": "string",
@@ -2244,7 +2122,7 @@
 			"SessionCookieAuth": {
 				"type": "apiKey",
 				"in": "cookie",
-				"name": "__Host-project_template_session"
+				"name": "__Host-sitcon_board_session"
 			}
 		}
 	},

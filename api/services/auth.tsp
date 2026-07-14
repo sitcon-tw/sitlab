@@ -4,32 +4,22 @@ import "@typespec/openapi";
 using Http;
 using OpenAPI;
 
-namespace ProjectTemplate;
+namespace SitconBoard;
 
 @tag("Auth")
 @route("/auth")
 interface AuthService {
-	@operationId("registerUser")
-	@summary("Register user")
-	@post
-	@route("/register")
-	registerUser(@body body: RegisterRequest):
-		| SessionCreatedJson<AuthResponse>
-		| BadRequestProblem
-		| ConflictProblem
-		| UnprocessableEntityProblem
-		| InternalServerProblem;
+	@operationId("startGitLabOAuth")
+	@summary("Start GitLab OAuth")
+	@get
+	@route("/gitlab")
+	startGitLabOAuth(): OAuthRedirect | InternalServerProblem;
 
-	@operationId("loginUser")
-	@summary("Log in user")
-	@post
-	@route("/login")
-	loginUser(@body body: LoginRequest):
-		| SessionOkJson<AuthResponse>
-		| BadRequestProblem
-		| UnauthorizedProblem
-		| UnprocessableEntityProblem
-		| InternalServerProblem;
+	@operationId("completeGitLabOAuth")
+	@summary("Complete GitLab OAuth")
+	@get
+	@route("/gitlab/callback")
+	completeGitLabOAuth(...GitLabOAuthCallbackQuery): OAuthRedirect | BadRequestProblem | UnauthorizedProblem | ServiceUnavailableProblem | InternalServerProblem;
 
 	@operationId("logoutUser")
 	@summary("Log out user")

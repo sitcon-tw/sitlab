@@ -2,18 +2,15 @@ import "@typespec/http";
 
 using Http;
 
-namespace ProjectTemplate;
+namespace SitconBoard;
 
 @format("uuid")
 scalar uuid extends string;
 
-@format("email")
-scalar email extends string;
-
 model SessionCookieAuth {
 	type: AuthType.apiKey;
 	in: ApiKeyLocation.cookie;
-	name: "__Host-project_template_session";
+	name: "__Host-sitcon_board_session";
 }
 
 alias ErrorCode =
@@ -28,16 +25,16 @@ alias ErrorCode =
 	| "METHOD_NOT_ALLOWED"
 	| "AUTH_MISSING_SESSION"
 	| "AUTH_INVALID_SESSION"
-	| "AUTH_INVALID_CREDENTIALS"
 	| "AUTH_INVALID_CSRF"
-	| "INSUFFICIENT_ROLE"
-	| "EMAIL_ALREADY_EXISTS"
-	| "WORKSPACE_NOT_FOUND"
-	| "WORKSPACE_MEMBER_NOT_FOUND"
-	| "WORKSPACE_MEMBER_ALREADY_EXISTS"
-	| "WORKSPACE_LAST_OWNER"
-	| "TASK_ASSIGNEE_NOT_MEMBER"
-	| "TASK_NOT_FOUND";
+	| "AUTH_OAUTH_FAILED"
+	| "DIRECTORY_NOT_READY"
+	| "TEAM_NOT_FOUND"
+	| "MEMBER_NOT_ASSIGNABLE"
+	| "CARD_NOT_FOUND"
+	| "OPERATION_NOT_FOUND"
+	| "OPERATION_CONFLICT"
+	| "SNAPSHOT_NOT_READY"
+	| "GITLAB_UNAVAILABLE";
 
 alias ProblemFieldErrorCode =
 	| "INVALID_VALUE"
@@ -45,10 +42,11 @@ alias ProblemFieldErrorCode =
 	| "INVALID_LENGTH"
 	| "INVALID_FORMAT"
 	| "INVALID_ENUM"
-	| "NOT_A_WORKSPACE_MEMBER"
 	| "REQUIRED"
 	| "VALUE_TOO_SHORT"
-	| "VALUE_TOO_LONG";
+	| "VALUE_TOO_LONG"
+	| "UNKNOWN_TEAM"
+	| "UNKNOWN_MEMBER";
 
 @example(#{ code: "REQUIRED", message: "title is required", location: "body.title" })
 model ProblemError {
@@ -59,7 +57,7 @@ model ProblemError {
 
 @error
 @example(#{
-	type: "https://project-template.example/problems/validation-failed",
+	type: "https://board.sitcon.org/problems/validation-failed",
 	title: "Validation failed",
 	status: 422,
 	code: "VALIDATION_FAILED",
@@ -96,26 +94,13 @@ model CreatedJson<T> {
 	...Body<T>;
 }
 
+model AcceptedJson<T> {
+	...Response<202>;
+	...Body<T>;
+}
+
 model NoContent {
 	...NoContentResponse;
-}
-
-model SessionOkJson<T> {
-	...OkResponse;
-
-	@header("Set-Cookie")
-	setCookie: string;
-
-	...Body<T>;
-}
-
-model SessionCreatedJson<T> {
-	...CreatedResponse;
-
-	@header("Set-Cookie")
-	setCookie: string;
-
-	...Body<T>;
 }
 
 model SessionNoContent {
@@ -171,17 +156,12 @@ model CSRFHeader {
 	csrfToken: string;
 }
 
-model WorkspaceIdPath {
+model IssueIidPath {
 	@path
-	workspaceId: uuid;
+	issueIid: int64;
 }
 
-model UserIdPath {
+model OperationIdPath {
 	@path
-	userId: uuid;
-}
-
-model TaskIdPath {
-	@path
-	taskId: uuid;
+	operationId: uuid;
 }

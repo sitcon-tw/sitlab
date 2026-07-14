@@ -1,63 +1,78 @@
-namespace ProjectTemplate;
+import "@typespec/http";
+
+using Http;
+
+namespace SitconBoard;
 
 @example(#{
 	id: "11111111-1111-1111-1111-111111111111",
-	email: "owner@example.com",
-	displayName: "Alex Morgan",
-	createdAt: utcDateTime.fromISO("2026-07-10T08:00:00Z"),
-	updatedAt: utcDateTime.fromISO("2026-07-10T08:00:00Z"),
+	gitLabUserId: 123456,
+	username: "yorukot",
+	displayName: "Yorukot",
+	avatarUrl: "https://gitlab.com/uploads/-/system/user/avatar/123456/avatar.png",
+	profileUrl: "https://gitlab.com/yorukot",
+	accessLevel: 40,
 })
-model User {
+model CurrentUser {
 	id: uuid;
-	email: email;
+	gitLabUserId: int64;
 
 	@minLength(1)
-	@maxLength(64)
-	displayName: string;
-
-	createdAt: utcDateTime;
-	updatedAt: utcDateTime;
-}
-
-@example(#{ email: "owner@example.com", displayName: "Alex Morgan", password: "correct-horse-battery-staple" })
-model RegisterRequest {
-	email: email;
+	@maxLength(255)
+	username: string;
 
 	@minLength(1)
-	@maxLength(64)
+	@maxLength(255)
 	displayName: string;
 
-	@secret
-	@minLength(12)
-	@maxLength(128)
-	password: string;
-}
+	@format("uri")
+	avatarUrl: string | null;
 
-@example(#{ email: "owner@example.com", password: "correct-horse-battery-staple" })
-model LoginRequest {
-	email: email;
+	@format("uri")
+	profileUrl: string;
 
-	@secret
-	@minLength(12)
-	@maxLength(128)
-	password: string;
+	@minValue(0)
+	@maxValue(100)
+	accessLevel: int32;
 }
 
 @example(#{
 	user: #{
 		id: "11111111-1111-1111-1111-111111111111",
-		email: "owner@example.com",
-		displayName: "Alex Morgan",
-		createdAt: utcDateTime.fromISO("2026-07-10T08:00:00Z"),
-		updatedAt: utcDateTime.fromISO("2026-07-10T08:00:00Z"),
+		gitLabUserId: 123456,
+		username: "yorukot",
+		displayName: "Yorukot",
+		avatarUrl: null,
+		profileUrl: "https://gitlab.com/yorukot",
+		accessLevel: 40,
 	},
 })
 model AuthResponse {
-	user: User;
+	user: CurrentUser;
 }
 
-@example(#{ token: "a-one-time-readable-csrf-token" })
+@example(#{ token: "csrf-token-readable-by-the-browser-session" })
 model CSRFResponse {
 	@secret
 	token: string;
+}
+
+model OAuthRedirect {
+	...Response<302>;
+
+	@header("Location")
+	location: string;
+
+	@header("Set-Cookie")
+	setCookie?: string;
+}
+
+model GitLabOAuthCallbackQuery {
+	@query
+	@minLength(1)
+	code: string;
+
+	@query
+	@minLength(1)
+	state: string;
 }

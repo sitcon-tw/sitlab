@@ -38,17 +38,34 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
-	"/auth/login": {
+	"/auth/gitlab": {
 		parameters: {
 			query?: never;
 			header?: never;
 			path?: never;
 			cookie?: never;
 		};
-		get?: never;
+		/** Start GitLab OAuth */
+		get: operations["startGitLabOAuth"];
 		put?: never;
-		/** Log in user */
-		post: operations["loginUser"];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/gitlab/callback": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Complete GitLab OAuth */
+		get: operations["completeGitLabOAuth"];
+		put?: never;
+		post?: never;
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -89,7 +106,24 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
-	"/auth/register": {
+	"/bootstrap": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get all state required for the first Board render */
+		get: operations["getBootstrap"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/cards": {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -98,23 +132,91 @@ export interface paths {
 		};
 		get?: never;
 		put?: never;
-		/** Register user */
-		post: operations["registerUser"];
+		/** Optimistically create a card */
+		post: operations["createCard"];
 		delete?: never;
 		options?: never;
 		head?: never;
 		patch?: never;
 		trace?: never;
 	};
-	"/healthz": {
+	"/cards/{issueIid}/assignee": {
 		parameters: {
 			query?: never;
 			header?: never;
 			path?: never;
 			cookie?: never;
 		};
-		/** Get health status */
-		get: operations["getHealth"];
+		get?: never;
+		/** Optimistically change a card assignee */
+		put: operations["updateCardAssignee"];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/cards/{issueIid}/due-date": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Optimistically change a card due date */
+		put: operations["updateCardDueDate"];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/cards/{issueIid}/position": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Optimistically move or close a card */
+		put: operations["moveCard"];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/cards/{issueIid}/team": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Optimistically change a card team */
+		put: operations["updateCardTeam"];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/directory": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get the normalized SITCON team directory */
+		get: operations["getDirectory"];
 		put?: never;
 		post?: never;
 		delete?: never;
@@ -123,62 +225,58 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
-	"/workspaces": {
+	"/health/live": {
 		parameters: {
 			query?: never;
 			header?: never;
 			path?: never;
 			cookie?: never;
 		};
-		/** List workspaces */
-		get: operations["listWorkspaces"];
-		put?: never;
-		/** Create workspace */
-		post: operations["createWorkspace"];
-		delete?: never;
-		options?: never;
-		head?: never;
-		patch?: never;
-		trace?: never;
-	};
-	"/workspaces/{workspaceId}": {
-		parameters: {
-			query?: never;
-			header?: never;
-			path?: never;
-			cookie?: never;
-		};
-		/** Get workspace */
-		get: operations["getWorkspace"];
+		/** Get process liveness */
+		get: operations["getLiveness"];
 		put?: never;
 		post?: never;
-		/** Delete workspace */
-		delete: operations["deleteWorkspace"];
-		options?: never;
-		head?: never;
-		/** Update workspace */
-		patch: operations["updateWorkspace"];
-		trace?: never;
-	};
-	"/workspaces/{workspaceId}/members": {
-		parameters: {
-			query?: never;
-			header?: never;
-			path?: never;
-			cookie?: never;
-		};
-		/** List workspace members */
-		get: operations["listWorkspaceMembers"];
-		put?: never;
-		/** Add workspace member */
-		post: operations["addWorkspaceMember"];
 		delete?: never;
 		options?: never;
 		head?: never;
 		patch?: never;
 		trace?: never;
 	};
-	"/workspaces/{workspaceId}/members/{userId}": {
+	"/health/ready": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Check database and snapshot readiness */
+		get: operations["getReadiness"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/me/preferences": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Confirm the current user's primary team */
+		put: operations["updateMyPreferences"];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/operations/{operationId}/retry": {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -187,50 +285,29 @@ export interface paths {
 		};
 		get?: never;
 		put?: never;
-		post?: never;
-		/** Remove workspace member */
-		delete: operations["removeWorkspaceMember"];
-		options?: never;
-		head?: never;
-		/** Update workspace member */
-		patch: operations["updateWorkspaceMember"];
-		trace?: never;
-	};
-	"/workspaces/{workspaceId}/tasks": {
-		parameters: {
-			query?: never;
-			header?: never;
-			path?: never;
-			cookie?: never;
-		};
-		/** List tasks */
-		get: operations["listTasks"];
-		put?: never;
-		/** Create task */
-		post: operations["createTask"];
+		/** Retry a failed durable operation */
+		post: operations["retryOperation"];
 		delete?: never;
 		options?: never;
 		head?: never;
 		patch?: never;
 		trace?: never;
 	};
-	"/workspaces/{workspaceId}/tasks/{taskId}": {
+	"/sync/refresh": {
 		parameters: {
 			query?: never;
 			header?: never;
 			path?: never;
 			cookie?: never;
 		};
-		/** Get task */
-		get: operations["getTask"];
+		get?: never;
 		put?: never;
-		post?: never;
-		/** Delete task */
-		delete: operations["deleteTask"];
+		/** Request a background GitLab refresh */
+		post: operations["refreshSnapshots"];
+		delete?: never;
 		options?: never;
 		head?: never;
-		/** Update task */
-		patch: operations["updateTask"];
+		patch?: never;
 		trace?: never;
 	};
 }
@@ -239,70 +316,195 @@ export interface components {
 	schemas: {
 		/**
 		 * @example {
-		 *       "name": "Project Template API",
+		 *       "name": "SITCON Board API",
 		 *       "version": "0.1.0"
 		 *     }
 		 */
 		APIStatusResponse: {
 			/** @enum {string} */
-			name: "Project Template API";
+			name: "SITCON Board API";
 			version: string;
-		};
-		/**
-		 * @example {
-		 *       "email": "editor@example.com",
-		 *       "role": "editor"
-		 *     }
-		 */
-		AddWorkspaceMemberRequest: {
-			email: components["schemas"]["email"];
-			/** @enum {string} */
-			role: "owner" | "editor" | "viewer";
 		};
 		/**
 		 * @example {
 		 *       "user": {
 		 *         "id": "11111111-1111-1111-1111-111111111111",
-		 *         "email": "owner@example.com",
-		 *         "displayName": "Alex Morgan",
-		 *         "createdAt": "2026-07-10T08:00:00Z",
-		 *         "updatedAt": "2026-07-10T08:00:00Z"
+		 *         "gitLabUserId": 123456,
+		 *         "username": "yorukot",
+		 *         "displayName": "Yorukot",
+		 *         "avatarUrl": null,
+		 *         "profileUrl": "https://gitlab.com/yorukot",
+		 *         "accessLevel": 40
 		 *       }
 		 *     }
 		 */
 		AuthResponse: {
-			user: components["schemas"]["User"];
+			user: components["schemas"]["CurrentUser"];
+		};
+		BoardCard: {
+			/** Format: int64 */
+			issueIid: number;
+			issueId: number | null;
+			title: string;
+			webUrl: string | null;
+			listKey: string;
+			/** Format: int32 */
+			position: number;
+			teamKey: string;
+			assigneeGitLabUserId: number | null;
+			dueDate: string | null;
+			labels: string[];
+			/** @enum {string} */
+			syncState: "pending" | "processing" | "synced" | "failed";
+			syncError: string | null;
+			pendingOperationId: components["schemas"]["uuid"] | null;
+			/** Format: date-time */
+			updatedAt: string;
+		};
+		BoardList: {
+			key: string;
+			name: string;
+			gitLabLabel: string;
+			/** Format: int32 */
+			position: number;
+			closed: boolean;
+			color: string;
+		};
+		BoardSnapshot: {
+			lists: components["schemas"]["BoardList"][];
+			cards: components["schemas"]["BoardCard"][];
+			/** Format: date-time */
+			syncedAt: string;
+		};
+		BootstrapResponse: {
+			me: components["schemas"]["CurrentUser"];
+			/** Format: password */
+			csrfToken: string;
+			teams: components["schemas"]["DirectoryTeam"][];
+			members: components["schemas"]["DirectoryMember"][];
+			board: components["schemas"]["BoardSnapshot"];
+			preferences: components["schemas"]["UserPreferences"];
+			sync: components["schemas"]["SyncStatus"];
 		};
 		/**
 		 * @example {
-		 *       "token": "a-one-time-readable-csrf-token"
+		 *       "token": "csrf-token-readable-by-the-browser-session"
 		 *     }
 		 */
 		CSRFResponse: {
 			/** Format: password */
 			token: string;
 		};
-		/**
-		 * @example {
-		 *       "title": "Publish architecture decision record",
-		 *       "description": "Document transaction ownership for workspace creation.",
-		 *       "assigneeId": "11111111-1111-1111-1111-111111111111"
-		 *     }
-		 */
-		CreateTaskRequest: {
+		CardMutationResponse: {
+			card: components["schemas"]["BoardCard"];
+			operation: components["schemas"]["DurableOperation"];
+		};
+		CreateCardRequest: {
+			operationId: components["schemas"]["uuid"];
 			title: string;
-			description?: string;
-			/** @enum {string} */
-			status?: "todo" | "in_progress" | "done";
-			assigneeId?: components["schemas"]["uuid"] | null;
+			teamKey: string;
+			assigneeGitLabUserId: number | null;
+			dueDate: string | null;
 		};
 		/**
 		 * @example {
-		 *       "name": "Product Engineering"
+		 *       "id": "11111111-1111-1111-1111-111111111111",
+		 *       "gitLabUserId": 123456,
+		 *       "username": "yorukot",
+		 *       "displayName": "Yorukot",
+		 *       "avatarUrl": "https://gitlab.com/uploads/-/system/user/avatar/123456/avatar.png",
+		 *       "profileUrl": "https://gitlab.com/yorukot",
+		 *       "accessLevel": 40
 		 *     }
 		 */
-		CreateWorkspaceRequest: {
+		CurrentUser: {
+			id: components["schemas"]["uuid"];
+			/** Format: int64 */
+			gitLabUserId: number;
+			username: string;
+			displayName: string;
+			/** Format: uri */
+			avatarUrl: string | null;
+			/** Format: uri */
+			profileUrl: string;
+			/** Format: int32 */
+			accessLevel: number;
+		};
+		/**
+		 * @example {
+		 *       "gitLabUserId": 123456,
+		 *       "username": "yorukot",
+		 *       "displayName": "Yorukot",
+		 *       "avatarUrl": null,
+		 *       "profileUrl": "https://gitlab.com/yorukot",
+		 *       "accessLevel": 40,
+		 *       "state": "active",
+		 *       "teamKeys": [
+		 *         "development"
+		 *       ]
+		 *     }
+		 */
+		DirectoryMember: {
+			/** Format: int64 */
+			gitLabUserId: number;
+			username: string;
+			displayName: string;
+			/** Format: uri */
+			avatarUrl: string | null;
+			/** Format: uri */
+			profileUrl: string;
+			/** Format: int32 */
+			accessLevel: number;
+			/** @enum {string} */
+			state: "active" | "blocked" | "deactivated";
+			teamKeys: string[];
+		};
+		DirectoryResponse: {
+			directory: components["schemas"]["DirectorySnapshot"];
+		};
+		DirectorySnapshot: {
+			teams: components["schemas"]["DirectoryTeam"][];
+			members: components["schemas"]["DirectoryMember"][];
+			sourceRevision: string;
+			/** Format: date-time */
+			syncedAt: string;
+		};
+		/**
+		 * @example {
+		 *       "key": "development",
+		 *       "name": "開發組",
+		 *       "titlePrefix": "[開發組]",
+		 *       "gitLabLabel": "組別::開發",
+		 *       "active": true,
+		 *       "sortOrder": 7,
+		 *       "memberGitLabUserIds": [
+		 *         123456
+		 *       ]
+		 *     }
+		 */
+		DirectoryTeam: {
+			key: string;
 			name: string;
+			titlePrefix: string;
+			gitLabLabel: string;
+			active: boolean;
+			/** Format: int32 */
+			sortOrder: number;
+			memberGitLabUserIds: number[];
+		};
+		DurableOperation: {
+			id: components["schemas"]["uuid"];
+			/** @enum {string} */
+			kind: "create_card" | "update_team" | "update_assignee" | "update_due_date" | "move_card";
+			/** @enum {string} */
+			state: "pending" | "processing" | "synced" | "failed";
+			/** Format: int32 */
+			attempts: number;
+			lastError: string | null;
+			/** Format: date-time */
+			createdAt: string;
+			/** Format: date-time */
+			updatedAt: string;
 		};
 		/**
 		 * @example {
@@ -313,20 +515,18 @@ export interface components {
 			/** @enum {string} */
 			status: "ok";
 		};
-		/**
-		 * @example {
-		 *       "email": "owner@example.com",
-		 *       "password": "correct-horse-battery-staple"
-		 *     }
-		 */
-		LoginRequest: {
-			email: components["schemas"]["email"];
-			/** Format: password */
-			password: string;
+		MoveCardRequest: {
+			operationId: components["schemas"]["uuid"];
+			listKey: string;
+			/** Format: int32 */
+			position: number;
+		};
+		PreferencesResponse: {
+			preferences: components["schemas"]["UserPreferences"];
 		};
 		/**
 		 * @example {
-		 *       "type": "https://project-template.example/problems/validation-failed",
+		 *       "type": "https://board.sitcon.org/problems/validation-failed",
 		 *       "title": "Validation failed",
 		 *       "status": 422,
 		 *       "code": "VALIDATION_FAILED",
@@ -360,16 +560,16 @@ export interface components {
 				| "METHOD_NOT_ALLOWED"
 				| "AUTH_MISSING_SESSION"
 				| "AUTH_INVALID_SESSION"
-				| "AUTH_INVALID_CREDENTIALS"
 				| "AUTH_INVALID_CSRF"
-				| "INSUFFICIENT_ROLE"
-				| "EMAIL_ALREADY_EXISTS"
-				| "WORKSPACE_NOT_FOUND"
-				| "WORKSPACE_MEMBER_NOT_FOUND"
-				| "WORKSPACE_MEMBER_ALREADY_EXISTS"
-				| "WORKSPACE_LAST_OWNER"
-				| "TASK_ASSIGNEE_NOT_MEMBER"
-				| "TASK_NOT_FOUND";
+				| "AUTH_OAUTH_FAILED"
+				| "DIRECTORY_NOT_READY"
+				| "TEAM_NOT_FOUND"
+				| "MEMBER_NOT_ASSIGNABLE"
+				| "CARD_NOT_FOUND"
+				| "OPERATION_NOT_FOUND"
+				| "OPERATION_CONFLICT"
+				| "SNAPSHOT_NOT_READY"
+				| "GITLAB_UNAVAILABLE";
 			detail?: string;
 			requestId?: string;
 			errors?: components["schemas"]["ProblemError"][];
@@ -389,169 +589,72 @@ export interface components {
 				| "INVALID_LENGTH"
 				| "INVALID_FORMAT"
 				| "INVALID_ENUM"
-				| "NOT_A_WORKSPACE_MEMBER"
 				| "REQUIRED"
 				| "VALUE_TOO_SHORT"
-				| "VALUE_TOO_LONG";
+				| "VALUE_TOO_LONG"
+				| "UNKNOWN_TEAM"
+				| "UNKNOWN_MEMBER";
 			message: string;
 			location?: string;
 		};
-		/**
-		 * @example {
-		 *       "email": "owner@example.com",
-		 *       "displayName": "Alex Morgan",
-		 *       "password": "correct-horse-battery-staple"
-		 *     }
-		 */
-		RegisterRequest: {
-			email: components["schemas"]["email"];
-			displayName: string;
-			/** Format: password */
-			password: string;
+		RefreshSyncResponse: {
+			/** Format: date-time */
+			acceptedAt: string;
 		};
-		/**
-		 * @example {
-		 *       "id": "33333333-3333-3333-3333-333333333333",
-		 *       "workspaceId": "22222222-2222-2222-2222-222222222222",
-		 *       "title": "Publish architecture decision record",
-		 *       "description": "Document transaction ownership for workspace creation.",
-		 *       "status": "in_progress",
-		 *       "assigneeId": "11111111-1111-1111-1111-111111111111",
-		 *       "createdAt": "2026-07-10T09:00:00Z",
-		 *       "updatedAt": "2026-07-10T09:30:00Z"
-		 *     }
-		 */
-		Task: {
-			id: components["schemas"]["uuid"];
-			workspaceId: components["schemas"]["uuid"];
-			title: string;
-			description: string;
+		RetryOperationResponse: {
+			operation: components["schemas"]["DurableOperation"];
+		};
+		SyncStatus: {
 			/** @enum {string} */
-			status: "todo" | "in_progress" | "done";
-			assigneeId: components["schemas"]["uuid"] | null;
+			state: "synced" | "syncing" | "offline";
 			/** Format: date-time */
-			createdAt: string;
-			/** Format: date-time */
-			updatedAt: string;
+			lastSuccessAt: string;
+			message: string | null;
 		};
-		TaskListResponse: {
-			tasks: components["schemas"]["Task"][];
+		UpdateCardAssigneeRequest: {
+			operationId: components["schemas"]["uuid"];
+			assigneeGitLabUserId: number | null;
 		};
-		TaskResponse: {
-			task: components["schemas"]["Task"];
+		UpdateCardDueDateRequest: {
+			operationId: components["schemas"]["uuid"];
+			dueDate: string | null;
+		};
+		UpdateCardTeamRequest: {
+			operationId: components["schemas"]["uuid"];
+			teamKey: string;
 		};
 		/**
 		 * @example {
-		 *       "title": "Publish the architecture decision record",
-		 *       "status": "done",
-		 *       "assigneeId": "11111111-1111-1111-1111-111111111111"
+		 *       "defaultTeamKey": "development"
 		 *     }
 		 */
-		UpdateTaskRequest: {
-			title?: string;
-			description?: string;
-			/** @enum {string} */
-			status?: "todo" | "in_progress" | "done";
-			assigneeId?: components["schemas"]["uuid"] | null;
+		UpdatePreferencesRequest: {
+			defaultTeamKey: string;
 		};
 		/**
 		 * @example {
-		 *       "role": "viewer"
+		 *       "defaultTeamKey": "development",
+		 *       "confirmedAt": "2026-07-14T08:00:00Z",
+		 *       "directoryTeamKeys": [
+		 *         "development"
+		 *       ]
 		 *     }
 		 */
-		UpdateWorkspaceMemberRequest: {
-			/** @enum {string} */
-			role: "owner" | "editor" | "viewer";
+		UserPreferences: {
+			defaultTeamKey: string | null;
+			confirmedAt: string | null;
+			directoryTeamKeys: string[];
 		};
-		/**
-		 * @example {
-		 *       "name": "Platform Engineering"
-		 *     }
-		 */
-		UpdateWorkspaceRequest: {
-			name: string;
-		};
-		/**
-		 * @example {
-		 *       "id": "11111111-1111-1111-1111-111111111111",
-		 *       "email": "owner@example.com",
-		 *       "displayName": "Alex Morgan",
-		 *       "createdAt": "2026-07-10T08:00:00Z",
-		 *       "updatedAt": "2026-07-10T08:00:00Z"
-		 *     }
-		 */
-		User: {
-			id: components["schemas"]["uuid"];
-			email: components["schemas"]["email"];
-			displayName: string;
-			/** Format: date-time */
-			createdAt: string;
-			/** Format: date-time */
-			updatedAt: string;
-		};
-		/**
-		 * @example {
-		 *       "id": "22222222-2222-2222-2222-222222222222",
-		 *       "name": "Product Engineering",
-		 *       "role": "owner",
-		 *       "createdByUserId": "11111111-1111-1111-1111-111111111111",
-		 *       "createdAt": "2026-07-10T08:10:00Z",
-		 *       "updatedAt": "2026-07-10T08:10:00Z"
-		 *     }
-		 */
-		Workspace: {
-			id: components["schemas"]["uuid"];
-			name: string;
-			/** @enum {string} */
-			role: "owner" | "editor" | "viewer";
-			createdByUserId: components["schemas"]["uuid"];
-			/** Format: date-time */
-			createdAt: string;
-			/** Format: date-time */
-			updatedAt: string;
-		};
-		WorkspaceListResponse: {
-			workspaces: components["schemas"]["Workspace"][];
-		};
-		/**
-		 * @example {
-		 *       "userId": "11111111-1111-1111-1111-111111111111",
-		 *       "email": "owner@example.com",
-		 *       "displayName": "Alex Morgan",
-		 *       "role": "owner",
-		 *       "createdAt": "2026-07-10T08:10:00Z"
-		 *     }
-		 */
-		WorkspaceMember: {
-			userId: components["schemas"]["uuid"];
-			email: components["schemas"]["email"];
-			displayName: string;
-			/** @enum {string} */
-			role: "owner" | "editor" | "viewer";
-			/** Format: date-time */
-			createdAt: string;
-		};
-		WorkspaceMemberListResponse: {
-			members: components["schemas"]["WorkspaceMember"][];
-		};
-		WorkspaceMemberResponse: {
-			member: components["schemas"]["WorkspaceMember"];
-		};
-		WorkspaceResponse: {
-			workspace: components["schemas"]["Workspace"];
-		};
-		/** Format: email */
-		email: string;
 		/** Format: uuid */
 		uuid: string;
 	};
 	responses: never;
 	parameters: {
 		CSRFHeader: string;
-		TaskIdPath: components["schemas"]["uuid"];
-		TaskListQuery: "todo" | "in_progress" | "done";
-		UserIdPath: components["schemas"]["uuid"];
-		WorkspaceIdPath: components["schemas"]["uuid"];
+		"GitLabOAuthCallbackQuery.code": string;
+		"GitLabOAuthCallbackQuery.state": string;
+		IssueIidPath: number;
+		OperationIdPath: components["schemas"]["uuid"];
 	};
 	requestBodies: never;
 	headers: never;
@@ -617,28 +720,55 @@ export interface operations {
 			};
 		};
 	};
-	loginUser: {
+	startGitLabOAuth: {
 		parameters: {
 			query?: never;
 			header?: never;
 			path?: never;
 			cookie?: never;
 		};
-		requestBody: {
-			content: {
-				"application/json": components["schemas"]["LoginRequest"];
-			};
-		};
+		requestBody?: never;
 		responses: {
-			/** @description The request has succeeded. */
-			200: {
+			/** @description Redirection */
+			302: {
 				headers: {
-					"Set-Cookie": string;
+					Location: string;
+					"Set-Cookie"?: string;
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Server error */
+			500: {
+				headers: {
 					[name: string]: unknown;
 				};
 				content: {
-					"application/json": components["schemas"]["AuthResponse"];
+					"application/problem+json": components["schemas"]["ProblemDetails"];
 				};
+			};
+		};
+	};
+	completeGitLabOAuth: {
+		parameters: {
+			query: {
+				code: components["parameters"]["GitLabOAuthCallbackQuery.code"];
+				state: components["parameters"]["GitLabOAuthCallbackQuery.state"];
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Redirection */
+			302: {
+				headers: {
+					Location: string;
+					"Set-Cookie"?: string;
+					[name: string]: unknown;
+				};
+				content?: never;
 			};
 			/** @description The server could not understand the request due to invalid syntax. */
 			400: {
@@ -658,8 +788,8 @@ export interface operations {
 					"application/problem+json": components["schemas"]["ProblemDetails"];
 				};
 			};
-			/** @description Client error */
-			422: {
+			/** @description Server error */
+			500: {
 				headers: {
 					[name: string]: unknown;
 				};
@@ -667,8 +797,8 @@ export interface operations {
 					"application/problem+json": components["schemas"]["ProblemDetails"];
 				};
 			};
-			/** @description Server error */
-			500: {
+			/** @description Service unavailable. */
+			503: {
 				headers: {
 					[name: string]: unknown;
 				};
@@ -764,31 +894,188 @@ export interface operations {
 			};
 		};
 	};
-	registerUser: {
+	getBootstrap: {
 		parameters: {
 			query?: never;
 			header?: never;
 			path?: never;
 			cookie?: never;
 		};
-		requestBody: {
-			content: {
-				"application/json": components["schemas"]["RegisterRequest"];
-			};
-		};
+		requestBody?: never;
 		responses: {
-			/** @description The request has succeeded and a new resource has been created as a result. */
-			201: {
+			/** @description The request has succeeded. */
+			200: {
 				headers: {
-					"Set-Cookie": string;
 					[name: string]: unknown;
 				};
 				content: {
-					"application/json": components["schemas"]["AuthResponse"];
+					"application/json": components["schemas"]["BootstrapResponse"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	createCard: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CreateCardRequest"];
+			};
+		};
+		responses: {
+			/** @description The request has been accepted for processing, but processing has not yet completed. */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CardMutationResponse"];
 				};
 			};
 			/** @description The server could not understand the request due to invalid syntax. */
 			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The request conflicts with the current state of the server. */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	updateCardAssignee: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["UpdateCardAssigneeRequest"];
+			};
+		};
+		responses: {
+			/** @description The request has been accepted for processing, but processing has not yet completed. */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CardMutationResponse"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
 				headers: {
 					[name: string]: unknown;
 				};
@@ -825,7 +1112,320 @@ export interface operations {
 			};
 		};
 	};
-	getHealth: {
+	updateCardDueDate: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["UpdateCardDueDateRequest"];
+			};
+		};
+		responses: {
+			/** @description The request has been accepted for processing, but processing has not yet completed. */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CardMutationResponse"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The request conflicts with the current state of the server. */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	moveCard: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["MoveCardRequest"];
+			};
+		};
+		responses: {
+			/** @description The request has been accepted for processing, but processing has not yet completed. */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CardMutationResponse"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The request conflicts with the current state of the server. */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	updateCardTeam: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["UpdateCardTeamRequest"];
+			};
+		};
+		responses: {
+			/** @description The request has been accepted for processing, but processing has not yet completed. */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CardMutationResponse"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The request conflicts with the current state of the server. */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	getDirectory: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description The request has succeeded. */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["DirectoryResponse"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	getLiveness: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description The request has succeeded. */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HealthResponse"];
+				};
+			};
+		};
+	};
+	getReadiness: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -854,45 +1454,7 @@ export interface operations {
 			};
 		};
 	};
-	listWorkspaces: {
-		parameters: {
-			query?: never;
-			header?: never;
-			path?: never;
-			cookie?: never;
-		};
-		requestBody?: never;
-		responses: {
-			/** @description The request has succeeded. */
-			200: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["WorkspaceListResponse"];
-				};
-			};
-			/** @description Access is unauthorized. */
-			401: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Server error */
-			500: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-		};
-	};
-	createWorkspace: {
+	updateMyPreferences: {
 		parameters: {
 			query?: never;
 			header: {
@@ -903,214 +1465,7 @@ export interface operations {
 		};
 		requestBody: {
 			content: {
-				"application/json": components["schemas"]["CreateWorkspaceRequest"];
-			};
-		};
-		responses: {
-			/** @description The request has succeeded and a new resource has been created as a result. */
-			201: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["WorkspaceResponse"];
-				};
-			};
-			/** @description The server could not understand the request due to invalid syntax. */
-			400: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Access is unauthorized. */
-			401: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Access is forbidden. */
-			403: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Client error */
-			422: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Server error */
-			500: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-		};
-	};
-	getWorkspace: {
-		parameters: {
-			query?: never;
-			header?: never;
-			path: {
-				workspaceId: components["parameters"]["WorkspaceIdPath"];
-			};
-			cookie?: never;
-		};
-		requestBody?: never;
-		responses: {
-			/** @description The request has succeeded. */
-			200: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["WorkspaceResponse"];
-				};
-			};
-			/** @description Access is unauthorized. */
-			401: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Access is forbidden. */
-			403: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description The server cannot find the requested resource. */
-			404: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Client error */
-			422: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Server error */
-			500: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-		};
-	};
-	deleteWorkspace: {
-		parameters: {
-			query?: never;
-			header: {
-				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
-			};
-			path: {
-				workspaceId: components["parameters"]["WorkspaceIdPath"];
-			};
-			cookie?: never;
-		};
-		requestBody?: never;
-		responses: {
-			/** @description There is no content to send for this request, but the headers may be useful. */
-			204: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content?: never;
-			};
-			/** @description Access is unauthorized. */
-			401: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Access is forbidden. */
-			403: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description The server cannot find the requested resource. */
-			404: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Client error */
-			422: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Server error */
-			500: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-		};
-	};
-	updateWorkspace: {
-		parameters: {
-			query?: never;
-			header: {
-				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
-			};
-			path: {
-				workspaceId: components["parameters"]["WorkspaceIdPath"];
-			};
-			cookie?: never;
-		};
-		requestBody: {
-			content: {
-				"application/json": components["schemas"]["UpdateWorkspaceRequest"];
+				"application/json": components["schemas"]["UpdatePreferencesRequest"];
 			};
 		};
 		responses: {
@@ -1120,29 +1475,11 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					"application/json": components["schemas"]["WorkspaceResponse"];
-				};
-			};
-			/** @description The server could not understand the request due to invalid syntax. */
-			400: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
+					"application/json": components["schemas"]["PreferencesResponse"];
 				};
 			};
 			/** @description Access is unauthorized. */
 			401: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Access is forbidden. */
-			403: {
 				headers: {
 					[name: string]: unknown;
 				};
@@ -1179,106 +1516,26 @@ export interface operations {
 			};
 		};
 	};
-	listWorkspaceMembers: {
-		parameters: {
-			query?: never;
-			header?: never;
-			path: {
-				workspaceId: components["parameters"]["WorkspaceIdPath"];
-			};
-			cookie?: never;
-		};
-		requestBody?: never;
-		responses: {
-			/** @description The request has succeeded. */
-			200: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["WorkspaceMemberListResponse"];
-				};
-			};
-			/** @description Access is unauthorized. */
-			401: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Access is forbidden. */
-			403: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description The server cannot find the requested resource. */
-			404: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Client error */
-			422: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Server error */
-			500: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-		};
-	};
-	addWorkspaceMember: {
+	retryOperation: {
 		parameters: {
 			query?: never;
 			header: {
 				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
 			};
 			path: {
-				workspaceId: components["parameters"]["WorkspaceIdPath"];
+				operationId: components["parameters"]["OperationIdPath"];
 			};
 			cookie?: never;
 		};
-		requestBody: {
-			content: {
-				"application/json": components["schemas"]["AddWorkspaceMemberRequest"];
-			};
-		};
+		requestBody?: never;
 		responses: {
-			/** @description The request has succeeded and a new resource has been created as a result. */
-			201: {
+			/** @description The request has been accepted for processing, but processing has not yet completed. */
+			202: {
 				headers: {
 					[name: string]: unknown;
 				};
 				content: {
-					"application/json": components["schemas"]["WorkspaceMemberResponse"];
-				};
-			};
-			/** @description The server could not understand the request due to invalid syntax. */
-			400: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
+					"application/json": components["schemas"]["RetryOperationResponse"];
 				};
 			};
 			/** @description Access is unauthorized. */
@@ -1317,15 +1574,6 @@ export interface operations {
 					"application/problem+json": components["schemas"]["ProblemDetails"];
 				};
 			};
-			/** @description Client error */
-			422: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
 			/** @description Server error */
 			500: {
 				headers: {
@@ -1337,26 +1585,25 @@ export interface operations {
 			};
 		};
 	};
-	removeWorkspaceMember: {
+	refreshSnapshots: {
 		parameters: {
 			query?: never;
 			header: {
 				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
 			};
-			path: {
-				workspaceId: components["parameters"]["WorkspaceIdPath"];
-				userId: components["parameters"]["UserIdPath"];
-			};
+			path?: never;
 			cookie?: never;
 		};
 		requestBody?: never;
 		responses: {
-			/** @description There is no content to send for this request, but the headers may be useful. */
-			204: {
+			/** @description The request has been accepted for processing, but processing has not yet completed. */
+			202: {
 				headers: {
 					[name: string]: unknown;
 				};
-				content?: never;
+				content: {
+					"application/json": components["schemas"]["RefreshSyncResponse"];
+				};
 			};
 			/** @description Access is unauthorized. */
 			401: {
@@ -1369,15 +1616,6 @@ export interface operations {
 			};
 			/** @description Access is forbidden. */
 			403: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description The server cannot find the requested resource. */
-			404: {
 				headers: {
 					[name: string]: unknown;
 				};
@@ -1387,477 +1625,6 @@ export interface operations {
 			};
 			/** @description The request conflicts with the current state of the server. */
 			409: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Client error */
-			422: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Server error */
-			500: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-		};
-	};
-	updateWorkspaceMember: {
-		parameters: {
-			query?: never;
-			header: {
-				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
-			};
-			path: {
-				workspaceId: components["parameters"]["WorkspaceIdPath"];
-				userId: components["parameters"]["UserIdPath"];
-			};
-			cookie?: never;
-		};
-		requestBody: {
-			content: {
-				"application/json": components["schemas"]["UpdateWorkspaceMemberRequest"];
-			};
-		};
-		responses: {
-			/** @description The request has succeeded. */
-			200: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["WorkspaceMemberResponse"];
-				};
-			};
-			/** @description The server could not understand the request due to invalid syntax. */
-			400: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Access is unauthorized. */
-			401: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Access is forbidden. */
-			403: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description The server cannot find the requested resource. */
-			404: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description The request conflicts with the current state of the server. */
-			409: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Client error */
-			422: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Server error */
-			500: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-		};
-	};
-	listTasks: {
-		parameters: {
-			query?: {
-				status?: components["parameters"]["TaskListQuery"];
-			};
-			header?: never;
-			path: {
-				workspaceId: components["parameters"]["WorkspaceIdPath"];
-			};
-			cookie?: never;
-		};
-		requestBody?: never;
-		responses: {
-			/** @description The request has succeeded. */
-			200: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["TaskListResponse"];
-				};
-			};
-			/** @description Access is unauthorized. */
-			401: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Access is forbidden. */
-			403: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description The server cannot find the requested resource. */
-			404: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Client error */
-			422: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Server error */
-			500: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-		};
-	};
-	createTask: {
-		parameters: {
-			query?: never;
-			header: {
-				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
-			};
-			path: {
-				workspaceId: components["parameters"]["WorkspaceIdPath"];
-			};
-			cookie?: never;
-		};
-		requestBody: {
-			content: {
-				"application/json": components["schemas"]["CreateTaskRequest"];
-			};
-		};
-		responses: {
-			/** @description The request has succeeded and a new resource has been created as a result. */
-			201: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["TaskResponse"];
-				};
-			};
-			/** @description The server could not understand the request due to invalid syntax. */
-			400: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Access is unauthorized. */
-			401: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Access is forbidden. */
-			403: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description The server cannot find the requested resource. */
-			404: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Client error */
-			422: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Server error */
-			500: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-		};
-	};
-	getTask: {
-		parameters: {
-			query?: never;
-			header?: never;
-			path: {
-				workspaceId: components["parameters"]["WorkspaceIdPath"];
-				taskId: components["parameters"]["TaskIdPath"];
-			};
-			cookie?: never;
-		};
-		requestBody?: never;
-		responses: {
-			/** @description The request has succeeded. */
-			200: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["TaskResponse"];
-				};
-			};
-			/** @description Access is unauthorized. */
-			401: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Access is forbidden. */
-			403: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description The server cannot find the requested resource. */
-			404: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Client error */
-			422: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Server error */
-			500: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-		};
-	};
-	deleteTask: {
-		parameters: {
-			query?: never;
-			header: {
-				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
-			};
-			path: {
-				workspaceId: components["parameters"]["WorkspaceIdPath"];
-				taskId: components["parameters"]["TaskIdPath"];
-			};
-			cookie?: never;
-		};
-		requestBody?: never;
-		responses: {
-			/** @description There is no content to send for this request, but the headers may be useful. */
-			204: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content?: never;
-			};
-			/** @description Access is unauthorized. */
-			401: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Access is forbidden. */
-			403: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description The server cannot find the requested resource. */
-			404: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Client error */
-			422: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Server error */
-			500: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-		};
-	};
-	updateTask: {
-		parameters: {
-			query?: never;
-			header: {
-				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
-			};
-			path: {
-				workspaceId: components["parameters"]["WorkspaceIdPath"];
-				taskId: components["parameters"]["TaskIdPath"];
-			};
-			cookie?: never;
-		};
-		requestBody: {
-			content: {
-				"application/json": components["schemas"]["UpdateTaskRequest"];
-			};
-		};
-		responses: {
-			/** @description The request has succeeded. */
-			200: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["TaskResponse"];
-				};
-			};
-			/** @description The server could not understand the request due to invalid syntax. */
-			400: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Access is unauthorized. */
-			401: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Access is forbidden. */
-			403: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description The server cannot find the requested resource. */
-			404: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Client error */
-			422: {
 				headers: {
 					[name: string]: unknown;
 				};
