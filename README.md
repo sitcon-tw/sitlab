@@ -111,3 +111,7 @@ Production 必須使用 HTTPS、`SITCON_BOARD_SESSION_COOKIE_SECURE=true`、`__H
 ## Credits
 
 Session token hashing、OAuth state 與 CSRF 的安全模式參考 [Netstamp](https://github.com/yorukot/netstamp)，並依本產品需求採用真正的 14 天 rolling renewal。
+
+## License
+
+本專案採用 [Apache License 2.0](./LICENSE) 授權。
