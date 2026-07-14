@@ -98,7 +98,7 @@ describe("SITCON Board interactions", () => {
 		expect(moveCard).toHaveBeenCalledOnce();
 	});
 
-	it("edits GitLab Start date and previews Markdown planning", async () => {
+	it("edits GitLab Start date, previews Markdown, and closes details before the API responds", async () => {
 		const user = userEvent.setup();
 		vi.mocked(updateDetails).mockReturnValue(new Promise(() => undefined));
 		vi.mocked(updateStartDate).mockReturnValue(new Promise(() => undefined));
@@ -126,7 +126,7 @@ describe("SITCON Board interactions", () => {
 			"完成寄信失敗重送",
 			"## 驗收條件\n\n- [ ] 補齊測試\n\n[規格](https://example.com/spec)"
 		);
-		await user.click(within(dialog).getByRole("button", { name: "Close dialog" }));
+		expect(screen.queryByRole("dialog", { name: /127 卡片詳細資料/ })).not.toBeInTheDocument();
 		expect(screen.getByRole("heading", { name: "[開發組] 完成寄信失敗重送" })).toBeVisible();
 	});
 

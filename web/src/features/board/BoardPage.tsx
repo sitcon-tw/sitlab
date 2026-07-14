@@ -504,6 +504,7 @@ function CardDetail({
 		const normalized = title.trim();
 		if (!normalized) return;
 		onDetails(normalized, description);
+		onClose();
 	};
 
 	return (

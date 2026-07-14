@@ -80,6 +80,9 @@ test.describe("SITCON Board demo visual audit", () => {
 		const picker = page.getByRole("dialog", { name: "選擇 Assignee" });
 		await picker.getByRole("checkbox", { name: /沈明軒/ }).click();
 		await expect(picker.getByText("已選擇 2 人")).toBeVisible();
+		await picker.getByRole("button", { name: "完成" }).click();
+		await details.getByRole("button", { name: "儲存細節" }).click();
+		await expect(details).toBeHidden();
 	});
 
 	test("card details stay operable at 320px", async ({ page }) => {
