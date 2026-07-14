@@ -23,23 +23,24 @@ var DefaultBoardLists = []board.List{
 }
 
 type Service struct {
-	gitlab  GitLab
-	repo    Repository
-	log     MissingMemberLogger
-	now     func() time.Time
-	tracer  trace.Tracer
-	refresh chan struct{}
+	gitlab    GitLab
+	directory DirectorySource
+	repo      Repository
+	log       MissingMemberLogger
+	now       func() time.Time
+	tracer    trace.Tracer
+	refresh   chan struct{}
 }
 
-func NewService(gitlab GitLab, repo Repository, log MissingMemberLogger, tracer trace.Tracer) *Service {
-	return &Service{gitlab: gitlab, repo: repo, log: log, now: time.Now, tracer: tracer, refresh: make(chan struct{}, 1)}
+func NewService(gitlab GitLab, directory DirectorySource, repo Repository, log MissingMemberLogger, tracer trace.Tracer) *Service {
+	return &Service{gitlab: gitlab, directory: directory, repo: repo, log: log, now: time.Now, tracer: tracer, refresh: make(chan struct{}, 1)}
 }
 
 func (s *Service) RefreshDirectory(ctx context.Context) error {
 	ctx, span := s.tracer.Start(ctx, "sync.directory")
 	defer span.End()
 	now := s.now().UTC()
-	revision, err := s.gitlab.DirectoryRevision(ctx)
+	revision, err := s.directory.DirectoryRevision(ctx)
 	if err != nil {
 		s.recordFailure(ctx, "directory", now, err)
 		return technical(span, "load directory revision", err)
@@ -49,7 +50,7 @@ func (s *Service) RefreshDirectory(ctx context.Context) error {
 	if currentErr == nil && current.SourceRevision == revision {
 		file = directoryFileFromSnapshot(current)
 	} else {
-		file, revision, err = s.gitlab.DirectoryFile(ctx)
+		file, revision, err = s.directory.DirectoryFile(ctx)
 		if err != nil {
 			s.recordFailure(ctx, "directory", now, err)
 			return technical(span, "load directory file", err)

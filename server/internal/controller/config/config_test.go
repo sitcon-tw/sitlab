@@ -12,7 +12,7 @@ func TestLocalDefaultsUseFourteenDayRollingSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Session.TTL != 14*24*time.Hour || cfg.GitLab.Branch != "main" || cfg.ServiceName != "sitcon-board-controller" {
+	if cfg.Session.TTL != 14*24*time.Hour || cfg.GitHub.Ref != "main" || cfg.ServiceName != "sitcon-board-controller" {
 		t.Fatalf("config = %#v", cfg)
 	}
 }
@@ -29,7 +29,8 @@ func TestProductionRequiresGitLabAndSecureKeys(t *testing.T) {
 
 func TestProjectCannotBeConfiguredByClientOrEnvironment(t *testing.T) {
 	t.Setenv("SITCON_BOARD_GITLAB_PROJECT_PATH", "other/project")
-	if ProjectPath != "sitcon-tw/2027" || DirectoryFilePath != ".sitcon/board-directory.yml" {
-		t.Fatalf("fixed GitLab source changed: %s %s", ProjectPath, DirectoryFilePath)
+	t.Setenv("SITCON_BOARD_GITHUB_REPOSITORY", "other-repository")
+	if ProjectPath != "sitcon-tw/2027" || GitHubOwner != "sitcon-tw" || GitHubRepository != "sitlab" || DirectoryFilePath != ".sitcon/board-directory.yml" {
+		t.Fatalf("fixed sources changed: %s %s/%s %s", ProjectPath, GitHubOwner, GitHubRepository, DirectoryFilePath)
 	}
 }

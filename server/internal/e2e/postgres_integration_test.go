@@ -118,7 +118,7 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 		t.Fatalf("idempotent create = %#v, err = %v", idempotent, err)
 	}
 	gitlab := &operationGitLabFake{now: now.Add(time.Minute)}
-	syncService := appsync.NewService(gitlab, store, nil, noop.NewTracerProvider().Tracer("test"))
+	syncService := appsync.NewService(gitlab, operationDirectoryFake{}, store, nil, noop.NewTracerProvider().Tracer("test"))
 	processed, err := syncService.ProcessOne(ctx)
 	if err != nil || !processed || gitlab.lastMutation == nil || !gitlab.lastMutation.Create {
 		t.Fatalf("process create = %v, %v, mutation=%#v", processed, err, gitlab.lastMutation)
@@ -149,10 +149,12 @@ type operationGitLabFake struct {
 	lastMutation *appsync.IssueMutation
 }
 
-func (*operationGitLabFake) DirectoryRevision(context.Context) (string, error) {
+type operationDirectoryFake struct{}
+
+func (operationDirectoryFake) DirectoryRevision(context.Context) (string, error) {
 	return "revision", nil
 }
-func (*operationGitLabFake) DirectoryFile(context.Context) (domaindirectory.File, string, error) {
+func (operationDirectoryFake) DirectoryFile(context.Context) (domaindirectory.File, string, error) {
 	return domaindirectory.File{}, "revision", nil
 }
 func (*operationGitLabFake) ProjectMembers(context.Context) ([]domaindirectory.GitLabMember, error) {

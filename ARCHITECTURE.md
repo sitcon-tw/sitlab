@@ -7,10 +7,10 @@ SITCON Board is a focused GitLab-backed workflow for the fixed `sitcon-tw/2027` 
 ## Data Flow
 
 ```text
-GitLab project members + .sitcon/board-directory.yml + GitLab issues
-                              |
-                       background sync
-                              v
+GitHub board-directory.yml + GitLab project members + GitLab issues
+                                  |
+                           background sync
+                                  v
                     PostgreSQL snapshots
                               |
                    injected bootstrap JSON
@@ -22,7 +22,7 @@ Production traffic is ready only after directory, member, and board snapshots ex
 
 ## Backend Boundaries
 
-Dependencies point inward: HTTP transport calls application use cases, application packages own narrow ports, infrastructure implements those ports, and domain packages own board, directory, identity, and sync models. PostgreSQL adapters do not import application or transport packages. The composition root is the only package that constructs concrete adapters.
+Dependencies point inward: HTTP transport calls application use cases, application packages own narrow ports, infrastructure implements those ports, and domain packages own board, directory, identity, and sync models. The GitHub adapter supplies the fixed repository directory; the GitLab adapter supplies members and issues. PostgreSQL adapters do not import application or transport packages. The composition root is the only package that constructs concrete adapters.
 
 Card mutations write the optimistic card cache and a durable operation in one transaction. A worker sends the current canonical card intent to GitLab, then reconciles the GitLab response. New cards use a temporary negative IID; PostgreSQL updates it to GitLab's positive IID with deferred cascading foreign keys. Failed operations retain the optimistic UI state and can be retried.
 

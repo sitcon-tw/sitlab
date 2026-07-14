@@ -2,7 +2,6 @@ package gitlab
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -14,20 +13,13 @@ import (
 	"example.com/project-template/internal/domain/identity"
 )
 
-func TestSnapshotEndpointsParseDirectoryMembersAndIssues(t *testing.T) {
+func TestSnapshotEndpointsParseMembersAndIssues(t *testing.T) {
 	t.Parallel()
-	directoryYAML := "version: 1\nteams:\n  - key: development\n    name: 開發組\n    title_prefix: '[開發組]'\n    gitlab_label: '組別::開發'\n    active: true\n    members: [alice]\n"
 	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		if request.Header.Get("PRIVATE-TOKEN") != "project-token" {
 			t.Errorf("PRIVATE-TOKEN = %q", request.Header.Get("PRIVATE-TOKEN"))
 		}
 		switch {
-		case request.Method == http.MethodHead && strings.Contains(request.URL.Path, "/repository/files/"):
-			result := response(http.StatusOK, "")
-			result.Header.Set("X-Gitlab-Last-Commit-Id", "revision-1")
-			return result, nil
-		case request.Method == http.MethodGet && strings.Contains(request.URL.Path, "/repository/files/"):
-			return response(http.StatusOK, `{"content":"`+base64.StdEncoding.EncodeToString([]byte(directoryYAML))+`","last_commit_id":"revision-1"}`), nil
 		case strings.Contains(request.URL.Path, "/members/all"):
 			return response(http.StatusOK, `[{"id":101,"username":"alice","name":"Alice","web_url":"https://gitlab.example/alice","access_level":40,"state":"active"}]`), nil
 		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/issues"):
@@ -47,18 +39,10 @@ func TestSnapshotEndpointsParseDirectoryMembersAndIssues(t *testing.T) {
 	})
 	client, err := New(&http.Client{Transport: transport}, Config{
 		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027",
-		AccessToken: "project-token", Branch: "main",
+		AccessToken: "project-token",
 	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	revision, err := client.DirectoryRevision(context.Background())
-	if err != nil || revision != "revision-1" {
-		t.Fatalf("DirectoryRevision() = %q, %v", revision, err)
-	}
-	file, revision, err := client.DirectoryFile(context.Background())
-	if err != nil || revision != "revision-1" || len(file.Teams) != 1 || file.Teams[0].Members[0] != "alice" {
-		t.Fatalf("DirectoryFile() = %#v, %q, %v", file, revision, err)
 	}
 	members, err := client.ProjectMembers(context.Background())
 	if err != nil || len(members) != 1 || members[0].GitLabUserID != 101 {

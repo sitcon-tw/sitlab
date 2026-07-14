@@ -14,15 +14,20 @@ import (
 )
 
 type gitLabFake struct {
-	revision  string
-	fileCalls int
-	members   []directory.GitLabMember
-	issues    []GitLabIssue
-	applied   *IssueMutation
+	members []directory.GitLabMember
+	issues  []GitLabIssue
+	applied *IssueMutation
 }
 
-func (f *gitLabFake) DirectoryRevision(context.Context) (string, error) { return f.revision, nil }
-func (f *gitLabFake) DirectoryFile(context.Context) (directory.File, string, error) {
+type directorySourceFake struct {
+	revision  string
+	fileCalls int
+}
+
+func (f *directorySourceFake) DirectoryRevision(context.Context) (string, error) {
+	return f.revision, nil
+}
+func (f *directorySourceFake) DirectoryFile(context.Context) (directory.File, string, error) {
 	f.fileCalls++
 	return directory.File{Version: 1, Teams: []directory.TeamConfig{{
 		Key: "development", Name: "開發組", TitlePrefix: "[開發組]",
@@ -74,23 +79,23 @@ func (*repoFake) FailOperation(context.Context, PendingOperation, time.Time, str
 func TestRefreshDirectoryUsesRevisionAndRefreshesMembers(t *testing.T) {
 	t.Parallel()
 	gitlab := &gitLabFake{
-		revision: "revision-1",
-		members:  []directory.GitLabMember{{GitLabUserID: 1, Username: "alice", DisplayName: "Alice", State: directory.MemberActive}},
+		members: []directory.GitLabMember{{GitLabUserID: 1, Username: "alice", DisplayName: "Alice", State: directory.MemberActive}},
 	}
+	directorySource := &directorySourceFake{revision: "revision-1"}
 	repo := &repoFake{}
-	service := NewService(gitlab, repo, nil, noop.NewTracerProvider().Tracer("test"))
+	service := NewService(gitlab, directorySource, repo, nil, noop.NewTracerProvider().Tracer("test"))
 	if err := service.RefreshDirectory(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if gitlab.fileCalls != 1 || len(repo.directory.Members) != 1 {
-		t.Fatalf("first refresh: files=%d snapshot=%#v", gitlab.fileCalls, repo.directory)
+	if directorySource.fileCalls != 1 || len(repo.directory.Members) != 1 {
+		t.Fatalf("first refresh: files=%d snapshot=%#v", directorySource.fileCalls, repo.directory)
 	}
 	gitlab.members[0].DisplayName = "Alice Updated"
 	if err := service.RefreshDirectory(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if gitlab.fileCalls != 1 || repo.directory.Members[0].DisplayName != "Alice Updated" {
-		t.Fatalf("unchanged revision downloaded again or member stale: files=%d snapshot=%#v", gitlab.fileCalls, repo.directory)
+	if directorySource.fileCalls != 1 || repo.directory.Members[0].DisplayName != "Alice Updated" {
+		t.Fatalf("unchanged revision downloaded again or member stale: files=%d snapshot=%#v", directorySource.fileCalls, repo.directory)
 	}
 }
 
@@ -102,7 +107,7 @@ func TestRefreshBoardMapsLabelsAndSkipsUnknownTeams(t *testing.T) {
 		{IssueIID: 2, GitLabIssueID: 20, Title: "無組別", Labels: []string{"Todo"}, State: "opened", UpdatedAt: now},
 	}}
 	repo := &repoFake{directory: directory.Snapshot{Teams: []directory.Team{{Key: "development", TitlePrefix: "[開發組]", GitLabLabel: "組別::開發", Active: true}}}}
-	service := NewService(gitlab, repo, nil, noop.NewTracerProvider().Tracer("test"))
+	service := NewService(gitlab, &directorySourceFake{}, repo, nil, noop.NewTracerProvider().Tracer("test"))
 	if err := service.RefreshBoard(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +130,7 @@ func TestProcessOneBuildsCanonicalIssueMutation(t *testing.T) {
 			Card:      board.Card{IssueIID: 42, Title: "修正流程", TeamKey: "development", ListKey: "doing", Labels: []string{"組別::設計", "Todo", "security"}},
 		},
 	}
-	service := NewService(gitlab, repo, nil, noop.NewTracerProvider().Tracer("test"))
+	service := NewService(gitlab, &directorySourceFake{}, repo, nil, noop.NewTracerProvider().Tracer("test"))
 	processed, err := service.ProcessOne(context.Background())
 	if err != nil || !processed || !repo.completed {
 		t.Fatalf("ProcessOne() = %v, %v, completed=%v", processed, err, repo.completed)

@@ -2,7 +2,6 @@ package gitlab
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,77 +16,15 @@ import (
 	appsync "example.com/project-template/internal/controller/application/sync"
 	"example.com/project-template/internal/domain/directory"
 	"example.com/project-template/internal/domain/identity"
-	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	BaseURL       string
-	ClientID      string
-	ClientSecret  string
-	RedirectURI   string
-	ProjectPath   string
-	AccessToken   string
-	DirectoryPath string
-	Branch        string
-}
-
-func (c *Client) DirectoryRevision(ctx context.Context) (string, error) {
-	requestURL := c.projectEndpoint("/repository/files/") + url.PathEscape(c.directoryPath()) + "?ref=" + url.QueryEscape(c.branch())
-	response, err := c.do(ctx, http.MethodHead, requestURL, nil, c.config.AccessToken, "")
-	if err != nil {
-		return "", err
-	}
-	defer response.Body.Close()
-	revision := response.Header.Get("X-Gitlab-Last-Commit-Id")
-	if revision == "" {
-		revision = response.Header.Get("X-Gitlab-Commit-Id")
-	}
-	if revision == "" {
-		return "", fmt.Errorf("GitLab directory HEAD omitted commit revision")
-	}
-	return revision, nil
-}
-
-func (c *Client) DirectoryFile(ctx context.Context) (directory.File, string, error) {
-	requestURL := c.projectEndpoint("/repository/files/") + url.PathEscape(c.directoryPath()) + "?ref=" + url.QueryEscape(c.branch())
-	response, err := c.do(ctx, http.MethodGet, requestURL, nil, c.config.AccessToken, "")
-	if err != nil {
-		return directory.File{}, "", err
-	}
-	defer response.Body.Close()
-	var wire struct {
-		Content      string `json:"content"`
-		LastCommitID string `json:"last_commit_id"`
-	}
-	if err := decodeJSON(response.Body, &wire); err != nil {
-		return directory.File{}, "", fmt.Errorf("decode GitLab directory file: %w", err)
-	}
-	content, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(wire.Content, "\n", ""))
-	if err != nil {
-		return directory.File{}, "", fmt.Errorf("decode GitLab directory content: %w", err)
-	}
-	var source struct {
-		Version int `yaml:"version"`
-		Teams   []struct {
-			Key         string   `yaml:"key"`
-			Name        string   `yaml:"name"`
-			TitlePrefix string   `yaml:"title_prefix"`
-			GitLabLabel string   `yaml:"gitlab_label"`
-			Active      bool     `yaml:"active"`
-			Members     []string `yaml:"members"`
-		} `yaml:"teams"`
-	}
-	if err := yaml.Unmarshal(content, &source); err != nil {
-		return directory.File{}, "", fmt.Errorf("parse board directory YAML: %w", err)
-	}
-	file := directory.File{Version: source.Version, Teams: make([]directory.TeamConfig, 0, len(source.Teams))}
-	for _, team := range source.Teams {
-		file.Teams = append(file.Teams, directory.TeamConfig{
-			Key: team.Key, Name: team.Name, TitlePrefix: team.TitlePrefix,
-			GitLabLabel: team.GitLabLabel, Active: team.Active, Members: team.Members,
-		})
-	}
-	return file, wire.LastCommitID, nil
+	BaseURL      string
+	ClientID     string
+	ClientSecret string
+	RedirectURI  string
+	ProjectPath  string
+	AccessToken  string
 }
 
 func (c *Client) ProjectMembers(ctx context.Context) ([]directory.GitLabMember, error) {
@@ -370,20 +307,6 @@ func (c *Client) endpoint(path string) string {
 
 func (c *Client) projectEndpoint(path string) string {
 	return c.endpoint("/api/v4/projects/") + url.PathEscape(c.config.ProjectPath) + path
-}
-
-func (c *Client) directoryPath() string {
-	if strings.TrimSpace(c.config.DirectoryPath) == "" {
-		return ".sitcon/board-directory.yml"
-	}
-	return strings.TrimSpace(c.config.DirectoryPath)
-}
-
-func (c *Client) branch() string {
-	if strings.TrimSpace(c.config.Branch) == "" {
-		return "main"
-	}
-	return strings.TrimSpace(c.config.Branch)
 }
 
 func decodeJSON(reader io.Reader, target any) error {

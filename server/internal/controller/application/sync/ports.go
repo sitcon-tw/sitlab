@@ -12,9 +12,12 @@ type GitLabIssue = board.CanonicalIssue
 type IssueMutation = board.IssueMutation
 type PendingOperation = board.PendingOperation
 
-type GitLab interface {
+type DirectorySource interface {
 	DirectoryRevision(context.Context) (string, error)
 	DirectoryFile(context.Context) (directory.File, string, error)
+}
+
+type GitLab interface {
 	ProjectMembers(context.Context) ([]directory.GitLabMember, error)
 	Issues(context.Context) ([]board.CanonicalIssue, error)
 	ApplyIssue(context.Context, board.IssueMutation) (board.CanonicalIssue, error)

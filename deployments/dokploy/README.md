@@ -27,9 +27,9 @@ Create a project access token in `sitcon-tw/2027`:
 - Scope: `api`
 - Expiration: set an operationally appropriate expiry and calendar its rotation
 
-Store the token as `SITCON_BOARD_GITLAB_PROJECT_ACCESS_TOKEN`. The application uses it to read project members, `.sitcon/board-directory.yml`, labels and issues, and to reconcile issue mutations.
+Store the token as `SITCON_BOARD_GITLAB_PROJECT_ACCESS_TOKEN`. The application uses it to read project members, labels and issues, and to reconcile issue mutations.
 
-Before the first deployment, make sure `.sitcon/board-directory.yml` exists on the configured `SITCON_BOARD_GITLAB_BRANCH` (default `main`). The application intentionally stays unready when the directory, member, or board snapshot cannot be initialized.
+The team directory is read from `sitcon-tw/sitlab/.sitcon/board-directory.yml` on `SITCON_BOARD_GITHUB_REF` (default `main`). This public repository does not require `SITCON_BOARD_GITHUB_TOKEN`; if it becomes private, create a fine-grained GitHub token limited to this repository with Contents read permission and set that variable. The application intentionally stays unready when the directory, member, or board snapshot cannot be initialized.
 
 ## 3. Generate secrets
 
@@ -76,7 +76,7 @@ After the certificate is active, confirm that the OAuth application still has th
 The expected service sequence is:
 
 ```text
-postgres healthy -> migrate exits 0 -> app initializes GitLab snapshots -> app healthy
+postgres healthy -> migrate exits 0 -> app initializes GitHub/GitLab snapshots -> app healthy
 ```
 
 Check these URLs:
@@ -98,7 +98,8 @@ Back up the `sitcon-board-postgres` volume or configure Dokploy database backups
 ## Troubleshooting
 
 - `production session cookie must be Secure`: confirm `SITCON_BOARD_ENV=production` and use this Dokploy Compose file, which forces `SITCON_BOARD_SESSION_COOKIE_SECURE=true`.
-- `initial GitLab sync`: verify the project access token, token role/scope, branch, and `.sitcon/board-directory.yml`.
+- `initial source sync` with a GitHub error: verify `.sitcon/board-directory.yml`, `SITCON_BOARD_GITHUB_REF`, and the optional GitHub token.
+- `initial source sync` with a GitLab error: verify the project access token and its role/scope in `sitcon-tw/2027`.
 - OAuth callback error: compare the GitLab Redirect URI and the generated `${SITCON_BOARD_PUBLIC_URL}/api/v1/auth/gitlab/callback` character for character.
 - CSRF origin error: `SITCON_BOARD_PUBLIC_URL` must be the browser's exact HTTPS origin and must not include a path.
 - PostgreSQL authentication error after rotating an environment variable: restore the old value or update the persisted PostgreSQL role password before redeploying.

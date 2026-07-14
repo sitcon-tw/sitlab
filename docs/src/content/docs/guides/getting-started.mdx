@@ -15,9 +15,9 @@ order: 10
 
 ## GitLab setup
 
-Create an OAuth application whose redirect URI exactly matches `SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL`. Provide a project access token able to read members, `.sitcon/board-directory.yml`, labels and issues in `sitcon-tw/2027`, plus the issue permissions needed by the operation worker.
+Create an OAuth application whose redirect URI exactly matches `SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL`. Provide a project access token able to read members, labels and issues in `sitcon-tw/2027`, plus the issue permissions needed by the operation worker.
 
-The repository directory file must exist on `SITCON_BOARD_GITLAB_BRANCH` before production readiness can pass.
+The directory file must exist at `sitcon-tw/sitlab/.sitcon/board-directory.yml` on `SITCON_BOARD_GITHUB_REF` before production readiness can pass. Public repositories need no GitHub token; private repositories require a fine-grained token with Contents read permission.
 
 ## Run from source
 

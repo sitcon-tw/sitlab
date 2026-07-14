@@ -18,6 +18,7 @@ There is no agent runtime in this template. Do not add probe, assignment, remote
 
 - `api/**/*.tsp` owns the HTTP wire contract.
 - `server/db/migrations` owns the database schema.
+- `.sitcon/board-directory.yml` owns the production team directory.
 - `packages/ui/src/styles/tokens.css` owns browser design tokens.
 - `Justfile` owns cross-language task names.
 - `ARCHITECTURE.md` and architecture tests own dependency direction.

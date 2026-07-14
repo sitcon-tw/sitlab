@@ -8,10 +8,10 @@ order: 30
 ## Data flow
 
 ```text
-GitLab project members + .sitcon/board-directory.yml + issues
-                              |
-                       background sync
-                              v
+GitHub board-directory.yml + GitLab project members + issues
+                                  |
+                           background sync
+                                  v
                     PostgreSQL snapshots
                               |
                    injected bootstrap JSON
@@ -29,7 +29,7 @@ infrastructure -> application -> domain
 composition root -> all concrete implementations
 ```
 
-Domain knows no frameworks. Application use cases own narrow consumed ports and transaction boundaries. PostgreSQL and GitLab adapters translate external behavior. Architecture tests enforce this direction.
+Domain knows no frameworks. Application use cases own narrow consumed ports and transaction boundaries. The GitHub directory, GitLab, and PostgreSQL adapters translate external behavior. Architecture tests enforce this direction.
 
 ## Mutations
 

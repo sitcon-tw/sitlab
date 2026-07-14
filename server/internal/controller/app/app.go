@@ -17,6 +17,7 @@ import (
 	appoauth "example.com/project-template/internal/controller/application/oauth"
 	appsync "example.com/project-template/internal/controller/application/sync"
 	"example.com/project-template/internal/controller/config"
+	"example.com/project-template/internal/controller/infrastructure/githubdirectory"
 	"example.com/project-template/internal/controller/infrastructure/gitlab"
 	"example.com/project-template/internal/controller/infrastructure/postgres"
 	pgoauth "example.com/project-template/internal/controller/infrastructure/postgres/oauth"
@@ -69,7 +70,16 @@ func New(ctx context.Context) (*Application, error) {
 		BaseURL: cfg.GitLab.BaseURL, ClientID: cfg.GitLab.ClientID,
 		ClientSecret: cfg.GitLab.ClientSecret, RedirectURI: cfg.GitLab.OAuthRedirectURL,
 		ProjectPath: config.ProjectPath, AccessToken: cfg.GitLab.ProjectAccessToken,
-		DirectoryPath: config.DirectoryFilePath, Branch: cfg.GitLab.Branch,
+	})
+	if err != nil {
+		pool.Close()
+		_ = tracing.Shutdown(context.Background())
+		_ = log.Sync()
+		return nil, err
+	}
+	githubDirectoryClient, err := githubdirectory.New(&http.Client{Timeout: cfg.HTTP.RequestTimeout}, githubdirectory.Config{
+		BaseURL: cfg.GitHub.APIURL, Owner: config.GitHubOwner, Repository: config.GitHubRepository,
+		Path: config.DirectoryFilePath, Ref: cfg.GitHub.Ref, Token: cfg.GitHub.Token,
 	})
 	if err != nil {
 		pool.Close()
@@ -87,7 +97,7 @@ func New(ctx context.Context) (*Application, error) {
 	}, tracer)
 	directoryService := appdirectory.NewService(store, tracer)
 	boardService := appboard.NewService(store, directoryService, tracer)
-	syncService := appsync.NewService(gitLabClient, store, directoryLogger{log: log}, tracer)
+	syncService := appsync.NewService(gitLabClient, githubDirectoryClient, store, directoryLogger{log: log}, tracer)
 	bootstrapService := appbootstrap.NewService(oauthService, directoryService, boardService, store)
 
 	if syncErr := syncService.InitialSync(ctx); syncErr != nil {
@@ -95,9 +105,9 @@ func New(ctx context.Context) (*Application, error) {
 			pool.Close()
 			_ = tracing.Shutdown(context.Background())
 			_ = log.Sync()
-			return nil, fmt.Errorf("initial GitLab sync: %w", syncErr)
+			return nil, fmt.Errorf("initial source sync: %w", syncErr)
 		}
-		log.Warn("initial_gitlab_sync_failed_using_snapshot", zap.Error(syncErr))
+		log.Warn("initial_source_sync_failed_using_snapshot", zap.Error(syncErr))
 	}
 
 	metrics := observability.NewMetrics()
