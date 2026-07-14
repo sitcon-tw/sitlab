@@ -3,12 +3,14 @@ package gitlab
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
 
+	"example.com/project-template/internal/controller/application/sync"
 	"example.com/project-template/internal/domain/identity"
 )
 
@@ -28,7 +30,16 @@ func TestSnapshotEndpointsParseDirectoryMembersAndIssues(t *testing.T) {
 			return response(http.StatusOK, `{"content":"`+base64.StdEncoding.EncodeToString([]byte(directoryYAML))+`","last_commit_id":"revision-1"}`), nil
 		case strings.Contains(request.URL.Path, "/members/all"):
 			return response(http.StatusOK, `[{"id":101,"username":"alice","name":"Alice","web_url":"https://gitlab.example/alice","access_level":40,"state":"active"}]`), nil
-		case strings.Contains(request.URL.Path, "/issues"):
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/issues"):
+			var payload map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			if payload["title"] != "[開發組] 新卡" || payload["assignee_id"] != float64(101) {
+				t.Errorf("issue payload = %#v", payload)
+			}
+			return response(http.StatusCreated, `{"id":20,"iid":2,"title":"[開發組] 新卡","web_url":"https://gitlab.example/issues/2","labels":["組別::開發","Todo"],"state":"opened","updated_at":"2026-07-14T08:01:00Z","assignee":{"id":101}}`), nil
+		case request.Method == http.MethodGet && strings.Contains(request.URL.Path, "/issues"):
 			return response(http.StatusOK, `[{"id":10,"iid":1,"title":"[開發組] 修正流程","web_url":"https://gitlab.example/issues/1","labels":["組別::開發","Todo"],"due_date":"2026-07-21","state":"opened","updated_at":"2026-07-14T08:00:00Z","assignee":{"id":101}}]`), nil
 		default:
 			return response(http.StatusNotFound, `{}`), nil
@@ -56,6 +67,13 @@ func TestSnapshotEndpointsParseDirectoryMembersAndIssues(t *testing.T) {
 	issues, err := client.Issues(context.Background())
 	if err != nil || len(issues) != 1 || issues[0].AssigneeGitLabUserID == nil || *issues[0].AssigneeGitLabUserID != 101 {
 		t.Fatalf("Issues() = %#v, %v", issues, err)
+	}
+	assignee := int64(101)
+	created, err := client.ApplyIssue(context.Background(), sync.IssueMutation{
+		Create: true, Title: "[開發組] 新卡", Labels: []string{"組別::開發", "Todo"}, AssigneeGitLabUserID: &assignee,
+	})
+	if err != nil || created.IssueIID != 2 {
+		t.Fatalf("ApplyIssue() = %#v, %v", created, err)
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	appboard "example.com/project-template/internal/controller/application/board"
 	appbootstrap "example.com/project-template/internal/controller/application/bootstrap"
 	appdirectory "example.com/project-template/internal/controller/application/directory"
+	appsync "example.com/project-template/internal/controller/application/sync"
 	"example.com/project-template/internal/controller/infrastructure/postgres"
 	domainboard "example.com/project-template/internal/domain/board"
 	domaindirectory "example.com/project-template/internal/domain/directory"
@@ -236,6 +237,159 @@ func (r *Repository) RecordSyncFailure(ctx context.Context, resource string, att
 		WHERE resource = $1
 	`, resource, attemptedAt, detail)
 	return err
+}
+
+func (r *Repository) ClaimOperation(ctx context.Context, now time.Time) (appsync.PendingOperation, error) {
+	var pending appsync.PendingOperation
+	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		var issueIID *int64
+		var lastError *string
+		err := tx.QueryRow(ctx, `
+			SELECT operation.id, operation.kind, operation.issue_iid, operation.state,
+			       operation.attempts, operation.last_error_detail,
+			       operation.created_at, operation.updated_at
+			FROM durable_operations operation
+			WHERE (
+			        (operation.state = 'pending' AND operation.available_at <= $1)
+			        OR (operation.state = 'processing' AND operation.updated_at < $1 - interval '2 minutes')
+			      )
+			  AND (operation.kind = 'create_card' OR operation.issue_iid > 0)
+			  AND NOT EXISTS (
+			      SELECT 1
+			      FROM durable_operations earlier
+			      WHERE earlier.issue_iid = operation.issue_iid
+			        AND (
+			            earlier.created_at < operation.created_at
+			            OR (earlier.created_at = operation.created_at AND earlier.id < operation.id)
+			        )
+			        AND earlier.state IN ('pending', 'processing')
+			  )
+			ORDER BY operation.created_at, operation.id
+			FOR UPDATE SKIP LOCKED
+			LIMIT 1
+		`, now).Scan(
+			&pending.Operation.ID, &pending.Operation.Kind, &issueIID,
+			&pending.Operation.State, &pending.Operation.Attempts, &lastError,
+			&pending.Operation.CreatedAt, &pending.Operation.UpdatedAt,
+		)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domainboard.ErrOperationNotFound
+		}
+		if err != nil {
+			return err
+		}
+		pending.Operation.IssueIID = issueIID
+		if lastError != nil {
+			pending.Operation.LastError = *lastError
+		}
+		if issueIID == nil {
+			return fmt.Errorf("durable operation %s has no issue", pending.Operation.ID)
+		}
+		pending.Card, err = scanCard(tx.QueryRow(ctx, selectCards+` WHERE card.issue_iid = $1`, *issueIID))
+		if err != nil {
+			return err
+		}
+		pending.Operation.State = domainboard.OperationProcessing
+		pending.Operation.Attempts++
+		pending.Operation.UpdatedAt = now
+		_, err = tx.Exec(ctx, `
+			UPDATE durable_operations
+			SET state = 'processing', attempts = attempts + 1, updated_at = $2
+			WHERE id = $1
+		`, uuid.MustParse(pending.Operation.ID), now)
+		return err
+	})
+	if err != nil {
+		return appsync.PendingOperation{}, err
+	}
+	return pending, nil
+}
+
+func (r *Repository) CompleteOperation(ctx context.Context, pending appsync.PendingOperation, issue appsync.GitLabIssue, completedAt time.Time) error {
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		operationID := uuid.MustParse(pending.Operation.ID)
+		if pending.Operation.Kind == domainboard.OperationCreateCard {
+			if _, err := tx.Exec(ctx, `
+				DELETE FROM issue_cache
+				WHERE issue_iid = $1 AND sync_state = 'synced'
+			`, issue.IssueIID); err != nil {
+				return err
+			}
+			command, err := tx.Exec(ctx, `
+				UPDATE issue_cache
+				SET issue_iid = $2,
+				    gitlab_issue_id = $3,
+				    web_url = $4,
+				    labels = COALESCE($5::text[], '{}'),
+				    gitlab_updated_at = $6,
+				    sync_state = CASE WHEN pending_operation_id = $7 THEN 'synced' ELSE sync_state END,
+				    sync_error = CASE WHEN pending_operation_id = $7 THEN NULL ELSE sync_error END,
+				    pending_operation_id = CASE WHEN pending_operation_id = $7 THEN NULL ELSE pending_operation_id END,
+				    updated_at = $8
+				WHERE issue_iid = $1
+			`, pending.Card.IssueIID, issue.IssueIID, issue.GitLabIssueID,
+				nullableString(issue.WebURL), issue.Labels, issue.UpdatedAt, operationID, completedAt)
+			if err != nil {
+				return err
+			}
+			if command.RowsAffected() == 0 {
+				return domainboard.ErrCardNotFound
+			}
+		} else {
+			command, err := tx.Exec(ctx, `
+				UPDATE issue_cache
+				SET gitlab_issue_id = $2,
+				    web_url = $3,
+				    labels = CASE WHEN pending_operation_id = $4 THEN COALESCE($5::text[], '{}') ELSE labels END,
+				    gitlab_updated_at = $6,
+				    sync_state = CASE WHEN pending_operation_id = $4 THEN 'synced' ELSE sync_state END,
+				    sync_error = CASE WHEN pending_operation_id = $4 THEN NULL ELSE sync_error END,
+				    pending_operation_id = CASE WHEN pending_operation_id = $4 THEN NULL ELSE pending_operation_id END,
+				    updated_at = $7
+				WHERE issue_iid = $1
+			`, pending.Card.IssueIID, issue.GitLabIssueID, nullableString(issue.WebURL),
+				operationID, issue.Labels, issue.UpdatedAt, completedAt)
+			if err != nil {
+				return err
+			}
+			if command.RowsAffected() == 0 {
+				return domainboard.ErrCardNotFound
+			}
+		}
+		_, err := tx.Exec(ctx, `
+			UPDATE durable_operations
+			SET state = 'synced', last_error_code = NULL, last_error_detail = NULL, updated_at = $2
+			WHERE id = $1
+		`, operationID, completedAt)
+		return err
+	})
+}
+
+func (r *Repository) FailOperation(ctx context.Context, pending appsync.PendingOperation, failedAt time.Time, code, detail string) error {
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		operationID := uuid.MustParse(pending.Operation.ID)
+		if _, err := tx.Exec(ctx, `
+			UPDATE durable_operations
+			SET state = 'failed', last_error_code = $2, last_error_detail = $3, updated_at = $4
+			WHERE id = $1
+		`, operationID, code, detail, failedAt); err != nil {
+			return err
+		}
+		if pending.Operation.Kind == domainboard.OperationCreateCard {
+			_, err := tx.Exec(ctx, `
+				UPDATE issue_cache
+				SET sync_state = 'failed', sync_error = $2, pending_operation_id = $3, updated_at = $4
+				WHERE issue_iid = $1
+			`, pending.Card.IssueIID, detail, operationID, failedAt)
+			return err
+		}
+		_, err := tx.Exec(ctx, `
+			UPDATE issue_cache
+			SET sync_state = 'failed', sync_error = $2, updated_at = $3
+			WHERE issue_iid = $1 AND pending_operation_id = $4
+		`, pending.Card.IssueIID, detail, failedAt, operationID)
+		return err
+	})
 }
 
 func (r *Repository) Snapshot(ctx context.Context) (domaindirectory.Snapshot, error) {
@@ -591,31 +745,49 @@ func (r *Repository) UpdateCard(ctx context.Context, mutation appboard.Mutation)
 
 func (r *Repository) RetryOperation(ctx context.Context, operationID string) (domainboard.Operation, error) {
 	var operation domainboard.Operation
-	var issueIID *int64
-	err := postgres.Executor(ctx, r.pool).QueryRow(ctx, `
-		UPDATE durable_operations
-		SET state = 'pending', available_at = now(), last_error_code = NULL,
-		    last_error_detail = NULL, updated_at = now()
-		WHERE id = $1 AND state = 'failed'
-		RETURNING id, kind, issue_iid, state, attempts, created_at, updated_at
-	`, uuid.MustParse(operationID)).Scan(
-		&operation.ID, &operation.Kind, &issueIID, &operation.State,
-		&operation.Attempts, &operation.CreatedAt, &operation.UpdatedAt,
-	)
-	if errors.Is(err, pgx.ErrNoRows) {
-		var exists bool
-		if existsErr := postgres.Executor(ctx, r.pool).QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM durable_operations WHERE id = $1)`, uuid.MustParse(operationID)).Scan(&exists); existsErr != nil {
-			return domainboard.Operation{}, fmt.Errorf("check durable operation: %w", existsErr)
+	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		var issueIID *int64
+		err := tx.QueryRow(ctx, `
+			UPDATE durable_operations
+			SET state = 'pending', available_at = now(), last_error_code = NULL,
+			    last_error_detail = NULL, updated_at = now()
+			WHERE id = $1 AND state = 'failed'
+			RETURNING id, kind, issue_iid, state, attempts, created_at, updated_at
+		`, uuid.MustParse(operationID)).Scan(
+			&operation.ID, &operation.Kind, &issueIID, &operation.State,
+			&operation.Attempts, &operation.CreatedAt, &operation.UpdatedAt,
+		)
+		if errors.Is(err, pgx.ErrNoRows) {
+			var exists bool
+			if existsErr := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM durable_operations WHERE id = $1)`, uuid.MustParse(operationID)).Scan(&exists); existsErr != nil {
+				return existsErr
+			}
+			if exists {
+				return domainboard.ErrOperationConflict
+			}
+			return domainboard.ErrOperationNotFound
 		}
-		if exists {
-			return domainboard.Operation{}, domainboard.ErrOperationConflict
+		if err != nil {
+			return err
 		}
-		return domainboard.Operation{}, domainboard.ErrOperationNotFound
-	}
+		operation.IssueIID = issueIID
+		if issueIID != nil {
+			if _, err := tx.Exec(ctx, `
+				UPDATE issue_cache
+				SET sync_state = 'pending', sync_error = NULL, pending_operation_id = $2, updated_at = now()
+				WHERE issue_iid = $1
+			`, *issueIID, uuid.MustParse(operationID)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
+		if errors.Is(err, domainboard.ErrOperationConflict) || errors.Is(err, domainboard.ErrOperationNotFound) {
+			return domainboard.Operation{}, err
+		}
 		return domainboard.Operation{}, fmt.Errorf("retry durable operation: %w", err)
 	}
-	operation.IssueIID = issueIID
 	return operation, nil
 }
 

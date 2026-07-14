@@ -171,6 +171,60 @@ func (c *Client) Issues(ctx context.Context) ([]appsync.GitLabIssue, error) {
 	return result, nil
 }
 
+func (c *Client) ApplyIssue(ctx context.Context, mutation appsync.IssueMutation) (appsync.GitLabIssue, error) {
+	payload := map[string]any{
+		"title":    mutation.Title,
+		"labels":   mutation.Labels,
+		"due_date": mutation.DueDate,
+	}
+	method := http.MethodPut
+	requestURL := c.projectEndpoint("/issues/") + strconv.FormatInt(mutation.IssueIID, 10)
+	if mutation.Create {
+		method = http.MethodPost
+		requestURL = c.projectEndpoint("/issues")
+		if mutation.AssigneeGitLabUserID != nil {
+			payload["assignee_id"] = *mutation.AssigneeGitLabUserID
+		}
+	} else {
+		assigneeIDs := []int64{}
+		if mutation.AssigneeGitLabUserID != nil {
+			assigneeIDs = append(assigneeIDs, *mutation.AssigneeGitLabUserID)
+		}
+		payload["assignee_ids"] = assigneeIDs
+		if mutation.Closed {
+			payload["state_event"] = "close"
+		} else {
+			payload["state_event"] = "reopen"
+		}
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return appsync.GitLabIssue{}, fmt.Errorf("encode GitLab issue mutation: %w", err)
+	}
+	request, err := http.NewRequestWithContext(ctx, method, requestURL, strings.NewReader(string(body)))
+	if err != nil {
+		return appsync.GitLabIssue{}, fmt.Errorf("create GitLab issue request: %w", err)
+	}
+	request.Header.Set("PRIVATE-TOKEN", c.config.AccessToken)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := c.http.Do(request)
+	if err != nil {
+		return appsync.GitLabIssue{}, identity.ErrGitLabUnavailable
+	}
+	defer response.Body.Close()
+	if response.StatusCode >= 500 {
+		return appsync.GitLabIssue{}, identity.ErrGitLabUnavailable
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return appsync.GitLabIssue{}, &httpStatusError{status: response.StatusCode}
+	}
+	var wire issueWire
+	if err := decodeJSON(response.Body, &wire); err != nil {
+		return appsync.GitLabIssue{}, fmt.Errorf("decode GitLab issue mutation: %w", err)
+	}
+	return mapIssueWire(wire), nil
+}
+
 type Client struct {
 	http   *http.Client
 	config Config
@@ -351,4 +405,33 @@ type gitLabUser struct {
 type gitLabMember struct {
 	AccessLevel int32  `json:"access_level"`
 	State       string `json:"state"`
+}
+
+type issueWire struct {
+	ID        int64     `json:"id"`
+	IID       int64     `json:"iid"`
+	Title     string    `json:"title"`
+	WebURL    string    `json:"web_url"`
+	Labels    []string  `json:"labels"`
+	DueDate   *string   `json:"due_date"`
+	State     string    `json:"state"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Assignee  *struct {
+		ID int64 `json:"id"`
+	} `json:"assignee"`
+}
+
+func mapIssueWire(row issueWire) appsync.GitLabIssue {
+	issue := appsync.GitLabIssue{
+		IssueIID: row.IID, GitLabIssueID: row.ID, Title: row.Title,
+		WebURL: row.WebURL, Labels: row.Labels, State: row.State, UpdatedAt: row.UpdatedAt,
+	}
+	if row.DueDate != nil {
+		issue.DueDate = *row.DueDate
+	}
+	if row.Assignee != nil {
+		id := row.Assignee.ID
+		issue.AssigneeGitLabUserID = &id
+	}
+	return issue
 }

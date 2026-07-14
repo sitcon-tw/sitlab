@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ type gitLabFake struct {
 	fileCalls int
 	members   []directory.GitLabMember
 	issues    []GitLabIssue
+	applied   *IssueMutation
 }
 
 func (f *gitLabFake) DirectoryRevision(context.Context) (string, error) { return f.revision, nil }
@@ -31,11 +33,17 @@ func (f *gitLabFake) ProjectMembers(context.Context) ([]directory.GitLabMember, 
 	return f.members, nil
 }
 func (f *gitLabFake) Issues(context.Context) ([]GitLabIssue, error) { return f.issues, nil }
+func (f *gitLabFake) ApplyIssue(_ context.Context, mutation IssueMutation) (GitLabIssue, error) {
+	f.applied = &mutation
+	return GitLabIssue{IssueIID: 42, GitLabIssueID: 420, Title: mutation.Title, Labels: mutation.Labels, State: "opened"}, nil
+}
 
 type repoFake struct {
 	directory directory.Snapshot
 	board     appboard.Snapshot
 	cards     []board.Card
+	pending   *PendingOperation
+	completed bool
 }
 
 func (f *repoFake) Snapshot(context.Context) (directory.Snapshot, error) { return f.directory, nil }
@@ -49,6 +57,19 @@ func (f *repoFake) ReplaceBoard(_ context.Context, _ []board.List, cards []board
 	return nil
 }
 func (*repoFake) RecordSyncFailure(context.Context, string, time.Time, string) error { return nil }
+func (f *repoFake) ClaimOperation(context.Context, time.Time) (PendingOperation, error) {
+	if f.pending == nil {
+		return PendingOperation{}, board.ErrOperationNotFound
+	}
+	return *f.pending, nil
+}
+func (f *repoFake) CompleteOperation(context.Context, PendingOperation, GitLabIssue, time.Time) error {
+	f.completed = true
+	return nil
+}
+func (*repoFake) FailOperation(context.Context, PendingOperation, time.Time, string, string) error {
+	return nil
+}
 
 func TestRefreshDirectoryUsesRevisionAndRefreshesMembers(t *testing.T) {
 	t.Parallel()
@@ -87,5 +108,29 @@ func TestRefreshBoardMapsLabelsAndSkipsUnknownTeams(t *testing.T) {
 	}
 	if len(repo.cards) != 1 || repo.cards[0].ListKey != "doing" || repo.cards[0].Title != "修正流程" {
 		t.Fatalf("cards = %#v", repo.cards)
+	}
+}
+
+func TestProcessOneBuildsCanonicalIssueMutation(t *testing.T) {
+	t.Parallel()
+	gitlab := &gitLabFake{}
+	repo := &repoFake{
+		directory: directory.Snapshot{Teams: []directory.Team{
+			{Key: "development", TitlePrefix: "[開發組]", GitLabLabel: "組別::開發", Active: true},
+			{Key: "design", TitlePrefix: "[設計組]", GitLabLabel: "組別::設計", Active: true},
+		}},
+		board: appboard.Snapshot{Lists: DefaultBoardLists},
+		pending: &PendingOperation{
+			Operation: board.Operation{ID: "operation", Kind: board.OperationUpdateTeam},
+			Card:      board.Card{IssueIID: 42, Title: "修正流程", TeamKey: "development", ListKey: "doing", Labels: []string{"組別::設計", "Todo", "security"}},
+		},
+	}
+	service := NewService(gitlab, repo, nil, noop.NewTracerProvider().Tracer("test"))
+	processed, err := service.ProcessOne(context.Background())
+	if err != nil || !processed || !repo.completed {
+		t.Fatalf("ProcessOne() = %v, %v, completed=%v", processed, err, repo.completed)
+	}
+	if gitlab.applied == nil || gitlab.applied.Title != "[開發組] 修正流程" || !slices.Equal(gitlab.applied.Labels, []string{"security", "組別::開發", "Doing"}) {
+		t.Fatalf("mutation = %#v", gitlab.applied)
 	}
 }

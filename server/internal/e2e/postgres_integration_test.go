@@ -19,9 +19,11 @@ import (
 
 	appboard "example.com/project-template/internal/controller/application/board"
 	appdirectory "example.com/project-template/internal/controller/application/directory"
+	appsync "example.com/project-template/internal/controller/application/sync"
 	"example.com/project-template/internal/controller/infrastructure/postgres"
 	pgoauth "example.com/project-template/internal/controller/infrastructure/postgres/oauth"
 	pgsitcon "example.com/project-template/internal/controller/infrastructure/postgres/sitcon"
+	domaindirectory "example.com/project-template/internal/domain/directory"
 	"example.com/project-template/internal/domain/identity"
 )
 
@@ -115,10 +117,20 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	if err != nil || idempotent.Card.IssueIID != created.Card.IssueIID {
 		t.Fatalf("idempotent create = %#v, err = %v", idempotent, err)
 	}
+	gitlab := &operationGitLabFake{now: now.Add(time.Minute)}
+	syncService := appsync.NewService(gitlab, store, nil, noop.NewTracerProvider().Tracer("test"))
+	processed, err := syncService.ProcessOne(ctx)
+	if err != nil || !processed || gitlab.lastMutation == nil || !gitlab.lastMutation.Create {
+		t.Fatalf("process create = %v, %v, mutation=%#v", processed, err, gitlab.lastMutation)
+	}
+	canonical, err := store.ByOperation(ctx, operationID)
+	if err != nil || canonical.Card.IssueIID != 42 {
+		t.Fatalf("canonical create = %#v, err = %v", canonical, err)
+	}
 
 	changed, err := boardService.UpdateTeam(ctx, appboard.UpdateTeamInput{
 		OperationID: uuid.NewString(), ActorUserID: user.ID,
-		IssueIID: created.Card.IssueIID, TeamKey: "administration",
+		IssueIID: canonical.Card.IssueIID, TeamKey: "administration",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -126,6 +138,37 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	if changed.Card.TeamKey != "administration" || changed.Card.AssigneeGitLabUserID != nil {
 		t.Fatalf("team mutation = %#v", changed.Card)
 	}
+	processed, err = syncService.ProcessOne(ctx)
+	if err != nil || !processed || gitlab.lastMutation == nil || gitlab.lastMutation.Create {
+		t.Fatalf("process update = %v, %v, mutation=%#v", processed, err, gitlab.lastMutation)
+	}
+}
+
+type operationGitLabFake struct {
+	now          time.Time
+	lastMutation *appsync.IssueMutation
+}
+
+func (*operationGitLabFake) DirectoryRevision(context.Context) (string, error) {
+	return "revision", nil
+}
+func (*operationGitLabFake) DirectoryFile(context.Context) (domaindirectory.File, string, error) {
+	return domaindirectory.File{}, "revision", nil
+}
+func (*operationGitLabFake) ProjectMembers(context.Context) ([]domaindirectory.GitLabMember, error) {
+	return nil, nil
+}
+func (*operationGitLabFake) Issues(context.Context) ([]appsync.GitLabIssue, error) {
+	return nil, nil
+}
+func (f *operationGitLabFake) ApplyIssue(_ context.Context, mutation appsync.IssueMutation) (appsync.GitLabIssue, error) {
+	f.lastMutation = &mutation
+	return appsync.GitLabIssue{
+		IssueIID: 42, GitLabIssueID: 420, Title: mutation.Title,
+		WebURL: "https://gitlab.example/issues/42", Labels: mutation.Labels,
+		AssigneeGitLabUserID: mutation.AssigneeGitLabUserID,
+		DueDate:              mutation.DueDate, State: "opened", UpdatedAt: f.now,
+	}, nil
 }
 
 func seedSnapshots(t *testing.T, ctx context.Context, pool *pgxpool.Pool, now time.Time) {

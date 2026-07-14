@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -110,6 +111,77 @@ func (s *Service) InitialSync(ctx context.Context) error {
 	return s.RefreshBoard(ctx)
 }
 
+func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
+	ctx, span := s.tracer.Start(ctx, "sync.operation")
+	defer span.End()
+	now := s.now().UTC()
+	pending, err := s.repo.ClaimOperation(ctx, now)
+	if errors.Is(err, board.ErrOperationNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, technical(span, "claim durable operation", err)
+	}
+	directorySnapshot, err := s.repo.Snapshot(ctx)
+	if err != nil {
+		s.failOperation(ctx, pending, now, "SNAPSHOT_NOT_READY", err)
+		return true, technical(span, "load operation directory", err)
+	}
+	boardSnapshot, err := s.repo.Board(ctx)
+	if err != nil {
+		s.failOperation(ctx, pending, now, "SNAPSHOT_NOT_READY", err)
+		return true, technical(span, "load operation board", err)
+	}
+	team, ok := directorySnapshot.Team(pending.Card.TeamKey)
+	if !ok {
+		err := board.ErrTeamNotFound
+		s.failOperation(ctx, pending, now, "TEAM_NOT_FOUND", err)
+		return true, err
+	}
+	list, ok := boardList(boardSnapshot.Lists, pending.Card.ListKey)
+	if !ok {
+		err := board.ErrListNotFound
+		s.failOperation(ctx, pending, now, "LIST_NOT_FOUND", err)
+		return true, err
+	}
+	mutation := IssueMutation{
+		Create:               pending.Operation.Kind == board.OperationCreateCard,
+		IssueIID:             pending.Card.IssueIID,
+		Title:                board.ComposeGitLabTitle(team.TitlePrefix, pending.Card.Title),
+		Labels:               canonicalLabels(pending.Card.Labels, team, list, directorySnapshot.Teams, boardSnapshot.Lists),
+		AssigneeGitLabUserID: pending.Card.AssigneeGitLabUserID,
+		DueDate:              pending.Card.DueDate, Closed: list.Closed,
+	}
+	issue, err := s.gitlab.ApplyIssue(ctx, mutation)
+	if err != nil {
+		s.failOperation(ctx, pending, now, "GITLAB_SYNC_FAILED", err)
+		return true, technical(span, "apply GitLab issue mutation", err)
+	}
+	if err := s.repo.CompleteOperation(ctx, pending, issue, now); err != nil {
+		return true, technical(span, "complete durable operation", err)
+	}
+	return true, nil
+}
+
+func (s *Service) RunOperations(ctx context.Context, pollInterval time.Duration) {
+	if pollInterval <= 0 {
+		pollInterval = 500 * time.Millisecond
+	}
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	for {
+		processed, _ := s.ProcessOne(ctx)
+		if processed {
+			continue
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
 func (s *Service) Run(ctx context.Context, directoryInterval, boardInterval time.Duration) {
 	if directoryInterval <= 0 {
 		directoryInterval = 5 * time.Minute
@@ -202,6 +274,40 @@ func boardRevision(issues []GitLabIssue, now time.Time) string {
 
 func (s *Service) recordFailure(ctx context.Context, resource string, at time.Time, err error) {
 	_ = s.repo.RecordSyncFailure(ctx, resource, at, err.Error())
+}
+
+func (s *Service) failOperation(ctx context.Context, pending PendingOperation, at time.Time, code string, cause error) {
+	_ = s.repo.FailOperation(ctx, pending, at, code, cause.Error())
+}
+
+func boardList(lists []board.List, key string) (board.List, bool) {
+	for _, list := range lists {
+		if list.Key == key {
+			return list, true
+		}
+	}
+	return board.List{}, false
+}
+
+func canonicalLabels(existing []string, team directory.Team, list board.List, teams []directory.Team, lists []board.List) []string {
+	reserved := make(map[string]struct{}, len(teams)+len(lists))
+	for _, candidate := range teams {
+		reserved[candidate.GitLabLabel] = struct{}{}
+	}
+	for _, candidate := range lists {
+		reserved[candidate.GitLabLabel] = struct{}{}
+	}
+	labels := make([]string, 0, len(existing)+2)
+	for _, label := range existing {
+		if _, isReserved := reserved[label]; !isReserved {
+			labels = append(labels, label)
+		}
+	}
+	labels = append(labels, team.GitLabLabel)
+	if !list.Closed {
+		labels = append(labels, list.GitLabLabel)
+	}
+	return labels
 }
 
 func technical(span trace.Span, action string, err error) error {
