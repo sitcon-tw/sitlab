@@ -29,6 +29,9 @@ func (s *Service) Board(ctx context.Context) (Snapshot, error) {
 	ctx, span := s.tracer.Start(ctx, "board.snapshot")
 	defer span.End()
 	snapshot, err := s.repo.Board(ctx)
+	if errors.Is(err, domain.ErrSnapshotNotFound) {
+		return Snapshot{}, apperror.Unavailable("board snapshot is not ready")
+	}
 	if err != nil {
 		return Snapshot{}, technical(span, "load board snapshot", err)
 	}
@@ -63,6 +66,9 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Result, error)
 		return Result{}, err
 	}
 	boardSnapshot, err := s.repo.Board(ctx)
+	if errors.Is(err, domain.ErrSnapshotNotFound) {
+		return Result{}, apperror.Unavailable("board snapshot is not ready")
+	}
 	if err != nil {
 		return Result{}, technical(span, "load board lists", err)
 	}
@@ -188,6 +194,9 @@ func (s *Service) update(ctx context.Context, operationID, actorUserID string, i
 		return Result{}, technical(span, "load directory snapshot", err)
 	}
 	boardSnapshot, err := s.repo.Board(ctx)
+	if errors.Is(err, domain.ErrSnapshotNotFound) {
+		return Result{}, apperror.Unavailable("board snapshot is not ready")
+	}
 	if err != nil {
 		return Result{}, technical(span, "load board snapshot", err)
 	}
