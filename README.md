@@ -1,158 +1,56 @@
-<div align="center">
-  <h1>Yoruplate</h1>
-  <p><strong>A production-oriented full-stack template for SaaS and internal tools.</strong></p>
+# SITCON Board
 
-  <p>
-    Start with clear backend boundaries, one API contract, session security, an accessible React interface, PostgreSQL, and deterministic quality gates.
-  </p>
+SITCON 2027 籌備工作的 GitLab-backed 看板。登入、選擇主要組別、開卡、移動、指派與關閉都在同一個快速工作面完成。
 
-  <p>
-    <!-- template-source-only:start -->
-    <a href="https://github.com/yorukot/yoruplate/actions/workflows/ci.yaml"><img alt="Template CI" src="https://github.com/yorukot/yoruplate/actions/workflows/ci.yaml/badge.svg" /></a>
-    <!-- template-source-only:end -->
-    <a href="./LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-0f766e?style=flat-square" /></a>
-    <img alt="Go 1.23.5" src="https://img.shields.io/badge/Go-1.23.5-00ADD8?style=flat-square&logo=go&logoColor=white" />
-    <img alt="React 19" src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111111" />
-  </p>
-</div>
+正式資料固定來自 `sitcon-tw/2027`：GitLab Project Members 提供可指派成員，`.sitcon/board-directory.yml` 提供組別、Title prefix 與 labels，issues 提供 Board 卡片。前端不內建正式組別或成員資料。
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/readme-reference-slice-dark.png" />
-    <source media="(prefers-color-scheme: light)" srcset="./docs/assets/readme-reference-slice.png" />
-    <img src="./docs/assets/readme-reference-slice.png" alt="Workspace task list and task detail in the Yoruplate reference slice" width="1144" />
-  </picture>
-</p>
+## 核心行為
 
----
+- GitLab OAuth Authorization Code + PKCE，只允許 active project members 登入。
+- 隨機 opaque session token 放在 HttpOnly cookie，PostgreSQL 只保存 keyed digest。
+- Session 固定 14 天 rolling expiry；每次有效使用都會續期資料庫 expiry 與 cookie。
+- Authenticated mutations 同時驗證 session-bound CSRF token 與 Origin。
+- Go 啟動時先同步 directory、members、board snapshots；沒有 snapshot 不會通過 readiness。
+- Go 回傳 SPA HTML 時注入完整 bootstrap，React 第一次 render 不等待額外 API。
+- 開卡、移動、指派、期限與組別調整先寫 PostgreSQL optimistic cache 與 durable operation，再由 worker 同步 GitLab。
+- GitLab 暫時離線時仍顯示最後一次成功的 Board，失敗操作可重試。
 
-Yoruplate is an open-source product baseline for teams that want to begin with the difficult cross-cutting decisions already made and enforced. It uses a Go modular monolith, TypeSpec-first HTTP contract, feature-owned React client, semantic UI system, PostgreSQL, and production-shaped deployment.
-
-Most starter repositories prove that a page can render and a row can be saved. This template also proves authentication, workspace roles, transaction ownership, stable problem responses, CSRF protection, generated clients, cache reconciliation, responsive workflows, migrations, observability, and CI boundaries.
-
-The included Workspace and Tasks workflow is a reference slice, not disposable demo code. Extend its boundaries when you add the next feature.
-
-## Quick Start
-
-### Requirements
-
-Install Docker with Compose to run the production-shaped stack. Node.js 22.12 or newer and pnpm 11.11.0 are required for initialization and source development.
-
-<!-- template-source-only:start -->
-
-Starting a new project additionally requires Git.
-
-Clone the source template and run the one-time initializer:
-
-```bash
-git clone https://github.com/yorukot/yoruplate.git
-cd yoruplate
-
-pnpm run template:init -- \
-  --name "Acme Console" \
-  --slug acme-console \
-  --go-module github.com/acme/console \
-  --npm-scope @acme-console \
-  --env-prefix ACME_CONSOLE \
-  --cookie-prefix acme_console
-```
-
-The initializer installs dependencies, changes only its managed source allowlist, regenerates the API artifacts, and records `.template-initialized.json`. It refuses a second successful run. If installation or validation fails, it restores the managed source files and template markers so the same command can be retried safely.
-
-<!-- template-source-only:end -->
-
-Start the complete stack:
-
-```bash
-cp deployments/docker/example.env deployments/docker/.env
-docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build
-```
-
-Open `http://localhost:3000`. Compose waits for PostgreSQL, runs the one-shot migration, and starts the non-root application only after migration succeeds.
-
-> [!IMPORTANT]
-> The example environment is for localhost only. Before exposing an instance, replace every `change-me` value, set `PROJECT_TEMPLATE_ENV=production`, set `PROJECT_TEMPLATE_SESSION_COOKIE_SECURE=true`, use a `__Host-project_template_session` cookie name, configure explicit database and CSRF origins, use HTTPS, and pin an image version.
-
-To stop the stack:
-
-```bash
-docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml down
-```
-
-## What You Get
-
-| Area       | Included baseline                                                                                                          |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Backend    | Go modular monolith with domain, application, transport, infrastructure, and composition-root boundaries                   |
-| Contract   | TypeSpec as the wire source, OpenAPI 3.1, embedded backend schema, and generated TypeScript declarations                   |
-| Security   | Opaque sessions with keyed hashes, HttpOnly cookies, CSRF and origin validation, stable authorization policy               |
-| Data       | PostgreSQL 17, pgx, sqlc, Goose migrations, application-owned transactions, and database invariants                        |
-| Web        | React 19, React Router, TanStack Query, typed API adapters, URL-owned filters, and complete workflow states                |
-| UI         | Semantic light and dark tokens, Radix primitives, Lucide icons, Storybook, keyboard behavior, and targeted axe checks      |
-| Operations | Multi-stage non-root image, migration-gated Compose, Zap logs, Prometheus metrics, and OpenTelemetry traces                |
-| Quality    | Architecture tests, generated drift detection, linting, unit and integration tests, and desktop/mobile Playwright coverage |
-
-The baseline is deliberately domain-neutral. It does not include product-specific agent runtimes, remote installers, job assignment, or monitoring domain code.
-
-## Reference Slice
-
-The reference UI implements registration, session authentication, workspace creation and switching, URL-owned task filters, and task create/read/update/delete behavior.
-
-| Role   | Workspace and member administration | Task reads | Task writes |
-| ------ | ----------------------------------- | ---------- | ----------- |
-| Owner  | Yes                                 | Yes        | Yes         |
-| Editor | No                                  | Yes        | Yes         |
-| Viewer | No                                  | Yes        | No          |
-
-The production-stack browser suite covers registration, workspace and task creation, sign-out and sign-in, viewer read-only controls, and a direct viewer API write that must return `403`.
-
-## Architecture At A Glance
-
-```mermaid
-flowchart LR
-  HTTP["HTTP transport / Chi"] --> APP["Application use cases"]
-  APP --> DOMAIN["Domain model and policy"]
-  INFRA["PostgreSQL and external adapters"] -. implements narrow ports .-> APP
-  ROOT["Composition root"] --> HTTP
-  ROOT --> APP
-  ROOT --> INFRA
-```
-
-The dependency rules are executable:
-
-- Domain remains independent from outer project layers.
-- Application owns authorization, transaction scope, narrow ports, and stable errors.
-- Infrastructure implements application ports and translates dependency failures.
-- HTTP decodes protocol input, invokes one use case, and maps the result to the public contract.
-- The composition root is the only place that wires concrete adapters.
-
-The contract has one source and three checked consumers:
+## 架構
 
 ```text
-api/**/*.tsp
-  -> docs/public/openapi.json
-  -> server/internal/controller/transport/http/openapi/openapi.json
-  -> web/src/shared/api/openapi.d.ts
+GitLab members + .sitcon/board-directory.yml + issues
+                          |
+                    background sync
+                          v
+                  PostgreSQL snapshots
+                          |
+             injected bootstrap + REST API
+                          v
+                     React Board
 ```
 
-Run `pnpm generate` after changing TypeSpec. `pnpm generated:check` regenerates into a temporary directory and rejects drift without changing committed artifacts.
+`api/**/*.tsp` 是 HTTP contract 唯一來源，生成並提交三份 review artifacts：
 
-Read [ARCHITECTURE.md](./ARCHITECTURE.md) before changing dependency direction and [design.md](./design.md) before extending the browser interface.
+```text
+docs/public/openapi.json
+server/internal/controller/transport/http/openapi/openapi.json
+web/src/shared/api/openapi.d.ts
+```
 
-## Develop From Source
+Backend dependency direction 與 durable operation 細節見 [ARCHITECTURE.md](./ARCHITECTURE.md)，瀏覽器視覺規則見 [design.md](./design.md)。
 
-Source development additionally requires Go 1.23.5, PostgreSQL 17 reachable from the host, `just` 1.40.0, and `golangci-lint` 2.11.4.
+## 本機開發
 
-Install workspace dependencies, create a local runtime file, and point its database URL at your PostgreSQL instance:
+需要 Go 1.23.5、Node.js 22.12+、pnpm 11.11.0、PostgreSQL 17 與 `just` 1.40.0。
 
 ```bash
 pnpm install
 cp server/.env.example .env
-# Edit PROJECT_TEMPLATE_DATABASE_URL in .env.
+# 設定 SITCON_BOARD_DATABASE_URL 與 GitLab credentials
 just backend-migrate-up
 ```
 
-Run the backend and web client in separate terminals:
+分別啟動 backend 與 web：
 
 ```bash
 just backend-dev
@@ -162,66 +60,52 @@ just backend-dev
 just web-dev
 ```
 
-| Surface                       | Command              | URL                              |
-| ----------------------------- | -------------------- | -------------------------------- |
-| Production-shaped app and API | `just docker-up`     | `http://localhost:3000`          |
-| Web development server        | `just web-dev`       | `http://localhost:5173`          |
-| Backend development server    | `just backend-dev`   | `http://localhost:8080`          |
-| Documentation                 | `just docs-dev`      | `http://localhost:4321`          |
-| API explorer                  | `just docs-dev`      | `http://localhost:4321/openapi/` |
-| Storybook                     | `just storybook-dev` | `http://localhost:6006`          |
+Web 開發伺服器位於 `http://localhost:5173`，並將 `/api` proxy 到 `http://localhost:8080`。
 
-## Common Commands
+純 UI 檢查可明確啟用測試資料：
 
-| Command                         | Purpose                                                                                      |
-| ------------------------------- | -------------------------------------------------------------------------------------------- |
-| `just ci`                       | Run formatting, generated drift, lint, type checks, tests, and all production builds         |
-| `pnpm generate`                 | Regenerate OpenAPI and web contract declarations from TypeSpec                               |
-| `pnpm generated:check`          | Reject generated contract drift without mutating source                                      |
-| `just backend-test`             | Run Go unit and architecture tests                                                           |
-| `just backend-test-integration` | Run PostgreSQL repository and transaction tests against `PROJECT_TEMPLATE_TEST_DATABASE_URL` |
-| `just docs-dev`                 | Start the Astro documentation and API explorer                                               |
-| `just storybook-dev`            | Start the shared UI workbench                                                                |
-| `just clean`                    | Remove local build, coverage, Storybook, and browser-test output                             |
+```bash
+VITE_SITCON_DEMO=true just web-dev
+```
 
-Service-backed CI separately runs PostgreSQL integration tests, a Docker build and health check, and the desktop/mobile Playwright workflow.
+Demo fixture 只會在這個 flag 為 `true` 時動態載入，不是 production data source。
+
+## Docker
+
+```bash
+cp deployments/docker/example.env deployments/docker/.env
+# 替換所有 change-me 並填入 GitLab OAuth / project access credentials
+docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build
+```
+
+應用程式位於 `http://localhost:3000`。Compose 依序等待 PostgreSQL、執行 migrations、啟動應用；`/api/v1/health/ready` 只會在必要 snapshots 存在後成功。
+
+Production 必須使用 HTTPS、`SITCON_BOARD_SESSION_COOKIE_SECURE=true`、`__Host-` session cookie、至少 32 字元且互不重用的 session hash/OAuth cipher keys，以及明確的 `SITCON_BOARD_CSRF_ALLOWED_ORIGINS`。
+
+## 常用命令
+
+| Command                         | Purpose                                                 |
+| ------------------------------- | ------------------------------------------------------- |
+| `just ci`                       | 格式、generated drift、lint、typecheck、tests 與 builds |
+| `pnpm generate`                 | 從 TypeSpec 更新 OpenAPI 與 TypeScript declarations     |
+| `pnpm generated:check`          | 在暫存目錄重建並拒絕 generated drift                    |
+| `just backend-test`             | Go unit 與 architecture tests                           |
+| `just backend-test-integration` | 真實 PostgreSQL integration tests                       |
+| `just web-test`                 | React 行為測試                                          |
+| `just frontend-style-check`     | raw color 與 keyboard focus policy                      |
+| `just docs-dev`                 | Astro docs 與 API explorer                              |
 
 ## Repository Map
 
-| Path                  | Ownership                                                                    |
-| --------------------- | ---------------------------------------------------------------------------- |
-| `api/`                | TypeSpec models and HTTP operations                                          |
-| `server/`             | Go domain, use cases, adapters, transport, migrations, and integration tests |
-| `web/`                | React routes, feature workflows, browser infrastructure, and E2E tests       |
-| `packages/ui/`        | Domain-neutral tokens, primitives, tests, and Storybook stories              |
-| `docs/`               | Astro guides, reference documentation, generated OpenAPI, and API explorer   |
-| `deployments/docker/` | Image, Compose stack, migration gate, and optional observability profile     |
-| `scripts/`            | Initializer, contract generation, drift checks, and frontend policy checks   |
+| Path                  | Ownership                                                                 |
+| --------------------- | ------------------------------------------------------------------------- |
+| `api/`                | SITCON Board TypeSpec contract                                            |
+| `server/`             | Domain、application use cases、GitLab/PostgreSQL adapters、HTTP transport |
+| `web/`                | Login、onboarding、Board state 與 browser interactions                    |
+| `packages/ui/`        | Domain-neutral primitives 與 SITCON browser tokens                        |
+| `docs/`               | 操作文件、generated OpenAPI 與 API explorer                               |
+| `deployments/docker/` | Container image、Compose、migrations 與 observability overlay             |
 
-## Documentation
+## Credits
 
-- [Getting started](./docs/src/content/docs/guides/getting-started.mdx)
-- [Architecture reference](./docs/src/content/docs/reference/architecture.mdx)
-- [Configuration and production rules](./docs/src/content/docs/reference/configuration.mdx)
-- [Deployment](./docs/src/content/docs/reference/deployment.mdx)
-- [API explorer and contract flow](./docs/src/content/docs/guides/api-explorer.mdx)
-- [UI system](./docs/src/content/docs/reference/ui-system.mdx)
-- [Generated OpenAPI 3.1 document](./docs/public/openapi.json)
-
-## Contributing
-
-Read the root [AGENTS.md](./AGENTS.md), [ARCHITECTURE.md](./ARCHITECTURE.md), and [design.md](./design.md) before making structural changes. Keep feature behavior in its owning area, regenerate contracts in the same change, and run `just ci` before opening a pull request.
-
-<!-- template-source-only:start -->
-
-[Issues](https://github.com/yorukot/yoruplate/issues) and [pull requests](https://github.com/yorukot/yoruplate/pulls) are welcome.
-
-<!-- template-source-only:end -->
-
-## Influences
-
-Yoruplate distills engineering patterns exercised in [Netstamp](https://github.com/yorukot/Netstamp): a deployable modular monolith, consumer-owned ports, a single wire contract, executable architecture rules, and migration-aware operations.
-
-## License
-
-Yoruplate is available under the [MIT License](./LICENSE).
+Session token hashing、OAuth state 與 CSRF 的安全模式參考 [Netstamp](https://github.com/yorukot/netstamp)，並依本產品需求採用真正的 14 天 rolling renewal。

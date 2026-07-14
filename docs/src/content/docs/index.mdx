@@ -1,26 +1,25 @@
 ---
 title: Documentation overview
-description: Find the contracts, boundaries, and operating instructions that keep Project Template coherent.
+description: SITCON Board contracts, data flow, operations, and security.
 section: Start
 order: 0
 ---
 
-Project Template is a production-oriented modular monolith. The repository is intentionally opinionated about dependency direction, contract ownership, frontend state, and quality gates.
+SITCON Board 是固定對應 `sitcon-tw/2027` 的籌備工作看板。使用者透過 GitLab OAuth 登入、確認主要組別，並在同一個 Board 上快速開卡、移動、指派、調整期限與關閉。
 
 ## Start here
 
-Use the [getting started guide](/docs/guides/getting-started/) to initialize the template and run its services. Read [architecture](/docs/reference/architecture/) before adding a feature that crosses a package boundary.
-
-The reference implementation contains one complete vertical slice: authenticated users collaborate in workspaces and manage tasks according to their role. It is deliberately small enough to understand and complete enough to prove the architecture.
+使用 [getting started](/docs/guides/getting-started/) 啟動 PostgreSQL、backend 與 web。跨越 package boundary 前先讀 [architecture](/docs/reference/architecture/)；部署前逐項核對 [configuration](/docs/reference/configuration/)。
 
 ## Sources of truth
 
-| Concern                | Source                                              |
-| ---------------------- | --------------------------------------------------- |
-| HTTP contract          | `api/**/*.tsp`                                      |
-| Backend boundaries     | `ARCHITECTURE.md` and architecture tests            |
-| Visual rules           | `design.md` and `packages/ui/src/styles/tokens.css` |
-| Database schema        | `server/db/migrations`                              |
-| Cross-project commands | `Justfile`                                          |
+| Concern                | Source                                   |
+| ---------------------- | ---------------------------------------- |
+| HTTP contract          | `api/**/*.tsp`                           |
+| Database schema        | `server/db/migrations`                   |
+| Backend boundaries     | `ARCHITECTURE.md` and architecture tests |
+| Browser tokens         | `packages/ui/src/styles/tokens.css`      |
+| Visual rules           | `design.md`                              |
+| Cross-project commands | `Justfile`                               |
 
-Generated files are reviewable artifacts, not editing surfaces. Run `pnpm generate` after changing TypeSpec and commit all three outputs together.
+Generated OpenAPI 與 TypeScript declarations 是 review artifacts，不是手動編輯面。修改 TypeSpec 後執行 `pnpm generate` 並提交全部輸出。

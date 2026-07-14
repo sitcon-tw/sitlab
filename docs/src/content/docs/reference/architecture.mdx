@@ -1,13 +1,27 @@
 ---
 title: Architecture
-description: Dependency direction, ownership rules, and the request flow through the modular monolith.
+description: Snapshot bootstrap, optimistic GitLab operations, and dependency direction.
 section: Reference
 order: 30
 ---
 
-## Dependency rule
+## Data flow
 
-Backend dependencies point inward:
+```text
+GitLab project members + .sitcon/board-directory.yml + issues
+                              |
+                       background sync
+                              v
+                    PostgreSQL snapshots
+                              |
+                   injected bootstrap JSON
+                              v
+                       React Board
+```
+
+Production traffic is ready only after directory, members, and board snapshots exist. Go injects the complete authenticated bootstrap into `index.html`; React pre-fills TanStack Query before the first render. `GET /api/v1/bootstrap` is the development fallback and 30-second background refresh.
+
+## Dependency rule
 
 ```text
 transport -> application -> domain
@@ -15,25 +29,16 @@ infrastructure -> application -> domain
 composition root -> all concrete implementations
 ```
 
-The domain knows no framework. Application use cases own the narrow ports they consume. Infrastructure translates PostgreSQL and external-service behavior into those ports. HTTP transport maps protocol input and output without implementing business rules.
+Domain knows no frameworks. Application use cases own narrow consumed ports and transaction boundaries. PostgreSQL and GitLab adapters translate external behavior. Architecture tests enforce this direction.
 
-Architecture tests enforce import boundaries. A directory name is not evidence of architecture; executable dependency constraints are.
+## Mutations
 
-## Feature ownership
+Card mutations update optimistic `issue_cache` and insert a `durable_operation` in one transaction. New cards receive a temporary negative IID. The worker sends current canonical intent to GitLab, replaces temporary IIDs after creation, and reconciles responses. Failed operations keep the optimistic state and can be retried.
 
-Frontend routes compose feature modules. Each feature owns its view adapters, hooks, and workflow components. Shared UI contains reusable interaction primitives, never workspace or task policy.
+## Frontend ownership
 
-State has one owner:
+TanStack Query owns the bootstrap server snapshot. `features/onboarding` owns primary-team confirmation. `features/board` owns transient drafts, optimistic mutation, assignment reconciliation, drag/drop and keyboard controls. Team names, prefixes, labels, members, lists, and cards always come from bootstrap.
 
-- TanStack Query owns server state.
-- The URL owns shareable route and filter state.
-- Context owns session, theme, and current workspace selection.
-- Components or feature reducers own transient drafts.
+## Security
 
-## Contract boundary
-
-TypeSpec is the wire contract source. Generated TypeScript declarations describe the wire, while feature adapters turn wire DTOs into presentation models. Go handlers and web components do not invent parallel public schemas.
-
-## Transactions and errors
-
-The application layer declares transaction boundaries. Creating a workspace and its owner membership is one atomic use case. Technical errors retain their cause for logs and traces; business errors map to stable problem codes at the transport edge.
+GitLab OAuth uses Authorization Code with PKCE and single-use encrypted state. Browser sessions are random opaque tokens in HttpOnly cookies; PostgreSQL stores keyed digests. Every valid use renews expiry to 14 days from that use. Authenticated mutations require both the session-bound CSRF token and an allowed Origin.

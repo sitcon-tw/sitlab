@@ -1,61 +1,56 @@
 ---
 title: Getting started
-description: Initialize the repository, install tools, migrate PostgreSQL, and run the full stack.
+description: Configure GitLab, migrate PostgreSQL, and run SITCON Board.
 section: Guides
 order: 10
 ---
 
 ## Prerequisites
 
-- Go 1.23.5 for source development
-- Node.js 22.12 or newer
-- pnpm 11.11.0
-- PostgreSQL 17 for source development; Compose provides it for the container path
-- `just` 1.40.0 for the canonical cross-language commands
-- `golangci-lint` 2.11.4 for the full formatting and lint gates
-- Docker with Compose for the production-shaped stack
+- Go 1.23.5
+- Node.js 22.12 or newer and pnpm 11.11.0
+- PostgreSQL 17
+- `just` 1.40.0
+- Docker with Compose for the production-shaped path
 
-{/* template-source-only:start */}
+## GitLab setup
 
-## Initialize once
+Create an OAuth application whose redirect URI exactly matches `SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL`. Provide a project access token able to read members, `.sitcon/board-directory.yml`, labels and issues in `sitcon-tw/2027`, plus the issue permissions needed by the operation worker.
 
-Run the initializer before product work. It validates identifiers, changes only its source allowlist, regenerates the API artifacts, and refuses a second successful run. A failed install or validation restores the original source and markers so initialization can be retried.
+The repository directory file must exist on `SITCON_BOARD_GITLAB_BRANCH` before production readiness can pass.
 
-```bash
-pnpm run template:init -- \
-  --name "Acme Console" \
-  --slug acme-console \
-  --go-module github.com/acme/console \
-  --npm-scope @acme-console \
-  --env-prefix ACME_CONSOLE \
-  --cookie-prefix acme_console
-```
-
-Review the resulting diff. The initialization metadata remains in `.template-initialized.json` so later automation can distinguish an initialized project from the source template.
-
-{/* template-source-only:end */}
-
-## Run the production-shaped stack
-
-```bash
-cp deployments/docker/example.env deployments/docker/.env
-docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build
-```
-
-The app is available at `http://localhost:3000`. Compose starts PostgreSQL, runs migrations to completion, and then starts the application.
-
-## Run services from source
-
-Run PostgreSQL 17 somewhere reachable from the host, then configure its URL:
+## Run from source
 
 ```bash
 pnpm install
 cp server/.env.example .env
-# Edit PROJECT_TEMPLATE_DATABASE_URL in .env.
+# Set SITCON_BOARD_DATABASE_URL and GitLab credentials in .env.
 just backend-migrate-up
 ```
 
-Use separate terminals for `just backend-dev` and `just web-dev`. The web dev server proxies `/api` to the backend.
+Use separate terminals:
+
+```bash
+just backend-dev
+```
+
+```bash
+just web-dev
+```
+
+The web server at `http://localhost:5173` proxies `/api` to the backend at `http://localhost:8080`.
+
+For isolated browser design checks, run `VITE_SITCON_DEMO=true just web-dev`. This explicitly loads a test-only fixture and must not be used as a production data source.
+
+## Production-shaped stack
+
+```bash
+cp deployments/docker/example.env deployments/docker/.env
+# Replace every change-me and add GitLab credentials.
+docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build
+```
+
+Open `http://localhost:3000`. Compose waits for PostgreSQL, completes migrations, then starts the application. Readiness remains false until the first directory/member/board sync succeeds.
 
 ## Validate
 
@@ -63,4 +58,4 @@ Use separate terminals for `just backend-dev` and `just web-dev`. The web dev se
 just ci
 ```
 
-The command checks formatting, generated drift, TypeSpec, Go, the React app, the UI package, and docs. Integration and browser tests remain separate commands because they require running infrastructure.
+PostgreSQL integration tests use `SITCON_BOARD_TEST_DATABASE_URL` and remain a separate infrastructure-backed command: `just backend-test-integration`.

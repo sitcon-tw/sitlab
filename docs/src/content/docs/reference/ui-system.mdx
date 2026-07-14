@@ -5,18 +5,19 @@ section: Reference
 order: 60
 ---
 
-The shared package owns reusable primitives and semantic design tokens. Feature workflows remain in `web/src/features`.
+The shared package owns reusable primitives and the SITCON browser token source. Feature workflows remain in `web/src/features`.
 
 ## Token contract
 
-Use semantic roles for surface, text, border, focus, action, and state. Raw color literals belong only in the token source, browser metadata, or a documented platform bridge. Both dark and light themes must preserve the same hierarchy and semantic meaning.
+Product CSS consumes semantic `--sb-*` roles for surface, text, border, focus, action, assignment, and sync state. Shared primitives use `--pt-*` aliases backed by those same values. Raw color literals belong only in the token source, browser metadata, or a documented platform bridge. Both dark and light themes preserve the same hierarchy and semantic meaning.
 
 ## Interaction contract
 
 - Use `:focus-visible` for keyboard focus.
 - Dialogs and drawers trap focus and return it to the trigger.
 - Icon-only controls have accessible names and tooltips when the symbol is not universal.
-- Loading, empty, error, forbidden, and success states are part of a feature, not deferred polish.
+- Production Board never replaces injected bootstrap with a loading page, skeleton, spinner, or empty columns.
+- Background sync, optimistic pending, durable failure, retry, offline snapshot, empty lane, and success states are part of the primary feature.
 - Controls keep stable dimensions so dynamic labels and counters do not shift the surrounding layout.
 
 ## Verification

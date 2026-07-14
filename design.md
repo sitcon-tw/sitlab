@@ -1,65 +1,42 @@
-# Project Template Design System
+# SITCON Board Design System
 
 ## Direction
 
-Project Template is an operational product interface. It should feel quiet, precise, and efficient under repeated use. Information hierarchy, interaction feedback, and complete states create richness; decoration does not.
+SITCON Board 是籌備團隊每天重複使用的工作介面。視覺應安靜、緊湊、可掃描，資訊與操作回饋優先於裝飾。第一 viewport 必須直接識別 `SITCON / 2027` 並顯示可操作的 Board，不使用 marketing hero、gradient、裝飾圖形或永久 sidebar。
 
-The visual language uses neutral surfaces, a restrained green primary action color, a cool blue reference color, and semantic status colors. It supports dark and light modes with equal hierarchy. It does not use gradients, decorative orbs, oversized marketing typography, heavy shadows, or floating page-section cards.
+`packages/ui/src/styles/tokens.css` 是瀏覽器 token 唯一來源。產品 CSS 使用 `--sb-*` semantic roles；共用 primitives 透過 `--pt-*` aliases 使用同一組值。其他 CSS/TSX 不可加入 raw colors。
 
-`packages/ui/src/styles/tokens.css` is the implementation source of truth. Browser surfaces consume semantic `--pt-*` roles and do not invent local palettes.
+## Visual Roles
 
-## Token Roles
+- 中性 page、lane、surface 與 control 建立工作層級。
+- 綠色只用於品牌、主要動作與成功。
+- 藍色表示 focus 與同步中，黃色表示提醒/review，紅色表示失敗或逾期。
+- 卡片只有細邊框與低陰影，lane 是 Board 結構而不是裝飾卡片。
+- 圓角不超過 8px；圓形只用於 avatar、count 與 radio。
+- 字體不隨 viewport 連續縮放，letter spacing 固定為 0。
 
-Tokens cover these roles in both themes:
+## Product Layout
 
-- Background: page, subtle, surface, raised, inset, overlay.
-- Text: primary, muted, subtle, disabled, on-accent.
-- Border: default, strong, control, selected.
-- Action: primary, primary-hover, secondary, secondary-hover, destructive.
-- State: success, warning, critical, info and their muted surfaces.
-- Interaction: focus outline, selection, disabled opacity, transition duration.
-- Shape and space: control heights, spacing scale, radii no larger than 8px.
-- Typography: sans, display, and mono families with explicit weights and line heights.
+Header 高度固定，包含產品識別、成員 Sheet、固定寬度 sync state 與帳號選單。快速開卡在桌面為單列，手機為 title 加控制列。Board lanes 保持穩定最小寬度，窄螢幕水平捲動，不壓縮到文字與控制重疊。
 
-Raw colors are allowed only in the token source, browser metadata, static assets, test fixtures, or vendor/canvas bridges that cannot consume CSS variables. Every exception is path-specific and documented in `scripts/check-frontend-style.mjs`.
+完整成員目錄只出現在右側 Drawer；桌面為窄 Sheet、手機可佔全寬。不建立永久 sidebar，也不在主 Board 重複完整名單。
 
-## Layout
+## Interaction
 
-Application screens use a stable product shell with predictable navigation and dense, scannable content. Page sections are unframed bands. Cards are reserved for repeated entities, modals, and genuinely framed tools; cards do not contain decorative nested cards.
+- Production initial render 使用 injected bootstrap，不顯示 loading page、skeleton、spinner 或空 Board。
+- 背景刷新不替換成 loading state，不改變 layout；Header 的 sync 區域保留固定寬度。
+- 開卡與卡片 mutation 立即 optimistic update。失敗保留使用者意圖並顯示 Retry。
+- 拖放是滑鼠捷徑；每張卡片的狀態 select 提供完整鍵盤操作。
+- Assignee picker 順序為目前使用者、目前組別、其他組別、未分組；搜尋涵蓋所有 active project members。
+- Avatar 固定尺寸，initials 立即顯示；成功載入的圖片原地淡入，失敗不顯示破圖。
+- Dialog/Drawer trap focus、Escape 關閉並還原 trigger focus。所有 icon-only controls 有 accessible name 與 tooltip。
 
-Tables, boards, toolbars, counters, and fixed-format controls declare stable dimensions with grid tracks, aspect ratio, or min/max constraints. Dynamic labels, loading indicators, and hover states must not shift adjacent layout.
+## Responsive Review
 
-Text never overlaps controls or adjacent content. Long names, email addresses, and task titles wrap or truncate with an accessible full-value affordance. Font sizes do not scale continuously with viewport width; responsive breakpoints select deliberate sizes.
+必要檢查寬度為 320、608、928、1440 pixels。每個寬度都要確認：
 
-Reference widths are 320, 608, 928, and 1440 pixels. Mobile navigation remains task-complete. Do not hide required commands simply to make a narrow screenshot clean.
-
-## Components
-
-Shared primitives include Button, IconButton, Field, Dialog, Drawer, DataTable, EmptyState, Tabs, Toast, Panel, PageShell, and Spinner. Build complex behavior on established headless primitives.
-
-Use icons for familiar tools and compact commands. Icon-only controls require an accessible name, and unfamiliar icons require a tooltip. Use segmented controls for small mutually exclusive modes, toggles or checkboxes for binary settings, and menus for larger option sets.
-
-Feature workflows stay in the web feature that owns them. A `TaskEditor` or `WorkspaceMemberTable` is not a shared UI primitive.
-
-## Interaction And Accessibility
-
-- Every control works by keyboard and has visible `:focus-visible` treatment.
-- Dialogs and drawers trap focus, close by documented escape behavior, and restore focus to their trigger.
-- Form labels, descriptions, validation messages, and errors are programmatically related.
-- Color never carries status alone.
-- Motion honors `prefers-reduced-motion` and remains short and functional.
-- Serious and critical axe violations block CI.
-- Loading, empty, error, forbidden, disabled, destructive-confirmation, and success states are designed with the primary state.
-
-## Reference Slice
-
-The workspace and task screens prove the system. They include role-aware commands, list and detail views, create/edit/delete flows, filters in the URL, optimistic or explicit cache reconciliation, long-content behavior, and responsive navigation. Storybook documents every public primitive independently from those workflows.
-
-## Review Checklist
-
-1. The UI uses semantic tokens and both themes retain hierarchy.
-2. Keyboard focus, accessible names, dialogs, and form errors work.
-3. Loading, empty, error, forbidden, and destructive states are complete.
-4. Layout remains stable at all reference widths and with long content.
-5. Shared primitives are domain-neutral and have behavior-focused stories/tests.
-6. No gradient, decorative blob, nested-card composition, or raw local palette was added.
+1. Header 與 quick-create controls 不重疊。
+2. Title、姓名與錯誤訊息不超出容器。
+3. Board 可水平捲動且每個 lane/card 維持可讀。
+4. 成員 Drawer、Assignee dialog 與 account menu 可完整操作。
+5. Focus outline 可見，color 不是狀態的唯一訊號。

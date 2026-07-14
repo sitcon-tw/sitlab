@@ -10,7 +10,7 @@ order: 50
 The Dockerfile builds Go binaries and the web app in separate stages. The runtime image contains only the controller, migration binary, SQL migrations, and static web assets. It runs as an unprivileged user.
 
 ```bash
-docker build -f deployments/docker/Dockerfile -t project-template:local .
+docker build -f deployments/docker/Dockerfile -t sitcon-board:local .
 ```
 
 ## Compose startup order
@@ -22,7 +22,7 @@ cp deployments/docker/example.env deployments/docker/.env
 docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build
 ```
 
-The app is available on `http://localhost:3000`. `/api/v1/healthz` is the container health check.
+The app is available on `http://localhost:3000`. `/api/v1/health/ready` is the container health check and stays unavailable until directory, member, and board snapshots exist.
 
 ## Observability profile
 

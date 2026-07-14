@@ -316,7 +316,7 @@ function QuickCreate({
 	return (
 		<form className={styles.quickCreate} onSubmit={submit}>
 			<label className={styles.srOnly} htmlFor="quick-team">
-				組別
+				新卡片組別
 			</label>
 			<select id="quick-team" value={teamKey} onChange={(event) => changeTeam(event.target.value)}>
 				{teams.map((team) => (
@@ -340,7 +340,7 @@ function QuickCreate({
 			<label className={styles.dateControl} title="新卡片期限">
 				<CalendarDays size="0.9375rem" aria-hidden="true" />
 				<span className={styles.srOnly}>期限</span>
-				<input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
+				<input type="date" value={dueDate} aria-label="新卡片期限" onChange={(event) => setDueDate(event.target.value)} />
 			</label>
 			<button type="submit" className={styles.createButton} disabled={!title.trim()} aria-label="建立卡片" title="建立卡片">
 				<Plus size="1.125rem" aria-hidden="true" />
