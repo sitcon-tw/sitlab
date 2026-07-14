@@ -65,9 +65,11 @@ COPY --chmod=0555 --from=server-build /out/controller /app/controller
 COPY --chmod=0555 --from=server-build /out/migrate /app/migrate
 COPY --from=server-build /src/server/db/migrations /app/db/migrations
 COPY --from=web-build /src/web/dist /app/web
+COPY --chmod=0444 .sitcon/board-directory.yml /app/board-directory.yml
 COPY LICENSE /app/LICENSE
 
 ENV SITCON_BOARD_HTTP_ADDR=:8080 \
+	SITCON_BOARD_DIRECTORY_FILE=/app/board-directory.yml \
 	SITCON_BOARD_WEB_DIR=/app/web
 
 USER 10001:10001

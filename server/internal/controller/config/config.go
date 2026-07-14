@@ -11,12 +11,11 @@ import (
 )
 
 const (
-	prefix            = "SITCON_BOARD_"
-	ProjectPath       = "sitcon-tw/2027"
-	GitHubOwner       = "sitcon-tw"
-	GitHubRepository  = "sitlab"
-	DirectoryFilePath = ".sitcon/board-directory.yml"
-	SessionTTL        = 14 * 24 * time.Hour
+	prefix             = "SITCON_BOARD_"
+	ProjectPath        = "sitcon-tw/2027"
+	DirectoryFilePath  = ".sitcon/board-directory.yml"
+	LocalDirectoryPath = "../" + DirectoryFilePath
+	SessionTTL         = 14 * 24 * time.Hour
 )
 
 type Config struct {
@@ -29,7 +28,7 @@ type Config struct {
 	HTTP            HTTP
 	Session         Session
 	GitLab          GitLab
-	GitHub          GitHub
+	Directory       Directory
 	Sync            Sync
 	Observability   Observability
 }
@@ -58,10 +57,8 @@ type GitLab struct {
 	ProjectAccessToken string
 }
 
-type GitHub struct {
-	APIURL string
-	Ref    string
-	Token  string
+type Directory struct {
+	FilePath string
 }
 
 type Sync struct {
@@ -106,10 +103,7 @@ func Load() (Config, error) {
 			OAuthRedirectURL:   value("GITLAB_OAUTH_REDIRECT_URL", "http://localhost:8080/api/v1/auth/gitlab/callback"),
 			ProjectAccessToken: value("GITLAB_PROJECT_ACCESS_TOKEN", ""),
 		},
-		GitHub: GitHub{
-			APIURL: value("GITHUB_API_URL", "https://api.github.com"),
-			Ref:    value("GITHUB_REF", "main"), Token: value("GITHUB_TOKEN", ""),
-		},
+		Directory: Directory{FilePath: value("DIRECTORY_FILE", LocalDirectoryPath)},
 		Sync: Sync{
 			DirectoryInterval: durationValue("DIRECTORY_SYNC_INTERVAL", 5*time.Minute),
 			BoardInterval:     durationValue("BOARD_SYNC_INTERVAL", 30*time.Second),
@@ -153,15 +147,14 @@ func (c Config) Validate() error {
 	for name, raw := range map[string]string{
 		"SITCON_BOARD_GITLAB_BASE_URL":           c.GitLab.BaseURL,
 		"SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL": c.GitLab.OAuthRedirectURL,
-		"SITCON_BOARD_GITHUB_API_URL":            c.GitHub.APIURL,
 	} {
 		parsed, err := url.Parse(raw)
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 			return fmt.Errorf("%s is invalid", name)
 		}
 	}
-	if strings.TrimSpace(c.GitHub.Ref) == "" {
-		return errors.New("SITCON_BOARD_GITHUB_REF is required")
+	if strings.TrimSpace(c.Directory.FilePath) == "" {
+		return errors.New("SITCON_BOARD_DIRECTORY_FILE is required")
 	}
 	for _, raw := range c.HTTP.AllowedOrigins {
 		origin, err := url.Parse(raw)
@@ -175,9 +168,6 @@ func (c Config) Validate() error {
 		}
 		if c.GitLab.ClientID == "" || c.GitLab.ClientSecret == "" || c.GitLab.ProjectAccessToken == "" {
 			return errors.New("GitLab OAuth and project access credentials are required in production")
-		}
-		if strings.TrimSpace(c.GitHub.Token) == "" {
-			return errors.New("GitHub directory token is required in production")
 		}
 		if c.Session.HashKey == "local-development-session-hash-key-change-me" || c.Session.CipherKey == "local-development-oauth-cipher-key-change-me" {
 			return errors.New("development security keys must be changed in production")

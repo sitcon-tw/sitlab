@@ -20,10 +20,10 @@ SITCON 2027 籌備工作的 GitLab-backed 看板。登入、選擇主要組別�
 ## 架構
 
 ```text
-GitHub board-directory.yml + GitLab members + issues
-                             |
-                       background sync
-                             v
+Bundled board-directory.yml + GitLab members + issues
+                              |
+                        background sync
+                              v
                   PostgreSQL snapshots
                           |
              injected bootstrap + REST API
@@ -48,7 +48,7 @@ Backend dependency direction 與 durable operation 細節見 [ARCHITECTURE.md](.
 ```bash
 pnpm install
 cp server/.env.example .env
-# 設定 SITCON_BOARD_DATABASE_URL、GitLab credentials 與 GitHub directory token
+# 設定 SITCON_BOARD_DATABASE_URL 與 GitLab credentials
 just backend-migrate-up
 ```
 
@@ -76,7 +76,7 @@ Demo fixture 只會在這個 flag 為 `true` 時動態載入，不是 production
 
 ```bash
 cp deployments/docker/example.env deployments/docker/.env
-# 替換所有 change-me 並填入 GitLab OAuth、project access 與 GitHub directory credentials
+# 替換所有 change-me 並填入 GitLab OAuth / project access credentials
 docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build
 ```
 

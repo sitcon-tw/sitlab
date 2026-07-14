@@ -17,7 +17,7 @@ order: 10
 
 Create an OAuth application whose redirect URI exactly matches `SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL`. Provide a project access token able to read members, labels and issues in `sitcon-tw/2027`, plus the issue permissions needed by the operation worker.
 
-The directory file must exist at `sitcon-tw/sitlab/.sitcon/board-directory.yml` on `SITCON_BOARD_GITHUB_REF` before production readiness can pass. Set `SITCON_BOARD_GITHUB_TOKEN` to a fine-grained token limited to this repository with Contents read permission.
+The directory file must exist at `.sitcon/board-directory.yml`. The Docker build copies it into the image; changing it requires a new build and deployment, not a GitHub API token.
 
 ## Run from source
 

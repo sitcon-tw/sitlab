@@ -29,14 +29,7 @@ Create a project access token in `sitcon-tw/2027`:
 
 Store the token as `SITCON_BOARD_GITLAB_PROJECT_ACCESS_TOKEN`. The application uses it to read project members, labels and issues, and to reconcile issue mutations.
 
-The team directory is read from `sitcon-tw/sitlab/.sitcon/board-directory.yml` on `SITCON_BOARD_GITHUB_REF` (default `main`). Create a GitHub fine-grained personal access token:
-
-- Resource owner: `sitcon-tw`
-- Repository access: only `sitlab`
-- Repository permission: `Contents` set to `Read-only`
-- Expiration: set an operationally appropriate expiry and calendar its rotation
-
-Store it as `SITCON_BOARD_GITHUB_TOKEN`. Dokploy's Git provider credential only clones the source and is not automatically available inside the running container. The application intentionally stays unready when the directory, member, or board snapshot cannot be initialized.
+The team directory lives at `.sitcon/board-directory.yml` in this repository. The Docker build copies it into the application image, so no GitHub API token is needed. Push and redeploy after changing the file. The application intentionally stays unready when the directory, member, or board snapshot cannot be initialized.
 
 ## 3. Generate secrets
 
@@ -83,7 +76,7 @@ After the certificate is active, confirm that the OAuth application still has th
 The expected service sequence is:
 
 ```text
-postgres healthy -> migrate exits 0 -> app initializes GitHub/GitLab snapshots -> app healthy
+postgres healthy -> migrate exits 0 -> app initializes directory/GitLab snapshots -> app healthy
 ```
 
 Check these URLs:
@@ -105,7 +98,7 @@ Back up the `sitcon-board-postgres` volume or configure Dokploy database backups
 ## Troubleshooting
 
 - `production session cookie must be Secure`: confirm `SITCON_BOARD_ENV=production` and use this Dokploy Compose file, which forces `SITCON_BOARD_SESSION_COOKIE_SECURE=true`.
-- `initial source sync` with a GitHub error: verify `.sitcon/board-directory.yml`, `SITCON_BOARD_GITHUB_REF`, and the optional GitHub token.
+- `initial source sync` with a directory file error: verify the image was rebuilt from a revision containing `.sitcon/board-directory.yml`.
 - `initial source sync` with a GitLab error: verify the project access token and its role/scope in `sitcon-tw/2027`.
 - OAuth callback error: compare the GitLab Redirect URI and the generated `${SITCON_BOARD_PUBLIC_URL}/api/v1/auth/gitlab/callback` character for character.
 - CSRF origin error: `SITCON_BOARD_PUBLIC_URL` must be the browser's exact HTTPS origin and must not include a path.
