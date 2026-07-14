@@ -84,6 +84,10 @@ docker compose --env-file deployments/docker/.env -f deployments/docker/compose.
 
 Production 必須使用 HTTPS、`SITCON_BOARD_SESSION_COOKIE_SECURE=true`、`__Host-` session cookie、至少 32 字元且互不重用的 session hash/OAuth cipher keys，以及明確的 `SITCON_BOARD_CSRF_ALLOWED_ORIGINS`。
 
+## Dokploy
+
+Dokploy 使用專用的 `deployments/dokploy/compose.yaml`，不發布 host port，並將 `app:8080` 接到平台的 proxy network。完整的 DNS、GitLab OAuth、project token、環境變數、domain 與更新步驟請依照 [Dokploy deployment runbook](./deployments/dokploy/README.md)。
+
 ## 常用命令
 
 | Command                         | Purpose                                                 |
@@ -99,14 +103,15 @@ Production 必須使用 HTTPS、`SITCON_BOARD_SESSION_COOKIE_SECURE=true`、`__H
 
 ## Repository Map
 
-| Path                  | Ownership                                                                 |
-| --------------------- | ------------------------------------------------------------------------- |
-| `api/`                | SITCON Board TypeSpec contract                                            |
-| `server/`             | Domain、application use cases、GitLab/PostgreSQL adapters、HTTP transport |
-| `web/`                | Login、onboarding、Board state 與 browser interactions                    |
-| `packages/ui/`        | Domain-neutral primitives 與 SITCON browser tokens                        |
-| `docs/`               | 操作文件、generated OpenAPI 與 API explorer                               |
-| `deployments/docker/` | Container image、Compose、migrations 與 observability overlay             |
+| Path                   | Ownership                                                                 |
+| ---------------------- | ------------------------------------------------------------------------- |
+| `api/`                 | SITCON Board TypeSpec contract                                            |
+| `server/`              | Domain、application use cases、GitLab/PostgreSQL adapters、HTTP transport |
+| `web/`                 | Login、onboarding、Board state 與 browser interactions                    |
+| `packages/ui/`         | Domain-neutral primitives 與 SITCON browser tokens                        |
+| `docs/`                | 操作文件、generated OpenAPI 與 API explorer                               |
+| `deployments/docker/`  | Container image、Compose、migrations 與 observability overlay             |
+| `deployments/dokploy/` | Dokploy production Compose、environment template 與部署手冊               |
 
 ## Credits
 

@@ -24,6 +24,18 @@ docker compose --env-file deployments/docker/.env -f deployments/docker/compose.
 
 The app is available on `http://localhost:3000`. `/api/v1/health/ready` is the container health check and stays unavailable until directory, member, and board snapshots exist.
 
+## Dokploy
+
+The production Compose definition is `deployments/dokploy/compose.yaml`. It differs from the localhost stack in several important ways:
+
+- `SITCON_BOARD_ENV=production` and Secure cookies are mandatory.
+- The browser origin and OAuth callback are derived from the required `SITCON_BOARD_PUBLIC_URL`.
+- Only `app:8080` joins Dokploy's external proxy network; PostgreSQL remains on an isolated internal network.
+- The application filesystem is read-only, Linux capabilities are dropped, and a small `/tmp` tmpfs is provided.
+- PostgreSQL data uses a named volume, and migrations must exit successfully before the app starts.
+
+Follow the complete [Dokploy runbook](https://github.com/sitcon-tw/sitlab/blob/main/deployments/dokploy/README.md) for DNS, GitLab OAuth, project-token permissions, environment variables, domain routing, verification, updates, and backups.
+
 ## Observability profile
 
 The optional compose file sends OTLP traces through an OpenTelemetry Collector to Tempo, scrapes application metrics directly with Prometheus, and exposes both through Grafana. The application must still start when no trace collector is configured; export is an adapter, not a domain dependency.
