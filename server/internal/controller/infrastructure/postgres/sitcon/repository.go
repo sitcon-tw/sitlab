@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	appboard "example.com/project-template/internal/controller/application/board"
+	appbootstrap "example.com/project-template/internal/controller/application/bootstrap"
 	appdirectory "example.com/project-template/internal/controller/application/directory"
 	"example.com/project-template/internal/controller/infrastructure/postgres"
 	domainboard "example.com/project-template/internal/domain/board"
@@ -25,6 +26,51 @@ type Repository struct {
 }
 
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
+
+func (r *Repository) Status(ctx context.Context) (appbootstrap.SyncStatus, error) {
+	var status appbootstrap.SyncStatus
+	var hasError bool
+	var message *string
+	err := postgres.Executor(ctx, r.pool).QueryRow(ctx, `
+		SELECT MIN(last_success_at), BOOL_OR(last_error IS NOT NULL),
+		       NULLIF(string_agg(last_error, '; ' ORDER BY resource)
+		           FILTER (WHERE last_error IS NOT NULL), '')
+		FROM sync_snapshots
+		HAVING COUNT(*) = 3
+	`).Scan(&status.LastSuccessAt, &hasError, &message)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return appbootstrap.SyncStatus{}, domainboard.ErrSnapshotNotFound
+	}
+	if err != nil {
+		return appbootstrap.SyncStatus{}, fmt.Errorf("load sync status: %w", err)
+	}
+	status.State = "synced"
+	if hasError {
+		status.State = "offline"
+	}
+	if message != nil {
+		status.Message = *message
+	}
+	return status, nil
+}
+
+func (r *Repository) ReadySnapshots(ctx context.Context) error {
+	var ready bool
+	err := postgres.Executor(ctx, r.pool).QueryRow(ctx, `
+		SELECT
+			(SELECT COUNT(*) = 3 FROM sync_snapshots) AND
+			EXISTS (SELECT 1 FROM directory_teams WHERE active) AND
+			EXISTS (SELECT 1 FROM directory_members WHERE state = 'active') AND
+			EXISTS (SELECT 1 FROM board_lists)
+	`).Scan(&ready)
+	if err != nil {
+		return fmt.Errorf("check snapshot readiness: %w", err)
+	}
+	if !ready {
+		return domainboard.ErrSnapshotNotFound
+	}
+	return nil
+}
 
 func (r *Repository) Snapshot(ctx context.Context) (domaindirectory.Snapshot, error) {
 	db := postgres.Executor(ctx, r.pool)
