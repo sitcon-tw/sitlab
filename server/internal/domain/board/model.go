@@ -28,6 +28,9 @@ var (
 	ErrMemberNotAssignable = errors.New("member is not assignable")
 	ErrListNotFound        = errors.New("board list not found")
 	ErrInvalidTitle        = errors.New("invalid card title")
+	ErrSnapshotNotFound    = errors.New("board snapshot not found")
+	ErrOperationNotFound   = errors.New("operation not found")
+	ErrOperationConflict   = errors.New("operation id is already used")
 )
 
 type List struct {
