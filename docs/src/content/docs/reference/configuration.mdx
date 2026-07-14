@@ -27,7 +27,7 @@ Configuration uses the `SITCON_BOARD_` prefix and is validated before the HTTP s
 | `SITCON_BOARD_GITLAB_PROJECT_ACCESS_TOKEN` | Production       | Reads project members and issues; writes reconciled issues.                 |
 | `SITCON_BOARD_GITHUB_API_URL`              | No               | GitHub API origin; default `https://api.github.com`.                        |
 | `SITCON_BOARD_GITHUB_REF`                  | No               | GitHub directory ref; default `main`.                                       |
-| `SITCON_BOARD_GITHUB_TOKEN`                | Private repo     | Fine-grained token with repository Contents read permission.                |
+| `SITCON_BOARD_GITHUB_TOKEN`                | Production       | Fine-grained token with repository Contents read permission.                |
 | `SITCON_BOARD_DIRECTORY_SYNC_INTERVAL`     | No               | Member and directory refresh; default `5m`.                                 |
 | `SITCON_BOARD_BOARD_SYNC_INTERVAL`         | No               | Board refresh; default `30s`.                                               |
 | `SITCON_BOARD_OPERATION_POLL_INTERVAL`     | No               | Durable worker poll; default `500ms`.                                       |
@@ -35,7 +35,7 @@ Configuration uses the `SITCON_BOARD_` prefix and is validated before the HTTP s
 | `SITCON_BOARD_SHUTDOWN_TIMEOUT`            | No               | Graceful shutdown budget; default `10s`.                                    |
 | `SITCON_BOARD_OTEL_TRACES_ENDPOINT`        | No               | OTLP HTTP endpoint; empty disables export.                                  |
 
-The GitLab project is deliberately fixed to `sitcon-tw/2027`. The GitHub directory is fixed to `sitcon-tw/sitlab/.sitcon/board-directory.yml`; only its ref is configurable. Neither source is browser input. No GitHub token is needed while the repository is public.
+The GitLab project is deliberately fixed to `sitcon-tw/2027`. The GitHub directory is fixed to `sitcon-tw/sitlab/.sitcon/board-directory.yml`; only its ref is configurable. Neither source is browser input. The GitHub token needs only Contents read permission for this repository.
 
 ## Session invariant
 

@@ -176,6 +176,9 @@ func (c Config) Validate() error {
 		if c.GitLab.ClientID == "" || c.GitLab.ClientSecret == "" || c.GitLab.ProjectAccessToken == "" {
 			return errors.New("GitLab OAuth and project access credentials are required in production")
 		}
+		if strings.TrimSpace(c.GitHub.Token) == "" {
+			return errors.New("GitHub directory token is required in production")
+		}
 		if c.Session.HashKey == "local-development-session-hash-key-change-me" || c.Session.CipherKey == "local-development-oauth-cipher-key-change-me" {
 			return errors.New("development security keys must be changed in production")
 		}

@@ -48,7 +48,7 @@ Backend dependency direction 與 durable operation 細節見 [ARCHITECTURE.md](.
 ```bash
 pnpm install
 cp server/.env.example .env
-# 設定 SITCON_BOARD_DATABASE_URL 與 GitLab credentials
+# 設定 SITCON_BOARD_DATABASE_URL、GitLab credentials 與 GitHub directory token
 just backend-migrate-up
 ```
 
@@ -76,7 +76,7 @@ Demo fixture 只會在這個 flag 為 `true` 時動態載入，不是 production
 
 ```bash
 cp deployments/docker/example.env deployments/docker/.env
-# 替換所有 change-me 並填入 GitLab OAuth / project access credentials
+# 替換所有 change-me 並填入 GitLab OAuth、project access 與 GitHub directory credentials
 docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build
 ```
 

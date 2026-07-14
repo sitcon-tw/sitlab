@@ -29,7 +29,14 @@ Create a project access token in `sitcon-tw/2027`:
 
 Store the token as `SITCON_BOARD_GITLAB_PROJECT_ACCESS_TOKEN`. The application uses it to read project members, labels and issues, and to reconcile issue mutations.
 
-The team directory is read from `sitcon-tw/sitlab/.sitcon/board-directory.yml` on `SITCON_BOARD_GITHUB_REF` (default `main`). This public repository does not require `SITCON_BOARD_GITHUB_TOKEN`; if it becomes private, create a fine-grained GitHub token limited to this repository with Contents read permission and set that variable. The application intentionally stays unready when the directory, member, or board snapshot cannot be initialized.
+The team directory is read from `sitcon-tw/sitlab/.sitcon/board-directory.yml` on `SITCON_BOARD_GITHUB_REF` (default `main`). Create a GitHub fine-grained personal access token:
+
+- Resource owner: `sitcon-tw`
+- Repository access: only `sitlab`
+- Repository permission: `Contents` set to `Read-only`
+- Expiration: set an operationally appropriate expiry and calendar its rotation
+
+Store it as `SITCON_BOARD_GITHUB_TOKEN`. Dokploy's Git provider credential only clones the source and is not automatically available inside the running container. The application intentionally stays unready when the directory, member, or board snapshot cannot be initialized.
 
 ## 3. Generate secrets
 
