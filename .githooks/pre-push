@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+if base="$(git merge-base HEAD origin/main 2>/dev/null)"; then
+	:
+elif base="$(git rev-parse --verify HEAD~1 2>/dev/null)"; then
+	:
+else
+	base="$(git hash-object -t tree /dev/null)"
+fi
+mapfile -d '' changed < <(git diff --name-only -z "$base" HEAD)
+
+contract_changed=false
+backend_changed=false
+frontend_changed=false
+
+for file in "${changed[@]}"; do
+	case "$file" in
+		api/* | docs/public/openapi.json | server/internal/controller/transport/http/openapi/* | web/src/shared/api/openapi.d.ts) contract_changed=true ;;
+	esac
+	case "$file" in
+		server/* | golangci.yaml) backend_changed=true ;;
+	esac
+	case "$file" in
+		web/* | packages/ui/* | package.json | pnpm-lock.yaml | pnpm-workspace.yaml) frontend_changed=true ;;
+	esac
+done
+
+if [[ "$contract_changed" == true ]]; then
+	pnpm generated:check
+fi
+
+if [[ "$backend_changed" == true ]]; then
+	(cd server && go test ./...)
+fi
+
+if [[ "$frontend_changed" == true ]]; then
+	pnpm --filter @project-template/web typecheck
+	pnpm --filter @project-template/ui typecheck
+fi

@@ -1,0 +1,61 @@
+---
+import "@project-template/ui/styles";
+import "../styles/global.css";
+import { withBase } from "./paths";
+
+interface Props {
+	title: string;
+	description: string;
+	canonicalPath?: string;
+}
+
+const { title, description, canonicalPath } = Astro.props;
+const canonicalPathname = canonicalPath ? withBase(canonicalPath as `/${string}`) : Astro.url.pathname;
+const canonical = new URL(canonicalPathname, Astro.site);
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width" />
+		<meta name="generator" content={Astro.generator} />
+		<meta name="description" content={description} />
+		<meta name="theme-color" content="#111315" />
+		<link rel="canonical" href={canonical} />
+		<title>{title}</title>
+		<script is:inline>
+			(() => {
+				const stored = localStorage.getItem("project-template:docs-theme");
+				const preferred = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+				document.documentElement.dataset.theme = stored === "light" || stored === "dark" ? stored : preferred;
+			})();
+		</script>
+	</head>
+	<body>
+		<a class="skipLink" href="#content">Skip to content</a>
+		<header class="topbar">
+			<a class="brand" href={withBase("/")} aria-label="Project Template documentation home">
+				<span class="brandMark" aria-hidden="true">PT</span>
+				<span>Project Template</span>
+			</a>
+			<nav aria-label="Primary">
+				<a href={withBase("/docs/")}>Docs</a>
+				<a href={withBase("/openapi/")}>API</a>
+				<a href={withBase("/storybook/")}>UI</a>
+			</nav>
+			<button class="themeToggle" type="button" aria-label="Toggle color theme" title="Toggle color theme">
+				<span aria-hidden="true">◐</span>
+			</button>
+		</header>
+		<slot />
+		<script is:inline>
+			const toggle = document.querySelector(".themeToggle");
+			toggle?.addEventListener("click", () => {
+				const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+				document.documentElement.dataset.theme = next;
+				localStorage.setItem("project-template:docs-theme", next);
+			});
+		</script>
+	</body>
+</html>

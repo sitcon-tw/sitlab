@@ -1,0 +1,12 @@
+#root {
+	min-height: 100vh;
+	min-height: 100svh;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+	-webkit-tap-highlight-color: transparent;
+}

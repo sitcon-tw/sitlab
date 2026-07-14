@@ -1,0 +1,11 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import { withBase } from "./paths";
+
+interface Props extends HTMLAttributes<"a"> {}
+
+const { href, ...attributes } = Astro.props;
+const resolvedHref = typeof href === "string" && href.startsWith("/") && !href.startsWith("//") ? withBase(href as `/${string}`) : href;
+---
+
+<a {...attributes} href={resolvedHref}><slot /></a>

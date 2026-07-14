@@ -1,0 +1,9 @@
+**/node_modules/**
+**/dist/**
+**/.astro/**
+**/storybook-static/**
+**/playwright-report/**
+**/test-results/**
+docs/public/storybook/**
+server/**
+pnpm-lock.yaml

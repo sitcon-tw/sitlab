@@ -1,0 +1,39 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { withBase } from "../layouts/paths";
+---
+
+<BaseLayout
+	title="Project Template Documentation"
+	description="Architecture, development, deployment, and API reference for Project Template."
+	canonicalPath="/"
+>
+	<main id="content" class="overview">
+		<header class="overviewHeader">
+			<p class="eyebrow">Production full-stack baseline</p>
+			<h1>Project Template</h1>
+			<p>A modular Go service, contract-first API, React client, and shared design system with the quality gates already connected.</p>
+			<div class="overviewActions">
+				<a class="primaryAction" href={withBase("/docs/guides/getting-started/")}>Get started</a>
+				<a class="secondaryAction" href={withBase("/docs/reference/architecture/")}>Architecture</a>
+			</div>
+		</header>
+		<section class="overviewGrid" aria-label="Documentation areas">
+			<a href={withBase("/openapi/")}>
+				<span>01 / Contract</span>
+				<strong>API explorer</strong>
+				<p>Inspect the OpenAPI 3.1 artifact emitted from TypeSpec.</p>
+			</a>
+			<a href={withBase("/docs/reference/ui-system/")}>
+				<span>02 / Interface</span>
+				<strong>UI system</strong>
+				<p>Use semantic tokens and accessible shared primitives.</p>
+			</a>
+			<a href={withBase("/docs/reference/deployment/")}>
+				<span>03 / Operations</span>
+				<strong>Deployment</strong>
+				<p>Run migrations, application, and observability services.</p>
+			</a>
+		</section>
+	</main>
+</BaseLayout>

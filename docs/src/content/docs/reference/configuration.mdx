@@ -1,0 +1,37 @@
+---
+title: Configuration
+description: Runtime environment variables, secret requirements, and secure production defaults.
+section: Reference
+order: 40
+---
+
+Configuration is loaded at startup and validated before the HTTP server begins accepting requests.
+
+## Core variables
+
+| Variable                                 | Required   | Purpose                                                                                                           |
+| ---------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------- |
+| `PROJECT_TEMPLATE_ENV`                   | No         | `local`, `test`, or `production`; defaults to `local`.                                                            |
+| `PROJECT_TEMPLATE_SERVICE_NAME`          | No         | Service identity attached to telemetry; defaults to `project-template-controller`.                                |
+| `PROJECT_TEMPLATE_VERSION`               | No         | Release identifier attached to logs, metrics, and traces.                                                         |
+| `PROJECT_TEMPLATE_HTTP_ADDR`             | No         | Listen address; defaults to `:8080`.                                                                              |
+| `PROJECT_TEMPLATE_DATABASE_URL`          | Production | PostgreSQL connection URL; local fallback is `postgres://project:project@localhost:5432/project?sslmode=disable`. |
+| `PROJECT_TEMPLATE_LOG_LEVEL`             | No         | Structured log threshold; defaults to `info`.                                                                     |
+| `PROJECT_TEMPLATE_SESSION_HASH_KEY`      | Production | Secret used to hash opaque session tokens; at least 32 random bytes in production.                                |
+| `PROJECT_TEMPLATE_SESSION_COOKIE_NAME`   | No         | Session cookie name; local Compose defaults to `project_template_session`.                                        |
+| `PROJECT_TEMPLATE_SESSION_COOKIE_SECURE` | No         | Must be `true` behind production HTTPS.                                                                           |
+| `PROJECT_TEMPLATE_SESSION_IDLE_TTL`      | No         | Sliding idle lifetime; defaults to `12h`.                                                                         |
+| `PROJECT_TEMPLATE_SESSION_ABSOLUTE_TTL`  | No         | Maximum session lifetime; defaults to `168h`.                                                                     |
+| `PROJECT_TEMPLATE_CSRF_ALLOWED_ORIGINS`  | Production | Comma-separated browser origins accepted for authenticated mutations.                                             |
+| `PROJECT_TEMPLATE_REQUEST_TIMEOUT`       | No         | End-to-end HTTP request timeout; defaults to `15s`.                                                               |
+| `PROJECT_TEMPLATE_SHUTDOWN_TIMEOUT`      | No         | Graceful shutdown budget; defaults to `10s`.                                                                      |
+| `PROJECT_TEMPLATE_OTEL_TRACES_ENDPOINT`  | No         | OTLP HTTP endpoint; trace export is disabled when empty.                                                          |
+| `PROJECT_TEMPLATE_WEB_DIR`               | No         | Directory of production web assets served by the controller.                                                      |
+
+## Production rules
+
+Generate `PROJECT_TEMPLATE_SESSION_HASH_KEY` from at least 32 cryptographically secure random bytes. Never reuse a database password. When using a `__Host-` cookie name, HTTPS, `Secure`, path `/`, and no Domain attribute are mandatory.
+
+When `PROJECT_TEMPLATE_ENV=production`, the controller refuses to start unless `PROJECT_TEMPLATE_DATABASE_URL` and `PROJECT_TEMPLATE_CSRF_ALLOWED_ORIGINS` are both explicitly set to non-empty values. The migration command applies the same explicit database URL requirement. Local and test environments retain localhost-safe defaults.
+
+The example environment is safe for localhost only. Replace every `change-me` value before exposing an instance.

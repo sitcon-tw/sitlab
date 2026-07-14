@@ -1,0 +1,66 @@
+---
+title: Getting started
+description: Initialize the repository, install tools, migrate PostgreSQL, and run the full stack.
+section: Guides
+order: 10
+---
+
+## Prerequisites
+
+- Go 1.23.5 for source development
+- Node.js 22.12 or newer
+- pnpm 11.11.0
+- PostgreSQL 17 for source development; Compose provides it for the container path
+- `just` 1.40.0 for the canonical cross-language commands
+- `golangci-lint` 2.11.4 for the full formatting and lint gates
+- Docker with Compose for the production-shaped stack
+
+{/* template-source-only:start */}
+
+## Initialize once
+
+Run the initializer before product work. It validates identifiers, changes only its source allowlist, regenerates the API artifacts, and refuses a second successful run. A failed install or validation restores the original source and markers so initialization can be retried.
+
+```bash
+pnpm run template:init -- \
+  --name "Acme Console" \
+  --slug acme-console \
+  --go-module github.com/acme/console \
+  --npm-scope @acme-console \
+  --env-prefix ACME_CONSOLE \
+  --cookie-prefix acme_console
+```
+
+Review the resulting diff. The initialization metadata remains in `.template-initialized.json` so later automation can distinguish an initialized project from the source template.
+
+{/* template-source-only:end */}
+
+## Run the production-shaped stack
+
+```bash
+cp deployments/docker/example.env deployments/docker/.env
+docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build
+```
+
+The app is available at `http://localhost:3000`. Compose starts PostgreSQL, runs migrations to completion, and then starts the application.
+
+## Run services from source
+
+Run PostgreSQL 17 somewhere reachable from the host, then configure its URL:
+
+```bash
+pnpm install
+cp server/.env.example .env
+# Edit PROJECT_TEMPLATE_DATABASE_URL in .env.
+just backend-migrate-up
+```
+
+Use separate terminals for `just backend-dev` and `just web-dev`. The web dev server proxies `/api` to the backend.
+
+## Validate
+
+```bash
+just ci
+```
+
+The command checks formatting, generated drift, TypeSpec, Go, the React app, the UI package, and docs. Integration and browser tests remain separate commands because they require running infrastructure.

@@ -1,0 +1,21 @@
+---
+title: API explorer
+description: Browse the generated OpenAPI contract and understand the contract generation flow.
+section: Guides
+order: 20
+---
+
+The [interactive API explorer](/openapi/) loads `docs/public/openapi.json`. That file is generated from TypeSpec and must exactly match the backend-embedded copy and the source used for web TypeScript declarations.
+
+## Generation flow
+
+```text
+api/**/*.tsp
+  -> docs/public/openapi.json
+  -> server/internal/controller/transport/http/openapi/openapi.json
+  -> web/src/shared/api/openapi.d.ts
+```
+
+Run `pnpm generate` to update the chain. Run `pnpm generated:check` to regenerate in a temporary directory and compare without changing the worktree.
+
+Every endpoint uses stable `operationId` values, camelCase JSON, explicit success wrappers, and status-specific RFC 7807 problem responses.

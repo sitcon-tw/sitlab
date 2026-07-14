@@ -1,0 +1,66 @@
+---
+import type { MarkdownHeading } from "astro";
+import { getNavigation } from "../data/navigation";
+import BaseLayout from "./BaseLayout.astro";
+import { withBase } from "./paths";
+
+interface Props {
+	title: string;
+	description: string;
+	headings?: MarkdownHeading[];
+}
+
+const { title, description, headings = [] } = Astro.props;
+const navigation = await getNavigation();
+const sections = [...new Set(navigation.map((item) => item.section))];
+---
+
+<BaseLayout title={`${title} | Project Template`} description={description}>
+	<div class="docsFrame">
+		<aside class="sidebar" aria-label="Documentation navigation">
+			{
+				sections.map((section) => (
+					<section>
+						<h2>{section}</h2>
+						<ul>
+							{navigation
+								.filter((item) => item.section === section)
+								.map((item) => (
+									<li>
+										<a
+											href={withBase(item.href as `/${string}`)}
+											aria-current={Astro.url.pathname === withBase(item.href as `/${string}`) ? "page" : undefined}
+										>
+											{item.title}
+										</a>
+									</li>
+								))}
+						</ul>
+					</section>
+				))
+			}
+		</aside>
+		<main id="content" class="docContent">
+			<header class="docHeader">
+				<p class="eyebrow">Project Template / Documentation</p>
+				<h1>{title}</h1>
+				<p>{description}</p>
+			</header>
+			<article class="prose"><slot /></article>
+		</main>
+		<aside class="toc" aria-label="On this page">
+			<h2>On this page</h2>
+			<ul>
+				{
+					headings
+						.filter((heading) => heading.depth === 2 || heading.depth === 3)
+						.map((heading) => (
+							<li data-depth={heading.depth}>
+								<a href={`#${heading.slug}`}>{heading.text}</a>
+							</li>
+						))
+				}
+			</ul>
+		</aside>
+	</div>
+</BaseLayout>

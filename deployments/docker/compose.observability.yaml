@@ -1,0 +1,57 @@
+services:
+  app:
+    environment:
+      PROJECT_TEMPLATE_OTEL_TRACES_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.129.1
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on:
+      tempo:
+        condition: service_started
+    ports:
+      - "127.0.0.1:${OTEL_GRPC_PORT:-4317}:4317"
+      - "127.0.0.1:${OTEL_HTTP_PORT:-4318}:4318"
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    command: ["--config.file=/etc/prometheus/prometheus.yaml", "--storage.tsdb.path=/prometheus"]
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - project-template-prometheus:/prometheus
+
+  tempo:
+    image: grafana/tempo:2.8.1
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml:ro
+      - project-template-tempo:/var/tempo
+
+  grafana:
+    image: grafana/grafana:12.0.2
+    restart: unless-stopped
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - project-template-grafana:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
+    depends_on:
+      - prometheus
+      - tempo
+
+volumes:
+  project-template-grafana:
+  project-template-prometheus:
+  project-template-tempo:

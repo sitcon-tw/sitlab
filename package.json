@@ -1,0 +1,44 @@
+{
+	"name": "project-template",
+	"version": "0.0.0",
+	"private": true,
+	"license": "MIT",
+	"type": "module",
+	"scripts": {
+		"build": "just build",
+		"build:api": "pnpm --filter @project-template/api build",
+		"build:docs": "pnpm --filter @project-template/docs build",
+		"build:server": "just backend-build",
+		"build:storybook": "pnpm --filter @project-template/ui build:storybook",
+		"build:ui": "pnpm --filter @project-template/ui build",
+		"build:web": "pnpm --filter @project-template/web build",
+		"check:frontend-style": "node scripts/check-frontend-style.mjs",
+		"check:placeholders": "node scripts/check-placeholders.mjs",
+		"dev:docs": "pnpm --filter @project-template/docs dev",
+		"dev:server": "just backend-dev",
+		"dev:storybook": "pnpm --filter @project-template/ui storybook",
+		"dev:web": "pnpm --filter @project-template/web dev",
+		"format": "prettier --write . && pnpm --filter @project-template/api format:tsp",
+		"format:check": "prettier --check . && pnpm --filter @project-template/api format:check:tsp",
+		"generate": "node scripts/generate-contract.mjs",
+		"generated:check": "node scripts/check-generated.mjs",
+		"preinstall": "npx only-allow pnpm",
+		"lint": "just lint",
+		"prepare": "node scripts/install-hooks.mjs",
+		"template:init": "node scripts/init-template.mjs",
+		"test": "just test",
+		"test:template": "node --test scripts/*.test.mjs",
+		"typecheck": "just typecheck"
+	},
+	"devDependencies": {
+		"openapi-typescript": "^7.10.1",
+		"prettier": "^3.8.4",
+		"prettier-plugin-astro": "^0.14.1",
+		"prettier-plugin-organize-imports": "^4.3.0",
+		"prettier-plugin-packagejson": "^3.0.2"
+	},
+	"packageManager": "pnpm@11.11.0",
+	"engines": {
+		"node": ">=22.12.0"
+	}
+}

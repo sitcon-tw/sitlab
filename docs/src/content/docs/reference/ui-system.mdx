@@ -1,0 +1,24 @@
+---
+title: UI system
+description: Semantic tokens, primitive ownership, accessibility, and responsive interface rules.
+section: Reference
+order: 60
+---
+
+The shared package owns reusable primitives and semantic design tokens. Feature workflows remain in `web/src/features`.
+
+## Token contract
+
+Use semantic roles for surface, text, border, focus, action, and state. Raw color literals belong only in the token source, browser metadata, or a documented platform bridge. Both dark and light themes must preserve the same hierarchy and semantic meaning.
+
+## Interaction contract
+
+- Use `:focus-visible` for keyboard focus.
+- Dialogs and drawers trap focus and return it to the trigger.
+- Icon-only controls have accessible names and tooltips when the symbol is not universal.
+- Loading, empty, error, forbidden, and success states are part of a feature, not deferred polish.
+- Controls keep stable dimensions so dynamic labels and counters do not shift the surrounding layout.
+
+## Verification
+
+Each public primitive has a Storybook story. Interactive components include keyboard and focus tests. Browser tests cover 320, 608, 928, and 1440 pixel viewports and reject incoherent overlap or long-text overflow.

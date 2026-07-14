@@ -1,0 +1,9 @@
+.form {
+	display: grid;
+	gap: var(--pt-space-4);
+}
+.formError {
+	margin: 0;
+	color: var(--pt-danger);
+	font-size: 0.875rem;
+}

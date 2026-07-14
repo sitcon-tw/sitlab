@@ -1,0 +1,32 @@
+.storybook-surface {
+	min-height: 20rem;
+	padding: var(--pt-space-6);
+	color: var(--pt-text);
+	background: var(--pt-background);
+}
+
+.storybook-stack {
+	display: grid;
+	gap: var(--pt-space-4);
+	max-width: 48rem;
+}
+
+.storybook-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--pt-space-3);
+}
+
+.storybook-swatches {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+	gap: var(--pt-space-3);
+}
+
+.storybook-swatch {
+	min-height: 6rem;
+	padding: var(--pt-space-3);
+	border: 1px solid var(--pt-border);
+	border-radius: var(--pt-radius-sm);
+}

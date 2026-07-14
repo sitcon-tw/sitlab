@@ -1,0 +1,25 @@
+{
+	"name": "@project-template/docs",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"astro": "astro",
+		"build": "pnpm -C .. --filter @project-template/ui build && pnpm -C .. --filter @project-template/ui build:storybook -o ../../docs/public/storybook && astro build",
+		"build:site": "astro build",
+		"check": "astro check",
+		"predev": "pnpm -C .. --filter @project-template/ui build",
+		"dev": "astro dev",
+		"preview": "astro preview"
+	},
+	"dependencies": {
+		"@astrojs/mdx": "^7.0.0",
+		"@project-template/ui": "workspace:*",
+		"@scalar/astro": "^0.4.5",
+		"astro": "^7.0.2"
+	},
+	"devDependencies": {
+		"@astrojs/check": "^0.9.6",
+		"typescript": "^5.9.3"
+	}
+}

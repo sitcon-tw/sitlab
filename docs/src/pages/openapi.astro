@@ -1,0 +1,49 @@
+---
+import { ScalarComponent } from "@scalar/astro";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { withBase } from "../layouts/paths";
+
+const configuration = {
+	url: withBase("/openapi.json"),
+	pageTitle: "Project Template API",
+	title: "Project Template API",
+	layout: "modern",
+	theme: "none",
+	withDefaultFonts: false,
+	hideClientButton: true,
+	hideDarkModeToggle: true,
+	telemetry: false,
+	documentDownloadType: "json",
+	operationTitleSource: "summary",
+	defaultHttpClient: { targetKey: "shell", clientKey: "curl" },
+	agent: { disabled: true },
+	mcp: { disabled: true },
+	customCss: `
+		.scalar-app, .light-mode, .dark-mode {
+			--scalar-font: var(--pt-font-body);
+			--scalar-font-code: var(--pt-font-mono);
+			--scalar-background-1: var(--pt-background);
+			--scalar-background-2: var(--pt-surface);
+			--scalar-background-3: var(--pt-surface-raised);
+			--scalar-color-1: var(--pt-text);
+			--scalar-color-2: var(--pt-text-muted);
+			--scalar-color-accent: var(--pt-primary);
+			--scalar-border-color: var(--pt-border);
+			--scalar-radius: 4px;
+			--scalar-radius-lg: 6px;
+			--scalar-shadow-1: none;
+			--scalar-shadow-2: none;
+		}
+	`
+} as const;
+---
+
+<BaseLayout
+	title="API Explorer | Project Template"
+	description="Interactive reference for the generated Project Template OpenAPI contract."
+	canonicalPath="/openapi/"
+>
+	<main id="content" class="apiReference">
+		<ScalarComponent renderMode="client" configuration={configuration} />
+	</main>
+</BaseLayout>

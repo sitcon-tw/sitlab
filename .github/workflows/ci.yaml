@@ -1,0 +1,175 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 22.23.1
+  JUST_VERSION: 1.40.0
+  GOLANGCI_LINT_VERSION: v2.11.4
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - name: Check Go formatting
+        run: test -z "$(gofmt -l server)"
+
+  contract:
+    name: Contract and generated artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @project-template/api check
+      - run: pnpm generated:check
+      - run: pnpm test:template
+
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_DB: project_template_test
+          POSTGRES_USER: project_template
+          POSTGRES_PASSWORD: project_template
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U project_template -d project_template_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PROJECT_TEMPLATE_TEST_DATABASE_URL: postgres://project_template:project_template@localhost:5432/project_template_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          working-directory: server
+          args: --config ../golangci.yaml ./...
+      - name: Check Go formatter drift
+        working-directory: server
+        run: |
+          diff="$(golangci-lint fmt --diff --config ../golangci.yaml)"
+          test -z "$diff" || { printf '%s\n' "$diff"; exit 1; }
+      - run: just backend-test
+      - run: just backend-test-integration
+      - run: just backend-build
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:frontend-style
+      - run: pnpm --filter @project-template/web lint
+      - run: pnpm --filter @project-template/web typecheck
+      - run: pnpm --filter @project-template/web test
+      - run: pnpm --filter @project-template/web build
+
+  ui:
+    name: UI and Storybook
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @project-template/ui typecheck
+      - run: pnpm --filter @project-template/ui lint
+      - run: pnpm --filter @project-template/ui test
+      - run: pnpm --filter @project-template/ui build
+      - run: pnpm --filter @project-template/ui build:storybook
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @project-template/ui build
+      - run: pnpm --filter @project-template/docs check
+      - run: pnpm --filter @project-template/docs build:site
+
+  complete:
+    name: CI complete
+    if: always()
+    needs: [format, contract, backend, web, ui, docs]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all jobs
+        env:
+          FORMAT_RESULT: ${{ needs.format.result }}
+          CONTRACT_RESULT: ${{ needs.contract.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          WEB_RESULT: ${{ needs.web.result }}
+          UI_RESULT: ${{ needs.ui.result }}
+          DOCS_RESULT: ${{ needs.docs.result }}
+        run: |
+          for result in "$FORMAT_RESULT" "$CONTRACT_RESULT" "$BACKEND_RESULT" "$WEB_RESULT" "$UI_RESULT" "$DOCS_RESULT"; do
+            test "$result" = success
+          done

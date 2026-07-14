@@ -1,0 +1,15 @@
+.git
+.agents
+.codex
+**/node_modules
+**/dist
+**/.astro
+**/storybook-static
+**/playwright-report
+**/test-results
+coverage
+docs/public/storybook
+tmp
+server/bin
+server/tmp
+server/coverage.out

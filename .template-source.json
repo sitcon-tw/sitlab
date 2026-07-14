@@ -1,0 +1,9 @@
+{
+	"brandName": "Yoruplate",
+	"name": "Project Template",
+	"slug": "project-template",
+	"goModule": "example.com/project-template",
+	"npmScope": "@project-template",
+	"envPrefix": "PROJECT_TEMPLATE",
+	"cookiePrefix": "project_template"
+}

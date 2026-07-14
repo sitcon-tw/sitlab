@@ -1,0 +1,26 @@
+---
+title: Documentation overview
+description: Find the contracts, boundaries, and operating instructions that keep Project Template coherent.
+section: Start
+order: 0
+---
+
+Project Template is a production-oriented modular monolith. The repository is intentionally opinionated about dependency direction, contract ownership, frontend state, and quality gates.
+
+## Start here
+
+Use the [getting started guide](/docs/guides/getting-started/) to initialize the template and run its services. Read [architecture](/docs/reference/architecture/) before adding a feature that crosses a package boundary.
+
+The reference implementation contains one complete vertical slice: authenticated users collaborate in workspaces and manage tasks according to their role. It is deliberately small enough to understand and complete enough to prove the architecture.
+
+## Sources of truth
+
+| Concern                | Source                                              |
+| ---------------------- | --------------------------------------------------- |
+| HTTP contract          | `api/**/*.tsp`                                      |
+| Backend boundaries     | `ARCHITECTURE.md` and architecture tests            |
+| Visual rules           | `design.md` and `packages/ui/src/styles/tokens.css` |
+| Database schema        | `server/db/migrations`                              |
+| Cross-project commands | `Justfile`                                          |
+
+Generated files are reviewable artifacts, not editing surfaces. Run `pnpm generate` after changing TypeSpec and commit all three outputs together.

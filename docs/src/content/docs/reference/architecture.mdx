@@ -1,0 +1,39 @@
+---
+title: Architecture
+description: Dependency direction, ownership rules, and the request flow through the modular monolith.
+section: Reference
+order: 30
+---
+
+## Dependency rule
+
+Backend dependencies point inward:
+
+```text
+transport -> application -> domain
+infrastructure -> application -> domain
+composition root -> all concrete implementations
+```
+
+The domain knows no framework. Application use cases own the narrow ports they consume. Infrastructure translates PostgreSQL and external-service behavior into those ports. HTTP transport maps protocol input and output without implementing business rules.
+
+Architecture tests enforce import boundaries. A directory name is not evidence of architecture; executable dependency constraints are.
+
+## Feature ownership
+
+Frontend routes compose feature modules. Each feature owns its view adapters, hooks, and workflow components. Shared UI contains reusable interaction primitives, never workspace or task policy.
+
+State has one owner:
+
+- TanStack Query owns server state.
+- The URL owns shareable route and filter state.
+- Context owns session, theme, and current workspace selection.
+- Components or feature reducers own transient drafts.
+
+## Contract boundary
+
+TypeSpec is the wire contract source. Generated TypeScript declarations describe the wire, while feature adapters turn wire DTOs into presentation models. Go handlers and web components do not invent parallel public schemas.
+
+## Transactions and errors
+
+The application layer declares transaction boundaries. Creating a workspace and its owner membership is one atomic use case. Technical errors retain their cause for logs and traces; business errors map to stable problem codes at the transport edge.
