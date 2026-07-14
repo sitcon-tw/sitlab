@@ -17,10 +17,12 @@ const (
 )
 
 var (
-	ErrUnsupportedVersion = errors.New("unsupported directory version")
-	ErrInvalidTeam        = errors.New("invalid directory team")
-	ErrDuplicateTeam      = errors.New("duplicate directory team")
-	ErrDuplicateUsername  = errors.New("duplicate GitLab username")
+	ErrUnsupportedVersion  = errors.New("unsupported directory version")
+	ErrInvalidTeam         = errors.New("invalid directory team")
+	ErrDuplicateTeam       = errors.New("duplicate directory team")
+	ErrDuplicateUsername   = errors.New("duplicate GitLab username")
+	ErrSnapshotNotFound    = errors.New("directory snapshot not found")
+	ErrPreferencesNotFound = errors.New("user preferences not found")
 )
 
 type File struct {
