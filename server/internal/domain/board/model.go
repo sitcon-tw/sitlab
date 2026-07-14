@@ -70,6 +70,57 @@ type Operation struct {
 	UpdatedAt time.Time
 }
 
+type Snapshot struct {
+	Lists    []List
+	Cards    []Card
+	SyncedAt time.Time
+}
+
+type Mutation struct {
+	Card              Card
+	Operation         Operation
+	RequestedByUserID string
+	Payload           map[string]any
+}
+
+type Result struct {
+	Card      Card
+	Operation Operation
+}
+
+type CanonicalIssue struct {
+	IssueIID             int64
+	GitLabIssueID        int64
+	Title                string
+	WebURL               string
+	Labels               []string
+	AssigneeGitLabUserID *int64
+	DueDate              string
+	State                string
+	UpdatedAt            time.Time
+}
+
+type IssueMutation struct {
+	Create               bool
+	IssueIID             int64
+	Title                string
+	Labels               []string
+	AssigneeGitLabUserID *int64
+	DueDate              string
+	Closed               bool
+}
+
+type PendingOperation struct {
+	Operation Operation
+	Card      Card
+}
+
+type SyncStatus struct {
+	State         string
+	LastSuccessAt time.Time
+	Message       string
+}
+
 type AssignmentDirectory interface {
 	TeamExists(teamKey string) bool
 	IsAssignable(gitLabUserID int64) bool

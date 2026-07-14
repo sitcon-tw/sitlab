@@ -4,44 +4,28 @@ import (
 	"net/http"
 	"time"
 
-	appauth "example.com/project-template/internal/controller/application/auth"
+	appoauth "example.com/project-template/internal/controller/application/oauth"
 )
 
-func (h handler) register(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Email       string `json:"email"`
-		Password    string `json:"password"`
-		DisplayName string `json:"displayName"`
-	}
-	if err := decodeJSON(w, r, &body); err != nil {
-		writeError(w, r, err)
-		return
-	}
-	result, err := h.auth.Register(r.Context(), appauth.RegisterInput{Email: body.Email, Password: body.Password, DisplayName: body.DisplayName})
+func (h handler) startGitLabOAuth(w http.ResponseWriter, r *http.Request) {
+	result, err := h.auth.Start(r.Context())
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
-	h.setSessionCookie(w, result.SessionToken)
-	writeJSON(w, http.StatusCreated, map[string]any{"user": mapUser(result.User)})
+	http.Redirect(w, r, result.AuthorizationURL, http.StatusFound)
 }
 
-func (h handler) login(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	if err := decodeJSON(w, r, &body); err != nil {
-		writeError(w, r, err)
-		return
-	}
-	result, err := h.auth.Login(r.Context(), appauth.LoginInput{Email: body.Email, Password: body.Password})
+func (h handler) completeGitLabOAuth(w http.ResponseWriter, r *http.Request) {
+	result, err := h.auth.Complete(r.Context(), appoauth.CompleteInput{
+		Code: r.URL.Query().Get("code"), State: r.URL.Query().Get("state"),
+	})
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
-	h.setSessionCookie(w, result.SessionToken)
-	writeJSON(w, http.StatusOK, map[string]any{"user": mapUser(result.User)})
+	h.setSessionCookie(w, result.SessionToken, time.Now().UTC().Add(h.cookie.TTL))
+	http.Redirect(w, r, result.RedirectPath, http.StatusFound)
 }
 
 func (h handler) logout(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +49,7 @@ func (h handler) csrf(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h handler) me(w http.ResponseWriter, r *http.Request) {
-	user, err := h.auth.Me(r.Context(), claimsFromContext(r.Context()).UserID)
+	user, err := h.auth.Me(r.Context(), actorID(r))
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -73,14 +57,22 @@ func (h handler) me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user": mapUser(user)})
 }
 
-func (h handler) setSessionCookie(w http.ResponseWriter, token string) {
+func (h handler) setSessionCookie(w http.ResponseWriter, token string, expiresAt time.Time) {
 	ttl := h.cookie.TTL
 	if ttl <= 0 {
-		ttl = 7 * 24 * time.Hour
+		ttl = 14 * 24 * time.Hour
 	}
-	http.SetCookie(w, &http.Cookie{Name: h.cookie.Name, Value: token, Path: "/", HttpOnly: true, Secure: h.cookie.Secure, SameSite: http.SameSiteStrictMode, MaxAge: int(ttl.Seconds()), Expires: time.Now().Add(ttl).UTC()})
+	http.SetCookie(w, &http.Cookie{
+		Name: h.cookie.Name, Value: token, Path: "/", HttpOnly: true,
+		Secure: h.cookie.Secure, SameSite: http.SameSiteStrictMode,
+		MaxAge: int(ttl.Seconds()), Expires: expiresAt.UTC(),
+	})
 }
 
 func (h handler) clearSessionCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{Name: h.cookie.Name, Value: "", Path: "/", HttpOnly: true, Secure: h.cookie.Secure, SameSite: http.SameSiteStrictMode, MaxAge: -1, Expires: time.Unix(1, 0).UTC()})
+	http.SetCookie(w, &http.Cookie{
+		Name: h.cookie.Name, Value: "", Path: "/", HttpOnly: true,
+		Secure: h.cookie.Secure, SameSite: http.SameSiteStrictMode,
+		MaxAge: -1, Expires: time.Unix(1, 0).UTC(),
+	})
 }

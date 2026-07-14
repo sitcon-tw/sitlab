@@ -17,10 +17,10 @@ import (
 
 type authContextKey struct{}
 
-func requireAuth(auth AuthService, cookieName string) func(http.Handler) http.Handler {
+func requireAuth(auth AuthService, cookieConfig CookieConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			cookie, err := r.Cookie(cookieName)
+			cookie, err := r.Cookie(cookieConfig.Name)
 			if err != nil || cookie.Value == "" {
 				writeError(w, r, apperror.Unauthorized("AUTH_MISSING_SESSION", "authentication is required"))
 				return
@@ -30,9 +30,22 @@ func requireAuth(auth AuthService, cookieName string) func(http.Handler) http.Ha
 				writeError(w, r, err)
 				return
 			}
+			setRollingCookie(w, cookieConfig, cookie.Value, claims.ExpiresAt)
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authContextKey{}, claims)))
 		})
 	}
+}
+
+func setRollingCookie(w http.ResponseWriter, config CookieConfig, token string, expiresAt time.Time) {
+	ttl := config.TTL
+	if ttl <= 0 {
+		ttl = 14 * 24 * time.Hour
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: config.Name, Value: token, Path: "/", HttpOnly: true,
+		Secure: config.Secure, SameSite: http.SameSiteStrictMode,
+		MaxAge: int(ttl.Seconds()), Expires: expiresAt.UTC(),
+	})
 }
 
 func requireCSRF(auth AuthService, cookieName string, allowedOrigins []string) func(http.Handler) http.Handler {

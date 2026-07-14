@@ -6,8 +6,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"example.com/project-template/internal/controller/infrastructure/postgres/sqlc"
 )
 
 type txKey struct{}
@@ -23,13 +21,6 @@ func (t *Transactor) WithinTx(ctx context.Context, fn func(context.Context) erro
 	return pgx.BeginFunc(ctx, t.pool, func(tx pgx.Tx) error {
 		return fn(context.WithValue(ctx, txKey{}, tx))
 	})
-}
-
-func Queries(ctx context.Context, base *sqlc.Queries) *sqlc.Queries {
-	if tx, ok := txFromContext(ctx); ok {
-		return base.WithTx(tx)
-	}
-	return base
 }
 
 type DBTX interface {

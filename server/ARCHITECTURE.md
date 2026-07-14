@@ -1,16 +1,15 @@
-# Backend architecture
+# Backend Architecture
 
-This server is a modular monolith with inward-pointing dependencies:
+The server is a modular monolith with inward-pointing dependencies:
 
-1. `internal/domain` owns models, invariants, and authorization policy. It imports no project packages.
-2. `internal/controller/application` owns use cases and the narrow ports each use case consumes.
-3. `internal/controller/infrastructure` implements those ports with PostgreSQL, sqlc, pgx, and security adapters.
-4. `internal/controller/transport/http` maps HTTP requests and RFC 7807 responses. It does not query the database.
-5. `internal/controller/app` is the only composition root and the only package that knows all concrete adapters.
+1. `internal/domain` owns identity, directory, board, durable-operation, and sync models.
+2. `internal/controller/application` owns OAuth, directory preferences, bootstrap, board mutation, and sync use cases plus their narrow ports.
+3. `internal/controller/infrastructure` implements GitLab, PostgreSQL, cryptography, and observability adapters.
+4. `internal/controller/transport/http` maps the TypeSpec contract, RFC 7807 errors, rolling session cookies, and injected HTML bootstrap.
+5. `internal/controller/app` is the only composition root.
 
-Mutating use cases validate, authorize, persist, and trace a complete action. Workspace creation and registration
-use the injected transaction port so their related records are atomic. Technical errors retain their causes and are
-recorded on spans; expected validation, authorization, not-found, and conflict errors use application error kinds.
+The fixed GitLab project is `sitcon-tw/2027`; clients never provide a project ID. Production startup performs an initial directory/member/board sync. Existing snapshots may serve during a GitLab outage, but an instance with no snapshots fails readiness.
 
-The API contract is rooted at `/api/v1`. Browser authentication uses opaque server-side sessions in HttpOnly cookies.
-Unsafe authenticated requests require a synchronizer token in `X-CSRF-Token` and a matching allowed Origin.
+Unsafe authenticated requests require `X-CSRF-Token` plus an allowed Origin. Session cookies are opaque, HttpOnly, Secure in production, and renewed for 14 days on every valid use. OAuth PKCE verifiers are encrypted at rest, while session and OAuth state tokens are stored only as keyed hashes.
+
+Optimistic mutations and durable operations commit atomically. Operation IDs are idempotency keys. The operation worker applies full current card intent to GitLab and records technical failure detail for logs and retry while preserving stable client error codes.

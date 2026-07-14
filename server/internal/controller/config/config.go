@@ -10,7 +10,12 @@ import (
 	"time"
 )
 
-const prefix = "PROJECT_TEMPLATE_"
+const (
+	prefix            = "SITCON_BOARD_"
+	ProjectPath       = "sitcon-tw/2027"
+	DirectoryFilePath = ".sitcon/board-directory.yml"
+	SessionTTL        = 14 * 24 * time.Hour
+)
 
 type Config struct {
 	Env             string
@@ -21,6 +26,8 @@ type Config struct {
 	ShutdownTimeout time.Duration
 	HTTP            HTTP
 	Session         Session
+	GitLab          GitLab
+	Sync            Sync
 	Observability   Observability
 }
 
@@ -32,12 +39,27 @@ type HTTP struct {
 }
 
 type Session struct {
-	CookieName   string
-	CookieSecure bool
-	HashKey      string
-	IdleTTL      time.Duration
-	AbsoluteTTL  time.Duration
-	TouchAfter   time.Duration
+	CookieName    string
+	CookieSecure  bool
+	HashKey       string
+	CipherKey     string
+	TTL           time.Duration
+	OAuthStateTTL time.Duration
+}
+
+type GitLab struct {
+	BaseURL            string
+	ClientID           string
+	ClientSecret       string
+	OAuthRedirectURL   string
+	ProjectAccessToken string
+	Branch             string
+}
+
+type Sync struct {
+	DirectoryInterval time.Duration
+	BoardInterval     time.Duration
+	OperationInterval time.Duration
 }
 
 type Observability struct {
@@ -46,37 +68,40 @@ type Observability struct {
 
 func Load() (Config, error) {
 	env := value("ENV", "local")
-	if err := requireProductionValues(env, "DATABASE_URL", "CSRF_ALLOWED_ORIGINS"); err != nil {
-		return Config{}, err
-	}
 	secure, err := boolValue("SESSION_COOKIE_SECURE", env == "production")
 	if err != nil {
 		return Config{}, err
 	}
-	cookieDefault := "project_template_session"
+	cookieDefault := "sitcon_board_session"
 	if env == "production" {
-		cookieDefault = "__Host-project_template_session"
+		cookieDefault = "__Host-sitcon_board_session"
 	}
 	cfg := Config{
-		Env:             env,
-		ServiceName:     value("SERVICE_NAME", "project-template-controller"),
-		Version:         value("VERSION", "0.1.0"),
-		LogLevel:        value("LOG_LEVEL", "info"),
-		DatabaseURL:     value("DATABASE_URL", "postgres://project:project@localhost:5432/project?sslmode=disable"),
+		Env: env, ServiceName: value("SERVICE_NAME", "sitcon-board-controller"),
+		Version: value("VERSION", "0.1.0"), LogLevel: value("LOG_LEVEL", "info"),
+		DatabaseURL:     value("DATABASE_URL", "postgres://sitcon:sitcon@localhost:5432/sitcon_board?sslmode=disable"),
 		ShutdownTimeout: durationValue("SHUTDOWN_TIMEOUT", 10*time.Second),
 		HTTP: HTTP{
-			Addr:           value("HTTP_ADDR", ":8080"),
-			WebDir:         value("WEB_DIR", ""),
+			Addr: value("HTTP_ADDR", ":8080"), WebDir: value("WEB_DIR", ""),
 			RequestTimeout: durationValue("REQUEST_TIMEOUT", 15*time.Second),
 			AllowedOrigins: csvValue("CSRF_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:8080"),
 		},
 		Session: Session{
-			CookieName:   value("SESSION_COOKIE_NAME", cookieDefault),
-			CookieSecure: secure,
-			HashKey:      value("SESSION_HASH_KEY", "local-development-session-hash-key-change-me"),
-			IdleTTL:      durationValue("SESSION_IDLE_TTL", 12*time.Hour),
-			AbsoluteTTL:  durationValue("SESSION_ABSOLUTE_TTL", 7*24*time.Hour),
-			TouchAfter:   5 * time.Minute,
+			CookieName: cookieDefault, CookieSecure: secure,
+			HashKey:   value("SESSION_HASH_KEY", "local-development-session-hash-key-change-me"),
+			CipherKey: value("OAUTH_STATE_CIPHER_KEY", "local-development-oauth-cipher-key-change-me"),
+			TTL:       SessionTTL, OAuthStateTTL: 10 * time.Minute,
+		},
+		GitLab: GitLab{
+			BaseURL:  value("GITLAB_BASE_URL", "https://gitlab.com"),
+			ClientID: value("GITLAB_CLIENT_ID", ""), ClientSecret: value("GITLAB_CLIENT_SECRET", ""),
+			OAuthRedirectURL:   value("GITLAB_OAUTH_REDIRECT_URL", "http://localhost:8080/api/v1/auth/gitlab/callback"),
+			ProjectAccessToken: value("GITLAB_PROJECT_ACCESS_TOKEN", ""), Branch: value("GITLAB_BRANCH", "main"),
+		},
+		Sync: Sync{
+			DirectoryInterval: durationValue("DIRECTORY_SYNC_INTERVAL", 5*time.Minute),
+			BoardInterval:     durationValue("BOARD_SYNC_INTERVAL", 30*time.Second),
+			OperationInterval: durationValue("OPERATION_POLL_INTERVAL", 500*time.Millisecond),
 		},
 		Observability: Observability{OTLPTracesEndpoint: value("OTEL_TRACES_ENDPOINT", "")},
 	}
@@ -87,72 +112,64 @@ func Load() (Config, error) {
 }
 
 func LoadDatabaseURL() (string, error) {
-	env := value("ENV", "local")
-	if err := requireProductionValues(env, "DATABASE_URL"); err != nil {
-		return "", err
-	}
-	databaseURL := value("DATABASE_URL", "postgres://project:project@localhost:5432/project?sslmode=disable")
+	databaseURL := value("DATABASE_URL", "postgres://sitcon:sitcon@localhost:5432/sitcon_board?sslmode=disable")
 	if strings.TrimSpace(databaseURL) == "" {
-		return "", errors.New("PROJECT_TEMPLATE_DATABASE_URL is required")
+		return "", errors.New("SITCON_BOARD_DATABASE_URL is required")
 	}
 	if _, err := url.ParseRequestURI(databaseURL); err != nil {
-		return "", fmt.Errorf("PROJECT_TEMPLATE_DATABASE_URL is invalid: %w", err)
+		return "", fmt.Errorf("SITCON_BOARD_DATABASE_URL is invalid: %w", err)
 	}
 	return databaseURL, nil
 }
 
-func requireProductionValues(env string, keys ...string) error {
-	if env != "production" {
-		return nil
-	}
-	for _, key := range keys {
-		raw, ok := os.LookupEnv(prefix + key)
-		if !ok || strings.TrimSpace(raw) == "" {
-			return fmt.Errorf("%s%s must be explicitly set in production", prefix, key)
-		}
-	}
-	return nil
-}
-
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.DatabaseURL) == "" {
-		return errors.New("PROJECT_TEMPLATE_DATABASE_URL is required")
+		return errors.New("SITCON_BOARD_DATABASE_URL is required")
 	}
 	if _, err := url.ParseRequestURI(c.DatabaseURL); err != nil {
-		return fmt.Errorf("PROJECT_TEMPLATE_DATABASE_URL is invalid: %w", err)
+		return fmt.Errorf("SITCON_BOARD_DATABASE_URL is invalid: %w", err)
 	}
-	if c.Session.IdleTTL <= 0 || c.Session.AbsoluteTTL < c.Session.IdleTTL {
-		return errors.New("session TTLs are invalid")
+	if len(c.Session.HashKey) < 32 || len(c.Session.CipherKey) < 32 {
+		return errors.New("session hash and OAuth cipher keys must contain at least 32 characters")
 	}
-	if len(c.Session.HashKey) < 32 {
-		return errors.New("PROJECT_TEMPLATE_SESSION_HASH_KEY must contain at least 32 characters")
+	if c.Session.TTL != SessionTTL {
+		return errors.New("session TTL must remain 14 days")
 	}
-	if c.Env == "production" {
-		if !c.Session.CookieSecure {
-			return errors.New("PROJECT_TEMPLATE_SESSION_COOKIE_SECURE must be true in production")
-		}
-		if !strings.HasPrefix(c.Session.CookieName, "__Host-") {
-			return errors.New("production session cookie name must use the __Host- prefix")
-		}
-		if c.Session.HashKey == "local-development-session-hash-key-change-me" {
-			return errors.New("PROJECT_TEMPLATE_SESSION_HASH_KEY must be changed in production")
-		}
-		if len(c.HTTP.AllowedOrigins) == 0 {
-			return errors.New("PROJECT_TEMPLATE_CSRF_ALLOWED_ORIGINS must contain at least one origin in production")
+	if c.Sync.DirectoryInterval <= 0 || c.Sync.BoardInterval <= 0 || c.Sync.OperationInterval <= 0 {
+		return errors.New("sync intervals must be positive")
+	}
+	for name, raw := range map[string]string{
+		"SITCON_BOARD_GITLAB_BASE_URL":           c.GitLab.BaseURL,
+		"SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL": c.GitLab.OAuthRedirectURL,
+	} {
+		parsed, err := url.Parse(raw)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return fmt.Errorf("%s is invalid", name)
 		}
 	}
 	for _, raw := range c.HTTP.AllowedOrigins {
 		origin, err := url.Parse(raw)
 		if err != nil || origin.Scheme == "" || origin.Host == "" || origin.Path != "" {
-			return fmt.Errorf("invalid PROJECT_TEMPLATE_CSRF_ALLOWED_ORIGINS entry %q", raw)
+			return fmt.Errorf("invalid SITCON_BOARD_CSRF_ALLOWED_ORIGINS entry %q", raw)
+		}
+	}
+	if c.Env == "production" {
+		if !c.Session.CookieSecure || !strings.HasPrefix(c.Session.CookieName, "__Host-") {
+			return errors.New("production session cookie must be Secure and use the __Host- prefix")
+		}
+		if c.GitLab.ClientID == "" || c.GitLab.ClientSecret == "" || c.GitLab.ProjectAccessToken == "" {
+			return errors.New("GitLab OAuth and project access credentials are required in production")
+		}
+		if c.Session.HashKey == "local-development-session-hash-key-change-me" || c.Session.CipherKey == "local-development-oauth-cipher-key-change-me" {
+			return errors.New("development security keys must be changed in production")
 		}
 	}
 	return nil
 }
 
 func value(key, fallback string) string {
-	if value, ok := os.LookupEnv(prefix + key); ok {
-		return strings.TrimSpace(value)
+	if result, ok := os.LookupEnv(prefix + key); ok {
+		return strings.TrimSpace(result)
 	}
 	return fallback
 }

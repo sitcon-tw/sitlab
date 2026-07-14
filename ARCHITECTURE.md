@@ -1,91 +1,39 @@
-# Project Template Architecture
+# SITCON Board Architecture
 
-## Purpose
+## Product Boundary
 
-This repository is a production baseline for SaaS and internal tools. Its reference slice supports session-authenticated users, workspaces with owner/editor/viewer roles, and workspace-scoped tasks. The slice exists to prove the boundaries; it is not sample code to bypass when adding the next feature.
+SITCON Board is a focused GitLab-backed workflow for the fixed `sitcon-tw/2027` project. The primary path is GitLab OAuth, primary-team confirmation, quick card creation, movement, assignment, due-date adjustment, and closing. There are no workspace, generic task, password-registration, or arbitrary-project concepts.
 
-## Backend Dependency Direction
-
-```text
-transport/http -----> application -----> domain
-                           ^                ^
-                           |                |
-infrastructure -----------+----------------+
-
-composition root --------> concrete implementations
-```
-
-`domain` contains entities, value objects, policies, and business errors. It imports only the standard library.
-
-`application` contains use cases and the narrow ports each use case consumes. It may depend on domain. It does not know Chi, pgx, sqlc, HTTP DTOs, environment loading, or global loggers.
-
-`infrastructure` implements application ports. PostgreSQL adapters translate sqlc records and constraint failures into domain values and application errors. External integration adapters terminate vendor-specific concerns here.
-
-`transport/http` decodes protocol input, reads authenticated context, invokes one application use case, and maps the result to the TypeSpec contract. It contains no authorization policy or SQL.
-
-`app` is the only composition root. It constructs concrete adapters, decorates them with observability, and wires handlers. Transport must not import infrastructure directly.
-
-Architecture tests reject imports that violate these rules. Empty layer directories and interfaces with one speculative implementation do not count as architecture.
-
-## Use Cases, Transactions, And Ports
-
-Commands represent behavior that changes state. A command owns validation, authorization, transaction scope, stable errors, and telemetry. Queries can remain direct when they only coordinate reads; do not create empty command/query files for symmetry.
-
-Ports are consumer-owned and deliberately narrow. A workspace creation use case can request `CreateWorkspace` and `CreateOwnerMembership` inside a transaction without gaining access to every repository method.
-
-The transaction boundary belongs to application code. Creating a workspace and its owner membership commits or rolls back atomically. Production constructors require a transaction implementation; tests use an explicitly named fake or no-op only when atomicity is irrelevant to that test.
-
-## Errors
-
-Business failures use stable sentinel or typed errors such as not found, forbidden, conflict, and last owner. HTTP maps those errors to the status and `ProblemDetails.code` defined by TypeSpec.
-
-Technical failures wrap their cause. They are recorded once at an ownership boundary with request ID, trace context, operation, and safe identifiers. Clients receive `INTERNAL_ERROR`, never SQL, stack, credential, or raw dependency details.
-
-## Contract Flow
+## Data Flow
 
 ```text
-TypeSpec
-  -> OpenAPI 3.1 in docs/public/openapi.json
-  -> identical backend embedded OpenAPI
-  -> openapi-typescript declarations for the web client
+GitLab project members + .sitcon/board-directory.yml + GitLab issues
+                              |
+                       background sync
+                              v
+                    PostgreSQL snapshots
+                              |
+                   injected bootstrap JSON
+                              v
+                       React Board
 ```
 
-TypeSpec is the only public wire source. The backend may define private transport structs for decoding but they must conform to the generated contract. The frontend consumes generated declarations through a typed client and feature adapters. `pnpm generated:check` emits into a temporary directory and compares all tracked outputs without modifying the worktree.
+Production traffic is ready only after directory, member, and board snapshots exist. The server injects the complete authenticated bootstrap payload into `index.html`; React renders from that payload before starting background refresh. The development API fallback is `GET /api/v1/bootstrap`.
+
+## Backend Boundaries
+
+Dependencies point inward: HTTP transport calls application use cases, application packages own narrow ports, infrastructure implements those ports, and domain packages own board, directory, identity, and sync models. PostgreSQL adapters do not import application or transport packages. The composition root is the only package that constructs concrete adapters.
+
+Card mutations write the optimistic card cache and a durable operation in one transaction. A worker sends the current canonical card intent to GitLab, then reconciles the GitLab response. New cards use a temporary negative IID; PostgreSQL updates it to GitLab's positive IID with deferred cascading foreign keys. Failed operations retain the optimistic UI state and can be retried.
+
+## Identity And Security
+
+GitLab OAuth uses Authorization Code with PKCE and a single-use server-side state record. Login is restricted to active members of `sitcon-tw/2027`. Browser authentication uses a random opaque token in an HttpOnly cookie; PostgreSQL stores only a keyed digest. Sessions use a 14-day rolling expiry: every valid request renews both the database expiry and browser cookie. Authenticated mutations require the session-bound CSRF token and an allowed Origin.
 
 ## Frontend Ownership
 
-Routes are lazy composition points. `web/src/features/<feature>` owns feature workflows, server adapters, and view-specific models. `web/src/shared` contains domain-neutral browser infrastructure. `packages/ui` contains cross-surface interaction primitives, tokens, and Storybook stories; it must not mention workspaces or tasks.
+`web/src/features/board` owns Board state and optimistic reconciliation. `web/src/features/onboarding` owns primary-team confirmation. TanStack Query owns server snapshots, feature state owns unsaved interaction, and bootstrap initialization pre-fills the first render. Team names, title prefixes, member lists, board lists, and cards come from the backend.
 
-State ownership is explicit:
+## Contract Flow
 
-- TanStack Query owns server state and cache reconciliation.
-- The URL owns shareable navigation, search, sorting, and filters.
-- Context owns session, theme, and current workspace selection.
-- A component or feature reducer owns unsaved interaction state.
-
-Do not mirror query data into context or local state. Query keys are factories rooted by feature and workspace so invalidation remains predictable.
-
-## Security
-
-Authentication uses random opaque session tokens in HttpOnly cookies. The database stores only a keyed hash. Production cookies are Secure and SameSite, with an explicit lifetime. Authenticated mutations require a synchronizer token through `X-CSRF-Token`; origin validation is defense in depth.
-
-Authorization is application policy, not a hidden repository filter. Owners manage workspaces and members, editors create and mutate tasks, and viewers read. Removing or demoting the last owner is a conflict.
-
-Secrets are read from environment or a deployment secret store and are never logged. Database credentials use a least-privilege application role in production.
-
-## Observability
-
-Requests carry a request ID and trace context. Logs are structured and include service name, version, operation, duration, outcome, and safe identifiers. Prometheus scrapes application metrics directly; traces use an OpenTelemetry OTLP adapter. Trace export is optional: the process must start and remain correct when no collector exists.
-
-## Evolution Checklist
-
-Before merging a new feature:
-
-1. Define or change the TypeSpec contract and regenerate artifacts.
-2. Add domain behavior and policy tests.
-3. Add an application use case with narrow ports and an explicit transaction decision.
-4. Implement adapters and PostgreSQL integration tests.
-5. Map HTTP behavior and problem responses.
-6. Add the web feature with complete loading, empty, error, forbidden, and success states.
-7. Promote only proven generic primitives into `packages/ui` and add stories.
-8. Update docs, architecture decisions, configuration, and deployment in the same change.
+TypeSpec under `api/` is the HTTP source of truth. Generation emits byte-identical OpenAPI for docs and the embedded backend document, plus TypeScript declarations for the web client. Generated artifacts are never edited manually.

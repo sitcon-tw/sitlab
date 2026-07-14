@@ -1,7 +1,9 @@
 package httpserver
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,8 +23,10 @@ import (
 type Dependencies struct {
 	Log            *zap.Logger
 	Auth           AuthService
-	Workspaces     WorkspaceService
-	Tasks          TaskService
+	Bootstrap      BootstrapService
+	Directory      DirectoryService
+	Board          BoardService
+	Sync           SyncService
 	Cookie         CookieConfig
 	AllowedOrigins []string
 	RequestTimeout time.Duration
@@ -44,12 +48,15 @@ func NewRouter(dep Dependencies) http.Handler {
 		dep.Metrics = observability.NewMetrics()
 	}
 	if dep.APIName == "" {
-		dep.APIName = "Project Template API"
+		dep.APIName = "SITCON Board API"
 	}
 	if dep.APIVersion == "" {
 		dep.APIVersion = "0.1.0"
 	}
-	h := handler{auth: dep.Auth, workspaces: dep.Workspaces, tasks: dep.Tasks, cookie: dep.Cookie}
+	h := handler{
+		auth: dep.Auth, bootstrap: dep.Bootstrap, directory: dep.Directory,
+		board: dep.Board, sync: dep.Sync, cookie: dep.Cookie,
+	}
 	router := chi.NewRouter()
 	router.Use(chimiddleware.RequestID)
 	router.Use(securityHeaders)
@@ -67,7 +74,7 @@ func NewRouter(dep Dependencies) http.Handler {
 		api.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		})
-		readiness := func(w http.ResponseWriter, r *http.Request) {
+		api.Get("/health/ready", func(w http.ResponseWriter, r *http.Request) {
 			if dep.Readiness != nil {
 				if err := dep.Readiness(r.Context()); err != nil {
 					writeError(w, r, apperror.Unavailable("service is not ready"))
@@ -75,52 +82,44 @@ func NewRouter(dep Dependencies) http.Handler {
 				}
 			}
 			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-		}
-		api.Get("/health/ready", readiness)
-		api.Get("/healthz", readiness)
+		})
 		api.Get("/openapi.json", func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write(openapi.Document())
 		})
-		api.Post("/auth/register", h.register)
-		api.Post("/auth/login", h.login)
+		api.Get("/auth/gitlab", h.startGitLabOAuth)
+		api.Get("/auth/gitlab/callback", h.completeGitLabOAuth)
 
 		api.Group(func(protected chi.Router) {
-			protected.Use(requireAuth(dep.Auth, dep.Cookie.Name))
+			protected.Use(requireAuth(dep.Auth, dep.Cookie))
 			protected.Use(requireCSRF(dep.Auth, dep.Cookie.Name, dep.AllowedOrigins))
 			protected.Get("/auth/csrf", h.csrf)
 			protected.Get("/auth/me", h.me)
 			protected.Post("/auth/logout", h.logout)
-			protected.Get("/workspaces", h.listWorkspaces)
-			protected.Post("/workspaces", h.createWorkspace)
-			protected.Get("/workspaces/{workspaceId}", h.getWorkspace)
-			protected.Patch("/workspaces/{workspaceId}", h.updateWorkspace)
-			protected.Delete("/workspaces/{workspaceId}", h.deleteWorkspace)
-			protected.Route("/workspaces/{workspaceId}", func(workspace chi.Router) {
-				workspace.Get("/members", h.listMembers)
-				workspace.Post("/members", h.addMember)
-				workspace.Patch("/members/{userId}", h.updateMember)
-				workspace.Delete("/members/{userId}", h.removeMember)
-				workspace.Get("/tasks", h.listTasks)
-				workspace.Post("/tasks", h.createTask)
-				workspace.Get("/tasks/{taskId}", h.getTask)
-				workspace.Patch("/tasks/{taskId}", h.updateTask)
-				workspace.Delete("/tasks/{taskId}", h.deleteTask)
-			})
+			protected.Get("/bootstrap", h.bootstrapState)
+			protected.Get("/directory", h.directoryState)
+			protected.Put("/me/preferences", h.updatePreferences)
+			protected.Post("/cards", h.createCard)
+			protected.Put("/cards/{issueIid}/team", h.updateCardTeam)
+			protected.Put("/cards/{issueIid}/assignee", h.updateCardAssignee)
+			protected.Put("/cards/{issueIid}/due-date", h.updateCardDueDate)
+			protected.Put("/cards/{issueIid}/position", h.moveCard)
+			protected.Post("/operations/{operationId}/retry", h.retryOperation)
+			protected.Post("/sync/refresh", h.refreshSnapshots)
 		})
 		api.MethodNotAllowed(methodNotAllowed)
 		api.NotFound(func(w http.ResponseWriter, r *http.Request) { writeError(w, r, apperror.NotFound("route")) })
 	})
 
 	if strings.TrimSpace(dep.WebDir) != "" {
-		router.Handle("/*", spaHandler(dep.WebDir))
+		router.Handle("/*", spaHandler(dep.WebDir, dep.Auth, dep.Bootstrap, dep.Cookie))
 	} else {
 		router.NotFound(func(w http.ResponseWriter, r *http.Request) { writeError(w, r, apperror.NotFound("route")) })
 	}
 	return router
 }
 
-func spaHandler(root string) http.Handler {
+func spaHandler(root string, auth AuthService, bootstrap BootstrapService, cookie CookieConfig) http.Handler {
 	root, _ = filepath.Abs(root)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		candidate := filepath.Join(root, filepath.Clean("/"+r.URL.Path))
@@ -128,10 +127,31 @@ func spaHandler(root string) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && filepath.Base(candidate) != "index.html" {
 			http.ServeFile(w, r, candidate)
 			return
 		}
-		http.ServeFile(w, r, filepath.Join(root, "index.html"))
+		indexPath := filepath.Join(root, "index.html")
+		index, err := os.ReadFile(indexPath)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		if sessionCookie, err := r.Cookie(cookie.Name); err == nil && sessionCookie.Value != "" {
+			if claims, verifyErr := auth.VerifySession(r.Context(), sessionCookie.Value); verifyErr == nil {
+				if state, stateErr := bootstrap.Get(r.Context(), claims); stateErr == nil {
+					payload, marshalErr := json.Marshal(mapBootstrap(state))
+					if marshalErr == nil {
+						script := append([]byte(`<script id="__SITCON_BOOTSTRAP__" type="application/json">`), payload...)
+						script = append(script, []byte(`</script>`)...)
+						index = bytes.Replace(index, []byte("</head>"), append(script, []byte("</head>")...), 1)
+						setRollingCookie(w, cookie, sessionCookie.Value, claims.ExpiresAt)
+					}
+				}
+			}
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(index)
 	})
 }

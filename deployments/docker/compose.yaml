@@ -1,39 +1,43 @@
-x-project-template-environment: &project-template-environment
-  PROJECT_TEMPLATE_ENV: ${PROJECT_TEMPLATE_ENV:-local}
-  PROJECT_TEMPLATE_SERVICE_NAME: ${PROJECT_TEMPLATE_SERVICE_NAME:-project-template-controller}
-  PROJECT_TEMPLATE_VERSION: ${PROJECT_TEMPLATE_VERSION:-local}
-  PROJECT_TEMPLATE_HTTP_ADDR: ":8080"
-  PROJECT_TEMPLATE_DATABASE_URL: postgres://project_template:${PROJECT_TEMPLATE_DATABASE_PASSWORD:?set PROJECT_TEMPLATE_DATABASE_PASSWORD}@postgres:5432/project_template?sslmode=disable
-  PROJECT_TEMPLATE_LOG_LEVEL: ${PROJECT_TEMPLATE_LOG_LEVEL:-info}
-  PROJECT_TEMPLATE_SESSION_HASH_KEY: ${PROJECT_TEMPLATE_SESSION_HASH_KEY:?set PROJECT_TEMPLATE_SESSION_HASH_KEY}
-  PROJECT_TEMPLATE_SESSION_COOKIE_NAME: ${PROJECT_TEMPLATE_SESSION_COOKIE_NAME:-project_template_session}
-  PROJECT_TEMPLATE_SESSION_COOKIE_SECURE: ${PROJECT_TEMPLATE_SESSION_COOKIE_SECURE:-false}
-  PROJECT_TEMPLATE_SESSION_IDLE_TTL: ${PROJECT_TEMPLATE_SESSION_IDLE_TTL:-12h}
-  PROJECT_TEMPLATE_SESSION_ABSOLUTE_TTL: ${PROJECT_TEMPLATE_SESSION_ABSOLUTE_TTL:-168h}
-  PROJECT_TEMPLATE_CSRF_ALLOWED_ORIGINS: ${PROJECT_TEMPLATE_CSRF_ALLOWED_ORIGINS:-http://localhost:3000}
-  PROJECT_TEMPLATE_REQUEST_TIMEOUT: ${PROJECT_TEMPLATE_REQUEST_TIMEOUT:-15s}
-  PROJECT_TEMPLATE_SHUTDOWN_TIMEOUT: ${PROJECT_TEMPLATE_SHUTDOWN_TIMEOUT:-10s}
-  PROJECT_TEMPLATE_OTEL_TRACES_ENDPOINT: ${PROJECT_TEMPLATE_OTEL_TRACES_ENDPOINT:-}
-  PROJECT_TEMPLATE_WEB_DIR: /app/web
+x-sitcon-board-environment: &sitcon-board-environment
+  SITCON_BOARD_ENV: ${SITCON_BOARD_ENV:-local}
+  SITCON_BOARD_SERVICE_NAME: ${SITCON_BOARD_SERVICE_NAME:-sitcon-board-controller}
+  SITCON_BOARD_VERSION: ${SITCON_BOARD_VERSION:-local}
+  SITCON_BOARD_HTTP_ADDR: ":8080"
+  SITCON_BOARD_DATABASE_URL: postgres://sitcon_board:${SITCON_BOARD_DATABASE_PASSWORD:?set SITCON_BOARD_DATABASE_PASSWORD}@postgres:5432/sitcon_board?sslmode=disable
+  SITCON_BOARD_LOG_LEVEL: ${SITCON_BOARD_LOG_LEVEL:-info}
+  SITCON_BOARD_SESSION_HASH_KEY: ${SITCON_BOARD_SESSION_HASH_KEY:?set SITCON_BOARD_SESSION_HASH_KEY}
+  SITCON_BOARD_OAUTH_STATE_CIPHER_KEY: ${SITCON_BOARD_OAUTH_STATE_CIPHER_KEY:?set SITCON_BOARD_OAUTH_STATE_CIPHER_KEY}
+  SITCON_BOARD_SESSION_COOKIE_SECURE: ${SITCON_BOARD_SESSION_COOKIE_SECURE:-false}
+  SITCON_BOARD_GITLAB_BASE_URL: ${SITCON_BOARD_GITLAB_BASE_URL:-https://gitlab.com}
+  SITCON_BOARD_GITLAB_CLIENT_ID: ${SITCON_BOARD_GITLAB_CLIENT_ID:?set SITCON_BOARD_GITLAB_CLIENT_ID}
+  SITCON_BOARD_GITLAB_CLIENT_SECRET: ${SITCON_BOARD_GITLAB_CLIENT_SECRET:?set SITCON_BOARD_GITLAB_CLIENT_SECRET}
+  SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL: ${SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL:-http://localhost:3000/api/v1/auth/gitlab/callback}
+  SITCON_BOARD_GITLAB_PROJECT_ACCESS_TOKEN: ${SITCON_BOARD_GITLAB_PROJECT_ACCESS_TOKEN:?set SITCON_BOARD_GITLAB_PROJECT_ACCESS_TOKEN}
+  SITCON_BOARD_GITLAB_BRANCH: ${SITCON_BOARD_GITLAB_BRANCH:-main}
+  SITCON_BOARD_CSRF_ALLOWED_ORIGINS: ${SITCON_BOARD_CSRF_ALLOWED_ORIGINS:-http://localhost:3000}
+  SITCON_BOARD_REQUEST_TIMEOUT: ${SITCON_BOARD_REQUEST_TIMEOUT:-15s}
+  SITCON_BOARD_SHUTDOWN_TIMEOUT: ${SITCON_BOARD_SHUTDOWN_TIMEOUT:-10s}
+  SITCON_BOARD_OTEL_TRACES_ENDPOINT: ${SITCON_BOARD_OTEL_TRACES_ENDPOINT:-}
+  SITCON_BOARD_WEB_DIR: /app/web
 
 services:
   postgres:
     image: postgres:17.6-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: project_template
-      POSTGRES_USER: project_template
-      POSTGRES_PASSWORD: ${PROJECT_TEMPLATE_DATABASE_PASSWORD:?set PROJECT_TEMPLATE_DATABASE_PASSWORD}
+      POSTGRES_DB: sitcon_board
+      POSTGRES_USER: sitcon_board
+      POSTGRES_PASSWORD: ${SITCON_BOARD_DATABASE_PASSWORD:?set SITCON_BOARD_DATABASE_PASSWORD}
     volumes:
-      - project-template-postgres:/var/lib/postgresql/data
+      - sitcon-board-postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U project_template -d project_template"]
+      test: ["CMD-SHELL", "pg_isready -U sitcon_board -d sitcon_board"]
       interval: 5s
       timeout: 5s
       retries: 12
 
   migrate:
-    image: ${PROJECT_TEMPLATE_IMAGE:-project-template}:${PROJECT_TEMPLATE_VERSION:-local}
+    image: ${SITCON_BOARD_IMAGE:-sitcon-board}:${SITCON_BOARD_VERSION:-local}
     build:
       context: ../..
       dockerfile: deployments/docker/Dockerfile
@@ -41,12 +45,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    environment: *project-template-environment
+    environment: *sitcon-board-environment
     entrypoint: ["/app/migrate"]
     command: ["-command", "up", "-dir", "/app/db/migrations"]
 
   app:
-    image: ${PROJECT_TEMPLATE_IMAGE:-project-template}:${PROJECT_TEMPLATE_VERSION:-local}
+    image: ${SITCON_BOARD_IMAGE:-sitcon-board}:${SITCON_BOARD_VERSION:-local}
     build:
       context: ../..
       dockerfile: deployments/docker/Dockerfile
@@ -56,14 +60,14 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    environment: *project-template-environment
+    environment: *sitcon-board-environment
     ports:
-      - "${PROJECT_TEMPLATE_PORT:-3000}:8080"
+      - "${SITCON_BOARD_PORT:-3000}:8080"
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/v1/healthz"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/v1/health/ready"]
       interval: 10s
       timeout: 3s
       retries: 12
 
 volumes:
-  project-template-postgres:
+  sitcon-board-postgres:

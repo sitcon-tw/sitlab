@@ -36,8 +36,8 @@ RUN pnpm --filter @project-template/ui build \
 FROM alpine:3.23 AS runtime
 
 RUN apk add --no-cache ca-certificates tzdata \
-	&& addgroup -S project_template \
-	&& adduser -S -G project_template project_template
+	&& addgroup -S sitcon_board \
+	&& adduser -S -G sitcon_board sitcon_board
 
 WORKDIR /app
 
@@ -46,13 +46,13 @@ COPY --from=server-build /out/migrate /app/migrate
 COPY --from=server-build /src/server/db/migrations /app/db/migrations
 COPY --from=web-build /src/web/dist /app/web
 
-ENV PROJECT_TEMPLATE_HTTP_ADDR=:8080 \
-	PROJECT_TEMPLATE_WEB_DIR=/app/web
+ENV SITCON_BOARD_HTTP_ADDR=:8080 \
+	SITCON_BOARD_WEB_DIR=/app/web
 
-USER project_template:project_template
+USER sitcon_board:sitcon_board
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 CMD wget -q -O /dev/null http://127.0.0.1:8080/api/v1/healthz || exit 1
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 CMD wget -q -O /dev/null http://127.0.0.1:8080/api/v1/health/ready || exit 1
 
 ENTRYPOINT ["/app/controller"]

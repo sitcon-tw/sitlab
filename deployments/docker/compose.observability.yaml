@@ -1,7 +1,7 @@
 services:
   app:
     environment:
-      PROJECT_TEMPLATE_OTEL_TRACES_ENDPOINT: http://otel-collector:4318
+      SITCON_BOARD_OTEL_TRACES_ENDPOINT: http://otel-collector:4318
     depends_on:
       otel-collector:
         condition: service_started
@@ -25,7 +25,7 @@ services:
     command: ["--config.file=/etc/prometheus/prometheus.yaml", "--storage.tsdb.path=/prometheus"]
     volumes:
       - ./prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
-      - project-template-prometheus:/prometheus
+      - sitcon-board-prometheus:/prometheus
 
   tempo:
     image: grafana/tempo:2.8.1
@@ -33,7 +33,7 @@ services:
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./tempo.yaml:/etc/tempo.yaml:ro
-      - project-template-tempo:/var/tempo
+      - sitcon-board-tempo:/var/tempo
 
   grafana:
     image: grafana/grafana:12.0.2
@@ -44,7 +44,7 @@ services:
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - project-template-grafana:/var/lib/grafana
+      - sitcon-board-grafana:/var/lib/grafana
     ports:
       - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
     depends_on:
@@ -52,6 +52,6 @@ services:
       - tempo
 
 volumes:
-  project-template-grafana:
-  project-template-prometheus:
-  project-template-tempo:
+  sitcon-board-grafana:
+  sitcon-board-prometheus:
+  sitcon-board-tempo:

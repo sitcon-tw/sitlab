@@ -23,15 +23,16 @@ var DefaultBoardLists = []board.List{
 }
 
 type Service struct {
-	gitlab GitLab
-	repo   Repository
-	log    MissingMemberLogger
-	now    func() time.Time
-	tracer trace.Tracer
+	gitlab  GitLab
+	repo    Repository
+	log     MissingMemberLogger
+	now     func() time.Time
+	tracer  trace.Tracer
+	refresh chan struct{}
 }
 
 func NewService(gitlab GitLab, repo Repository, log MissingMemberLogger, tracer trace.Tracer) *Service {
-	return &Service{gitlab: gitlab, repo: repo, log: log, now: time.Now, tracer: tracer}
+	return &Service{gitlab: gitlab, repo: repo, log: log, now: time.Now, tracer: tracer, refresh: make(chan struct{}, 1)}
 }
 
 func (s *Service) RefreshDirectory(ctx context.Context) error {
@@ -197,12 +198,23 @@ func (s *Service) Run(ctx context.Context, directoryInterval, boardInterval time
 		select {
 		case <-ctx.Done():
 			return
+		case <-s.refresh:
+			_ = s.InitialSync(ctx)
 		case <-directoryTicker.C:
 			_ = s.RefreshDirectory(ctx)
 		case <-boardTicker.C:
 			_ = s.RefreshBoard(ctx)
 		}
 	}
+}
+
+func (s *Service) RequestRefresh() time.Time {
+	requestedAt := s.now().UTC()
+	select {
+	case s.refresh <- struct{}{}:
+	default:
+	}
+	return requestedAt
 }
 
 func directoryFileFromSnapshot(snapshot directory.Snapshot) directory.File {

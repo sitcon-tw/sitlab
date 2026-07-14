@@ -2,193 +2,181 @@ package httpserver
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"go.uber.org/zap"
-
 	"example.com/project-template/internal/controller/application/apperror"
-	appauth "example.com/project-template/internal/controller/application/auth"
-	apptask "example.com/project-template/internal/controller/application/task"
-	appworkspace "example.com/project-template/internal/controller/application/workspace"
+	appboard "example.com/project-template/internal/controller/application/board"
+	appbootstrap "example.com/project-template/internal/controller/application/bootstrap"
+	appdirectory "example.com/project-template/internal/controller/application/directory"
+	appoauth "example.com/project-template/internal/controller/application/oauth"
+	"example.com/project-template/internal/domain/board"
+	"example.com/project-template/internal/domain/directory"
 	"example.com/project-template/internal/domain/identity"
-	domaintask "example.com/project-template/internal/domain/task"
-	domainworkspace "example.com/project-template/internal/domain/workspace"
+	"go.uber.org/zap"
 )
 
-const (
-	httpUserID      = "30000000-0000-0000-0000-000000000001"
-	httpWorkspaceID = "30000000-0000-0000-0000-000000000002"
-	httpTaskID      = "30000000-0000-0000-0000-000000000003"
-)
+const httpUserID = "30000000-0000-0000-0000-000000000001"
+
+var renewedExpiry = time.Date(2026, time.July, 28, 8, 0, 0, 0, time.UTC)
 
 type authFake struct{}
 
-func (authFake) Register(_ context.Context, input appauth.RegisterInput) (appauth.Authenticated, error) {
-	return appauth.Authenticated{User: identity.User{ID: httpUserID, Email: input.Email, DisplayName: input.DisplayName, CreatedAt: time.Unix(1, 0), UpdatedAt: time.Unix(2, 0)}, SessionToken: "new-session"}, nil
+func (authFake) Start(context.Context) (appoauth.StartResult, error) {
+	return appoauth.StartResult{AuthorizationURL: "https://gitlab.example/oauth/authorize"}, nil
 }
-func (authFake) Login(context.Context, appauth.LoginInput) (appauth.Authenticated, error) {
-	return appauth.Authenticated{}, nil
+func (authFake) Complete(context.Context, appoauth.CompleteInput) (appoauth.Authenticated, error) {
+	return appoauth.Authenticated{SessionToken: "new-session", RedirectPath: "/"}, nil
 }
 func (authFake) VerifySession(context.Context, string) (identity.SessionClaims, error) {
-	return identity.SessionClaims{SessionID: "session-id", UserID: httpUserID}, nil
+	return identity.SessionClaims{SessionID: "session-id", UserID: httpUserID, ExpiresAt: renewedExpiry}, nil
 }
 func (authFake) VerifyCSRFToken(_ context.Context, _, csrf string) (identity.SessionClaims, error) {
 	if csrf != "valid-csrf" {
 		return identity.SessionClaims{}, apperror.Forbidden("AUTH_INVALID_CSRF", "csrf token is invalid")
 	}
-	return identity.SessionClaims{SessionID: "session-id", UserID: httpUserID}, nil
+	return identity.SessionClaims{SessionID: "session-id", UserID: httpUserID, ExpiresAt: renewedExpiry}, nil
 }
 func (authFake) IssueCSRF(context.Context, identity.SessionClaims) (string, error) {
 	return "valid-csrf", nil
 }
 func (authFake) Logout(context.Context, string) error { return nil }
 func (authFake) Me(context.Context, string) (identity.User, error) {
-	return identity.User{ID: httpUserID}, nil
+	return identity.User{
+		ID: httpUserID, GitLabUserID: 101, Username: "alice", DisplayName: "Alice",
+		ProfileURL: "https://gitlab.example/alice", AccessLevel: 40,
+	}, nil
 }
 
-type workspaceFake struct{}
+type directoryFake struct{}
 
-func (workspaceFake) Create(_ context.Context, input appworkspace.CreateInput) (domainworkspace.Workspace, error) {
-	if strings.TrimSpace(input.Name) == "" {
-		return domainworkspace.Workspace{}, apperror.Invalid("VALIDATION_FAILED", "workspace input is invalid", apperror.Field{Name: "name", Code: "INVALID_LENGTH", Message: "must not be empty"})
+func (directoryFake) Snapshot(context.Context) (directory.Snapshot, error) {
+	return directory.Snapshot{
+		Teams:          []directory.Team{{Key: "development", Name: "開發組", Active: true}},
+		Members:        []directory.Member{{GitLabUserID: 101, Username: "alice", DisplayName: "Alice", State: directory.MemberActive}},
+		SourceRevision: "revision-1", SyncedAt: time.Unix(1, 0),
+	}, nil
+}
+func (directoryFake) Preferences(context.Context, string) (appdirectory.Preferences, error) {
+	key := "development"
+	return appdirectory.Preferences{DefaultTeamKey: &key}, nil
+}
+func (directoryFake) Update(_ context.Context, _ string, key string) (appdirectory.Preferences, error) {
+	return appdirectory.Preferences{DefaultTeamKey: &key}, nil
+}
+
+type boardFake struct{}
+
+func mutationResult(kind board.OperationKind) appboard.Result {
+	return appboard.Result{
+		Card:      board.Card{IssueIID: -1, Title: "修正流程", TeamKey: "development", ListKey: "todo", SyncState: board.OperationPending},
+		Operation: board.Operation{ID: "10000000-0000-0000-0000-000000000001", Kind: kind, State: board.OperationPending},
 	}
-	return domainworkspace.Workspace{ID: httpWorkspaceID, Name: input.Name, Role: domainworkspace.RoleOwner, CreatedByUserID: input.ActorUserID}, nil
 }
-func (workspaceFake) List(context.Context, string) ([]domainworkspace.Workspace, error) {
-	return nil, nil
+func (boardFake) Create(context.Context, appboard.CreateInput) (appboard.Result, error) {
+	return mutationResult(board.OperationCreateCard), nil
 }
-func (workspaceFake) Get(context.Context, string, string) (domainworkspace.Workspace, error) {
-	return domainworkspace.Workspace{ID: httpWorkspaceID, Name: "Engineering", Role: domainworkspace.RoleOwner}, nil
+func (boardFake) UpdateTeam(context.Context, appboard.UpdateTeamInput) (appboard.Result, error) {
+	return mutationResult(board.OperationUpdateTeam), nil
 }
-func (workspaceFake) Update(_ context.Context, input appworkspace.UpdateInput) (domainworkspace.Workspace, error) {
-	if strings.TrimSpace(input.Name) == "" {
-		return domainworkspace.Workspace{}, apperror.Invalid("VALIDATION_FAILED", "workspace input is invalid", apperror.Field{Name: "name", Code: "INVALID_LENGTH", Message: "must not be empty"})
-	}
-	return domainworkspace.Workspace{ID: input.WorkspaceID, Name: input.Name, Role: domainworkspace.RoleOwner}, nil
+func (boardFake) UpdateAssignee(context.Context, appboard.UpdateAssigneeInput) (appboard.Result, error) {
+	return mutationResult(board.OperationUpdateAssignee), nil
 }
-func (workspaceFake) Delete(context.Context, string, string) error { return nil }
-func (workspaceFake) ListMembers(context.Context, string, string) ([]domainworkspace.Member, error) {
-	return nil, nil
+func (boardFake) UpdateDueDate(context.Context, appboard.UpdateDueDateInput) (appboard.Result, error) {
+	return mutationResult(board.OperationUpdateDueDate), nil
 }
-func (workspaceFake) AddMember(context.Context, appworkspace.AddMemberInput) (domainworkspace.Member, error) {
-	return domainworkspace.Member{UserID: httpUserID, Email: "member@example.com", Role: domainworkspace.RoleViewer, JoinedAt: time.Unix(3, 0)}, nil
+func (boardFake) Move(context.Context, appboard.MoveInput) (appboard.Result, error) {
+	return mutationResult(board.OperationMoveCard), nil
 }
-func (workspaceFake) UpdateMember(context.Context, appworkspace.UpdateMemberInput) (domainworkspace.Member, error) {
-	return domainworkspace.Member{UserID: httpUserID, Role: domainworkspace.RoleEditor}, nil
+func (boardFake) Retry(context.Context, string) (board.Operation, error) {
+	return mutationResult(board.OperationMoveCard).Operation, nil
 }
-func (workspaceFake) RemoveMember(context.Context, string, string, string) error { return nil }
 
-type taskFake struct{}
+type bootstrapFake struct{}
 
-func (taskFake) Create(_ context.Context, input apptask.CreateInput) (domaintask.Task, error) {
-	return domaintask.Task{ID: httpTaskID, WorkspaceID: input.WorkspaceID, Title: input.Title, Description: input.Description, Status: domaintask.StatusTodo, AssigneeUserID: input.AssigneeUserID, CreatedByUserID: input.ActorUserID}, nil
+func (bootstrapFake) Get(context.Context, identity.SessionClaims) (appbootstrap.Result, error) {
+	key := "development"
+	return appbootstrap.Result{
+		Me:          identity.User{ID: httpUserID, GitLabUserID: 101, Username: "alice", DisplayName: "Alice", ProfileURL: "https://gitlab.example/alice", AccessLevel: 40},
+		CSRFToken:   "valid-csrf",
+		Directory:   directory.Snapshot{Teams: []directory.Team{{Key: key, Name: "開發組", Active: true}}},
+		Board:       appboard.Snapshot{Lists: []board.List{{Key: "todo", Name: "待處理"}}, SyncedAt: time.Unix(1, 0)},
+		Preferences: appdirectory.Preferences{DefaultTeamKey: &key},
+		Sync:        appbootstrap.SyncStatus{State: "synced", LastSuccessAt: time.Unix(1, 0)},
+	}, nil
 }
-func (taskFake) List(context.Context, string, string, string) ([]domaintask.Task, error) {
-	return nil, nil
-}
-func (taskFake) Get(context.Context, string, string, string) (domaintask.Task, error) {
-	return domaintask.Task{ID: httpTaskID, WorkspaceID: httpWorkspaceID, Title: "Review", Status: domaintask.StatusTodo, CreatedByUserID: httpUserID}, nil
-}
-func (taskFake) Update(context.Context, apptask.UpdateInput) (domaintask.Task, error) {
-	return domaintask.Task{ID: httpTaskID, WorkspaceID: httpWorkspaceID, Title: "Updated", Status: domaintask.StatusDone}, nil
-}
-func (taskFake) Delete(context.Context, string, string, string) error { return nil }
 
-func testRouter(readiness func(context.Context) error) http.Handler {
+type syncFake struct{}
+
+func (syncFake) RequestRefresh() time.Time { return time.Unix(2, 0) }
+
+func testRouter(readiness func(context.Context) error, webDir string) http.Handler {
 	return NewRouter(Dependencies{
-		Log: zap.NewNop(), Auth: authFake{}, Workspaces: workspaceFake{}, Tasks: taskFake{},
-		Cookie: CookieConfig{Name: "test_session", TTL: time.Hour}, AllowedOrigins: []string{"https://app.example.com"},
-		Readiness: readiness, APIName: "Project Template API", APIVersion: "9.8.7",
+		Log: zap.NewNop(), Auth: authFake{}, Bootstrap: bootstrapFake{},
+		Directory: directoryFake{}, Board: boardFake{}, Sync: syncFake{},
+		Cookie:         CookieConfig{Name: "test_session", TTL: 14 * 24 * time.Hour},
+		AllowedOrigins: []string{"https://app.example.com"}, Readiness: readiness,
+		APIName: "SITCON Board API", APIVersion: "9.8.7", WebDir: webDir,
 	})
 }
 
-func TestRegisterIsPublicAndSetsStrictPersistentCookie(t *testing.T) {
-	response := perform(testRouter(nil), http.MethodPost, "/api/v1/auth/register", `{"email":"user@example.com","password":"long-enough-password","displayName":"User"}`, false)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+func TestGitLabOAuthIsPublicAndSetsFourteenDaySession(t *testing.T) {
+	start := perform(testRouter(nil, ""), http.MethodGet, "/api/v1/auth/gitlab", "", false)
+	if start.Code != http.StatusFound || start.Header().Get("Location") != "https://gitlab.example/oauth/authorize" {
+		t.Fatalf("start = %d %s", start.Code, start.Header().Get("Location"))
 	}
-	var body map[string]json.RawMessage
-	_ = json.Unmarshal(response.Body.Bytes(), &body)
-	if _, ok := body["user"]; !ok {
-		t.Fatalf("user wrapper missing: %s", response.Body.String())
+	callback := perform(testRouter(nil, ""), http.MethodGet, "/api/v1/auth/gitlab/callback?code=code&state=state", "", false)
+	cookies := callback.Result().Cookies()
+	if callback.Code != http.StatusFound || len(cookies) != 1 || cookies[0].MaxAge != 14*24*60*60 || !cookies[0].HttpOnly {
+		t.Fatalf("callback = %d cookies=%#v", callback.Code, cookies)
 	}
+}
+
+func TestAuthenticatedRequestRenewsCookieAndReturnsBootstrap(t *testing.T) {
+	response := perform(testRouter(nil, ""), http.MethodGet, "/api/v1/bootstrap", "", true)
 	cookies := response.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].SameSite != http.SameSiteStrictMode || cookies[0].MaxAge <= 0 || cookies[0].Expires.IsZero() {
-		t.Fatalf("unexpected cookie: %#v", cookies)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"csrfToken":"valid-csrf"`) {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
+	}
+	if len(cookies) != 1 || !cookies[0].Expires.Equal(renewedExpiry) {
+		t.Fatalf("rolling cookie = %#v", cookies)
 	}
 }
 
-func TestMutationResponsesUseNamedWrappers(t *testing.T) {
-	router := testRouter(nil)
-	tests := []struct {
-		path string
-		body string
-		key  string
-	}{
-		{"/api/v1/workspaces", `{"name":"Engineering"}`, "workspace"},
-		{"/api/v1/workspaces/" + httpWorkspaceID + "/members", `{"email":"member@example.com","role":"viewer"}`, "member"},
-		{"/api/v1/workspaces/" + httpWorkspaceID + "/tasks", `{"title":"Review","assigneeId":"` + httpUserID + `"}`, "task"},
+func TestCardMutationUsesAcceptedContractAndCSRF(t *testing.T) {
+	response := perform(testRouter(nil, ""), http.MethodPost, "/api/v1/cards", `{"operationId":"10000000-0000-0000-0000-000000000001","title":"修正流程","teamKey":"development","assigneeGitLabUserId":101,"dueDate":"2026-07-21"}`, true)
+	if response.Code != http.StatusAccepted || !strings.Contains(response.Body.String(), `"card"`) || !strings.Contains(response.Body.String(), `"operation"`) {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
 	}
-	for _, tt := range tests {
-		response := perform(router, http.MethodPost, tt.path, tt.body, true)
-		if response.Code != http.StatusCreated {
-			t.Fatalf("%s status = %d, body = %s", tt.path, response.Code, response.Body.String())
-		}
-		var body map[string]json.RawMessage
-		_ = json.Unmarshal(response.Body.Bytes(), &body)
-		if _, ok := body[tt.key]; !ok {
-			t.Fatalf("%s wrapper missing in %s", tt.key, response.Body.String())
-		}
+	forbidden := perform(testRouter(nil, ""), http.MethodPost, "/api/v1/cards", `{}`, false)
+	if forbidden.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated mutation = %d", forbidden.Code)
 	}
 }
 
-func TestTaskResponseUsesCanonicalFields(t *testing.T) {
-	response := perform(testRouter(nil), http.MethodGet, "/api/v1/workspaces/"+httpWorkspaceID+"/tasks/"+httpTaskID, "", true)
+func TestProductionHTMLInjectsBootstrapWithoutLoadingFetch(t *testing.T) {
+	webDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(webDir, "index.html"), []byte("<html><head></head><body><div id=\"root\"></div></body></html>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	response := perform(testRouter(nil, webDir), http.MethodGet, "/", "", true)
 	body := response.Body.String()
-	if response.Code != http.StatusOK || !strings.Contains(body, `"task"`) || strings.Contains(body, "assigneeUserId") || strings.Contains(body, "createdByUserId") {
-		t.Fatalf("unexpected task response: status=%d body=%s", response.Code, body)
+	if response.Code != http.StatusOK || !strings.Contains(body, `id="__SITCON_BOOTSTRAP__"`) || !strings.Contains(body, `"teams"`) {
+		t.Fatalf("html = %d %s", response.Code, body)
 	}
 }
 
-func TestProblemStatusAndLocationContract(t *testing.T) {
-	tests := []struct {
-		name     string
-		method   string
-		path     string
-		body     string
-		auth     bool
-		expected int
-		location string
-	}{
-		{"malformed", http.MethodPost, "/api/v1/auth/register", `{`, false, http.StatusBadRequest, `"location":"body"`},
-		{"semantic", http.MethodPost, "/api/v1/workspaces", `{"name":""}`, true, http.StatusUnprocessableEntity, `"location":"body.name"`},
-		{"method", http.MethodPut, "/api/v1/auth/login", `{}`, false, http.StatusMethodNotAllowed, ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			response := perform(testRouter(nil), tt.method, tt.path, tt.body, tt.auth)
-			if response.Code != tt.expected || (tt.location != "" && !strings.Contains(response.Body.String(), tt.location)) {
-				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-			}
-		})
-	}
-}
-
-func TestReadinessAndAPIRoot(t *testing.T) {
-	router := testRouter(func(context.Context) error { return errors.New("database down") })
-	readiness := perform(router, http.MethodGet, "/api/v1/healthz", "", false)
-	if readiness.Code != http.StatusServiceUnavailable {
-		t.Fatalf("readiness status = %d, body = %s", readiness.Code, readiness.Body.String())
-	}
-	root := perform(router, http.MethodGet, "/api/v1/", "", false)
-	if root.Code != http.StatusOK || !strings.Contains(root.Body.String(), `"name":"Project Template API"`) || !strings.Contains(root.Body.String(), `"version":"9.8.7"`) {
-		t.Fatalf("root response = %d %s", root.Code, root.Body.String())
+func TestReadinessRequiresSnapshots(t *testing.T) {
+	router := testRouter(func(context.Context) error { return errors.New("snapshots missing") }, "")
+	response := perform(router, http.MethodGet, "/api/v1/health/ready", "", false)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("readiness = %d %s", response.Code, response.Body.String())
 	}
 }
 

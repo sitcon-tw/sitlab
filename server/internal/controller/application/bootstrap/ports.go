@@ -2,10 +2,10 @@ package bootstrap
 
 import (
 	"context"
-	"time"
 
 	appboard "example.com/project-template/internal/controller/application/board"
 	appdirectory "example.com/project-template/internal/controller/application/directory"
+	"example.com/project-template/internal/domain/board"
 	"example.com/project-template/internal/domain/directory"
 	"example.com/project-template/internal/domain/identity"
 )
@@ -24,11 +24,7 @@ type Board interface {
 	Board(context.Context) (appboard.Snapshot, error)
 }
 
-type SyncStatus struct {
-	State         string
-	LastSuccessAt time.Time
-	Message       string
-}
+type SyncStatus = board.SyncStatus
 
 type Sync interface {
 	Status(context.Context) (SyncStatus, error)

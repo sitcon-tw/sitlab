@@ -21,7 +21,7 @@ func run(args []string) int {
 	flags.SetOutput(os.Stderr)
 	command := flags.String("command", "status", "migration command: status, up, or down")
 	directory := flags.String("dir", "db/migrations", "migration directory")
-	databaseOverride := flags.String("database-url", "", "override PROJECT_TEMPLATE_DATABASE_URL")
+	databaseOverride := flags.String("database-url", "", "override SITCON_BOARD_DATABASE_URL")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}

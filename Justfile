@@ -153,7 +153,7 @@ backend-build:
 backend-test:
     cd {{ server_dir }} && go test ./...
 
-# Run backend integration tests against PROJECT_TEMPLATE_TEST_DATABASE_URL.
+# Run backend integration tests against SITCON_BOARD_TEST_DATABASE_URL.
 backend-test-integration:
     cd {{ server_dir }} && go test -v -tags=integration ./internal/e2e/...
 
@@ -169,10 +169,6 @@ backend-lint-fix:
 backend-tidy:
     cd {{ server_dir }} && go mod tidy
 
-# Generate sqlc code with the version recorded in generated headers.
-backend-sqlc:
-    cd {{ server_dir }} && go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.29.0 generate -f sqlc.yaml
-
 # Show migration status.
 backend-migrate-status:
     cd {{ server_dir }} && go run ./cmd/migrate -command status -dir db/migrations
@@ -187,7 +183,7 @@ backend-migrate-down:
 
 # Build the production image.
 docker-build:
-    docker build -f deployments/docker/Dockerfile -t project-template:local .
+    docker build -f deployments/docker/Dockerfile -t sitcon-board:local .
 
 # Start the local production-shaped stack.
 docker-up:

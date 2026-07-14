@@ -87,6 +87,12 @@ type Snapshot struct {
 	SyncedAt       time.Time
 }
 
+type Preferences struct {
+	DefaultTeamKey    *string
+	ConfirmedAt       *time.Time
+	DirectoryTeamKeys []string
+}
+
 func Normalize(file File, gitLabMembers []GitLabMember, sourceRevision string, syncedAt time.Time) (Snapshot, []MissingMember, error) {
 	if file.Version != 1 {
 		return Snapshot{}, nil, fmt.Errorf("%w: %d", ErrUnsupportedVersion, file.Version)

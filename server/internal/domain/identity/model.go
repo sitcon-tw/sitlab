@@ -4,8 +4,6 @@ import "time"
 
 type User struct {
 	ID           string
-	Email        string
-	PasswordHash string
 	GitLabUserID int64
 	Username     string
 	DisplayName  string
@@ -25,16 +23,13 @@ type OAuthState struct {
 }
 
 type Session struct {
-	ID                string
-	UserID            string
-	TokenHash         []byte
-	CSRFTokenHash     []byte
-	ExpiresAt         time.Time
-	LastUsedAt        time.Time
-	IdleExpiresAt     time.Time
-	AbsoluteExpiresAt time.Time
-	CreatedAt         time.Time
-	LastSeenAt        time.Time
+	ID            string
+	UserID        string
+	TokenHash     []byte
+	CSRFTokenHash []byte
+	ExpiresAt     time.Time
+	LastUsedAt    time.Time
+	CreatedAt     time.Time
 }
 
 type SessionClaims struct {

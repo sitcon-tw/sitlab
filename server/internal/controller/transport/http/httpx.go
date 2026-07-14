@@ -105,7 +105,7 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(problem{
-		Type: "https://example.com/problems/" + code, Title: title, Status: status,
+		Type: "https://board.sitcon.org/problems/" + strings.ToLower(strings.ReplaceAll(code, "_", "-")), Title: title, Status: status,
 		Code: code, Detail: detail, RequestID: requestID, Errors: fields,
 	})
 }

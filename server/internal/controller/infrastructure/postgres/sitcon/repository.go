@@ -13,10 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	appboard "example.com/project-template/internal/controller/application/board"
-	appbootstrap "example.com/project-template/internal/controller/application/bootstrap"
-	appdirectory "example.com/project-template/internal/controller/application/directory"
-	appsync "example.com/project-template/internal/controller/application/sync"
 	"example.com/project-template/internal/controller/infrastructure/postgres"
 	domainboard "example.com/project-template/internal/domain/board"
 	domaindirectory "example.com/project-template/internal/domain/directory"
@@ -28,8 +24,8 @@ type Repository struct {
 
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 
-func (r *Repository) Status(ctx context.Context) (appbootstrap.SyncStatus, error) {
-	var status appbootstrap.SyncStatus
+func (r *Repository) Status(ctx context.Context) (domainboard.SyncStatus, error) {
+	var status domainboard.SyncStatus
 	var hasError bool
 	var message *string
 	err := postgres.Executor(ctx, r.pool).QueryRow(ctx, `
@@ -40,10 +36,10 @@ func (r *Repository) Status(ctx context.Context) (appbootstrap.SyncStatus, error
 		HAVING COUNT(*) = 3
 	`).Scan(&status.LastSuccessAt, &hasError, &message)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return appbootstrap.SyncStatus{}, domainboard.ErrSnapshotNotFound
+		return domainboard.SyncStatus{}, domainboard.ErrSnapshotNotFound
 	}
 	if err != nil {
-		return appbootstrap.SyncStatus{}, fmt.Errorf("load sync status: %w", err)
+		return domainboard.SyncStatus{}, fmt.Errorf("load sync status: %w", err)
 	}
 	status.State = "synced"
 	if hasError {
@@ -239,8 +235,8 @@ func (r *Repository) RecordSyncFailure(ctx context.Context, resource string, att
 	return err
 }
 
-func (r *Repository) ClaimOperation(ctx context.Context, now time.Time) (appsync.PendingOperation, error) {
-	var pending appsync.PendingOperation
+func (r *Repository) ClaimOperation(ctx context.Context, now time.Time) (domainboard.PendingOperation, error) {
+	var pending domainboard.PendingOperation
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		var issueIID *int64
 		var lastError *string
@@ -300,12 +296,12 @@ func (r *Repository) ClaimOperation(ctx context.Context, now time.Time) (appsync
 		return err
 	})
 	if err != nil {
-		return appsync.PendingOperation{}, err
+		return domainboard.PendingOperation{}, err
 	}
 	return pending, nil
 }
 
-func (r *Repository) CompleteOperation(ctx context.Context, pending appsync.PendingOperation, issue appsync.GitLabIssue, completedAt time.Time) error {
+func (r *Repository) CompleteOperation(ctx context.Context, pending domainboard.PendingOperation, issue domainboard.CanonicalIssue, completedAt time.Time) error {
 	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		operationID := uuid.MustParse(pending.Operation.ID)
 		if pending.Operation.Kind == domainboard.OperationCreateCard {
@@ -365,7 +361,7 @@ func (r *Repository) CompleteOperation(ctx context.Context, pending appsync.Pend
 	})
 }
 
-func (r *Repository) FailOperation(ctx context.Context, pending appsync.PendingOperation, failedAt time.Time, code, detail string) error {
+func (r *Repository) FailOperation(ctx context.Context, pending domainboard.PendingOperation, failedAt time.Time, code, detail string) error {
 	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		operationID := uuid.MustParse(pending.Operation.ID)
 		if _, err := tx.Exec(ctx, `
@@ -503,7 +499,7 @@ func (r *Repository) Snapshot(ctx context.Context) (domaindirectory.Snapshot, er
 	return domaindirectory.Snapshot{Teams: teams, Members: members, SourceRevision: revision, SyncedAt: syncedAt.UTC()}, nil
 }
 
-func (r *Repository) Preferences(ctx context.Context, userID string) (appdirectory.Preferences, error) {
+func (r *Repository) Preferences(ctx context.Context, userID string) (domaindirectory.Preferences, error) {
 	var defaultTeamKey *string
 	var confirmedAt *time.Time
 	var directoryTeamKeys []string
@@ -519,15 +515,15 @@ func (r *Repository) Preferences(ctx context.Context, userID string) (appdirecto
 		GROUP BY person.id, preference.default_team_key, preference.confirmed_at
 	`, uuid.MustParse(userID)).Scan(&defaultTeamKey, &confirmedAt, &directoryTeamKeys)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return appdirectory.Preferences{}, domaindirectory.ErrPreferencesNotFound
+		return domaindirectory.Preferences{}, domaindirectory.ErrPreferencesNotFound
 	}
 	if err != nil {
-		return appdirectory.Preferences{}, fmt.Errorf("load preferences: %w", err)
+		return domaindirectory.Preferences{}, fmt.Errorf("load preferences: %w", err)
 	}
-	return appdirectory.Preferences{DefaultTeamKey: defaultTeamKey, ConfirmedAt: confirmedAt, DirectoryTeamKeys: directoryTeamKeys}, nil
+	return domaindirectory.Preferences{DefaultTeamKey: defaultTeamKey, ConfirmedAt: confirmedAt, DirectoryTeamKeys: directoryTeamKeys}, nil
 }
 
-func (r *Repository) SetPreferences(ctx context.Context, userID, teamKey string, confirmedAt time.Time) (appdirectory.Preferences, error) {
+func (r *Repository) SetPreferences(ctx context.Context, userID, teamKey string, confirmedAt time.Time) (domaindirectory.Preferences, error) {
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		var gitLabUserID int64
 		if err := tx.QueryRow(ctx, `SELECT gitlab_user_id FROM users WHERE id = $1`, uuid.MustParse(userID)).Scan(&gitLabUserID); err != nil {
@@ -558,18 +554,18 @@ func (r *Repository) SetPreferences(ctx context.Context, userID, teamKey string,
 		return err
 	})
 	if err != nil {
-		return appdirectory.Preferences{}, fmt.Errorf("set preferences transaction: %w", err)
+		return domaindirectory.Preferences{}, fmt.Errorf("set preferences transaction: %w", err)
 	}
 	return r.Preferences(ctx, userID)
 }
 
-func (r *Repository) Board(ctx context.Context) (appboard.Snapshot, error) {
+func (r *Repository) Board(ctx context.Context) (domainboard.Snapshot, error) {
 	db := postgres.Executor(ctx, r.pool)
 	var syncedAt time.Time
 	if err := db.QueryRow(ctx, `SELECT last_success_at FROM sync_snapshots WHERE resource = 'board'`).Scan(&syncedAt); errors.Is(err, pgx.ErrNoRows) {
-		return appboard.Snapshot{}, domainboard.ErrSnapshotNotFound
+		return domainboard.Snapshot{}, domainboard.ErrSnapshotNotFound
 	} else if err != nil {
-		return appboard.Snapshot{}, fmt.Errorf("load board revision: %w", err)
+		return domainboard.Snapshot{}, fmt.Errorf("load board revision: %w", err)
 	}
 
 	listRows, err := db.Query(ctx, `
@@ -578,38 +574,38 @@ func (r *Repository) Board(ctx context.Context) (appboard.Snapshot, error) {
 		ORDER BY position, key
 	`)
 	if err != nil {
-		return appboard.Snapshot{}, fmt.Errorf("list board lists: %w", err)
+		return domainboard.Snapshot{}, fmt.Errorf("list board lists: %w", err)
 	}
 	defer listRows.Close()
 	lists := make([]domainboard.List, 0)
 	for listRows.Next() {
 		var list domainboard.List
 		if err := listRows.Scan(&list.Key, &list.Name, &list.GitLabLabel, &list.Position, &list.Closed, &list.Color); err != nil {
-			return appboard.Snapshot{}, fmt.Errorf("scan board list: %w", err)
+			return domainboard.Snapshot{}, fmt.Errorf("scan board list: %w", err)
 		}
 		lists = append(lists, list)
 	}
 	if err := listRows.Err(); err != nil {
-		return appboard.Snapshot{}, fmt.Errorf("iterate board lists: %w", err)
+		return domainboard.Snapshot{}, fmt.Errorf("iterate board lists: %w", err)
 	}
 
 	cardRows, err := db.Query(ctx, selectCards+` ORDER BY board_list.position, card.position, card.issue_iid`)
 	if err != nil {
-		return appboard.Snapshot{}, fmt.Errorf("list board cards: %w", err)
+		return domainboard.Snapshot{}, fmt.Errorf("list board cards: %w", err)
 	}
 	defer cardRows.Close()
 	cards := make([]domainboard.Card, 0)
 	for cardRows.Next() {
 		card, err := scanCard(cardRows)
 		if err != nil {
-			return appboard.Snapshot{}, fmt.Errorf("scan board card: %w", err)
+			return domainboard.Snapshot{}, fmt.Errorf("scan board card: %w", err)
 		}
 		cards = append(cards, card)
 	}
 	if err := cardRows.Err(); err != nil {
-		return appboard.Snapshot{}, fmt.Errorf("iterate board cards: %w", err)
+		return domainboard.Snapshot{}, fmt.Errorf("iterate board cards: %w", err)
 	}
-	return appboard.Snapshot{Lists: lists, Cards: cards, SyncedAt: syncedAt.UTC()}, nil
+	return domainboard.Snapshot{Lists: lists, Cards: cards, SyncedAt: syncedAt.UTC()}, nil
 }
 
 func (r *Repository) Card(ctx context.Context, issueIID int64) (domainboard.Card, error) {
@@ -624,7 +620,7 @@ func (r *Repository) Card(ctx context.Context, issueIID int64) (domainboard.Card
 	return card, nil
 }
 
-func (r *Repository) ByOperation(ctx context.Context, operationID string) (appboard.Result, error) {
+func (r *Repository) ByOperation(ctx context.Context, operationID string) (domainboard.Result, error) {
 	var operation domainboard.Operation
 	var issueIID *int64
 	var lastError *string
@@ -637,31 +633,31 @@ func (r *Repository) ByOperation(ctx context.Context, operationID string) (appbo
 		&lastError, &operation.CreatedAt, &operation.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return appboard.Result{}, domainboard.ErrOperationNotFound
+		return domainboard.Result{}, domainboard.ErrOperationNotFound
 	}
 	if err != nil {
-		return appboard.Result{}, fmt.Errorf("get durable operation: %w", err)
+		return domainboard.Result{}, fmt.Errorf("get durable operation: %w", err)
 	}
 	operation.IssueIID = issueIID
 	if lastError != nil {
 		operation.LastError = *lastError
 	}
 	if issueIID == nil {
-		return appboard.Result{Operation: operation}, nil
+		return domainboard.Result{Operation: operation}, nil
 	}
 	card, err := r.Card(ctx, *issueIID)
 	if err != nil {
-		return appboard.Result{}, err
+		return domainboard.Result{}, err
 	}
-	return appboard.Result{Card: card, Operation: operation}, nil
+	return domainboard.Result{Card: card, Operation: operation}, nil
 }
 
-func (r *Repository) CreateCard(ctx context.Context, mutation appboard.Mutation) (appboard.Result, error) {
+func (r *Repository) CreateCard(ctx context.Context, mutation domainboard.Mutation) (domainboard.Result, error) {
 	payload, err := json.Marshal(mutation.Payload)
 	if err != nil {
-		return appboard.Result{}, fmt.Errorf("encode create card operation: %w", err)
+		return domainboard.Result{}, fmt.Errorf("encode create card operation: %w", err)
 	}
-	var result appboard.Result
+	var result domainboard.Result
 	err = pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO durable_operations
@@ -691,22 +687,22 @@ func (r *Repository) CreateCard(ctx context.Context, mutation appboard.Mutation)
 		}
 		mutation.Card.IssueIID = issueIID
 		mutation.Operation.IssueIID = &issueIID
-		result = appboard.Result{Card: mutation.Card, Operation: mutation.Operation}
+		result = domainboard.Result{Card: mutation.Card, Operation: mutation.Operation}
 		return nil
 	})
 	if operationConflict(err) {
-		return appboard.Result{}, domainboard.ErrOperationConflict
+		return domainboard.Result{}, domainboard.ErrOperationConflict
 	}
 	if err != nil {
-		return appboard.Result{}, fmt.Errorf("create optimistic card transaction: %w", err)
+		return domainboard.Result{}, fmt.Errorf("create optimistic card transaction: %w", err)
 	}
 	return result, nil
 }
 
-func (r *Repository) UpdateCard(ctx context.Context, mutation appboard.Mutation) (appboard.Result, error) {
+func (r *Repository) UpdateCard(ctx context.Context, mutation domainboard.Mutation) (domainboard.Result, error) {
 	payload, err := json.Marshal(mutation.Payload)
 	if err != nil {
-		return appboard.Result{}, fmt.Errorf("encode card operation: %w", err)
+		return domainboard.Result{}, fmt.Errorf("encode card operation: %w", err)
 	}
 	err = pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `
@@ -735,12 +731,12 @@ func (r *Repository) UpdateCard(ctx context.Context, mutation appboard.Mutation)
 		return nil
 	})
 	if operationConflict(err) {
-		return appboard.Result{}, domainboard.ErrOperationConflict
+		return domainboard.Result{}, domainboard.ErrOperationConflict
 	}
 	if err != nil {
-		return appboard.Result{}, fmt.Errorf("update optimistic card transaction: %w", err)
+		return domainboard.Result{}, fmt.Errorf("update optimistic card transaction: %w", err)
 	}
-	return appboard.Result{Card: mutation.Card, Operation: mutation.Operation}, nil
+	return domainboard.Result{Card: mutation.Card, Operation: mutation.Operation}, nil
 }
 
 func (r *Repository) RetryOperation(ctx context.Context, operationID string) (domainboard.Operation, error) {

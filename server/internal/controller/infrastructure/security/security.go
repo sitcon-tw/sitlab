@@ -8,8 +8,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
-
-	"golang.org/x/crypto/bcrypt"
 )
 
 type Cipher struct {
@@ -47,29 +45,6 @@ func (c Cipher) Open(value []byte) (string, error) {
 		return "", fmt.Errorf("open oauth state ciphertext: %w", err)
 	}
 	return string(plaintext), nil
-}
-
-type PasswordHasher struct {
-	cost int
-}
-
-func NewPasswordHasher(cost int) PasswordHasher {
-	if cost == 0 {
-		cost = bcrypt.DefaultCost
-	}
-	return PasswordHasher{cost: cost}
-}
-
-func (h PasswordHasher) Hash(password string) (string, error) {
-	digest, err := bcrypt.GenerateFromPassword([]byte(password), h.cost)
-	if err != nil {
-		return "", fmt.Errorf("bcrypt password: %w", err)
-	}
-	return string(digest), nil
-}
-
-func (h PasswordHasher) Compare(hash, password string) error {
-	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 }
 
 type Tokens struct {
