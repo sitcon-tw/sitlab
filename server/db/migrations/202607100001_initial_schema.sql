@@ -43,7 +43,7 @@ CREATE TABLE directory_teams (
     source_revision text NOT NULL,
     updated_at timestamptz NOT NULL
 );
-CREATE UNIQUE INDEX directory_teams_sort_order_unique ON directory_teams (sort_order);
+CREATE INDEX directory_teams_sort_order_idx ON directory_teams (sort_order, key);
 
 CREATE TABLE directory_members (
     gitlab_user_id bigint PRIMARY KEY,

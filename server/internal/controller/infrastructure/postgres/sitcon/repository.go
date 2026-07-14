@@ -72,6 +72,172 @@ func (r *Repository) ReadySnapshots(ctx context.Context) error {
 	return nil
 }
 
+func (r *Repository) ReplaceDirectory(ctx context.Context, snapshot domaindirectory.Snapshot) error {
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `
+			UPDATE directory_teams
+			SET active = false, source_revision = $1, updated_at = $2
+		`, snapshot.SourceRevision, snapshot.SyncedAt); err != nil {
+			return err
+		}
+		for _, team := range snapshot.Teams {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO directory_teams
+				    (key, display_name, title_prefix, gitlab_label, sort_order, active, source_revision, updated_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				ON CONFLICT (key) DO UPDATE
+				SET display_name = EXCLUDED.display_name,
+				    title_prefix = EXCLUDED.title_prefix,
+				    gitlab_label = EXCLUDED.gitlab_label,
+				    sort_order = EXCLUDED.sort_order,
+				    active = EXCLUDED.active,
+				    source_revision = EXCLUDED.source_revision,
+				    updated_at = EXCLUDED.updated_at
+			`, team.Key, team.Name, team.TitlePrefix, team.GitLabLabel, team.SortOrder,
+				team.Active, snapshot.SourceRevision, snapshot.SyncedAt); err != nil {
+				return err
+			}
+		}
+
+		memberIDs := make([]int64, 0, len(snapshot.Members))
+		for _, member := range snapshot.Members {
+			memberIDs = append(memberIDs, member.GitLabUserID)
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO directory_members
+				    (gitlab_user_id, username, display_name, avatar_url, profile_url,
+				     access_level, state, last_synced_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				ON CONFLICT (gitlab_user_id) DO UPDATE
+				SET username = EXCLUDED.username,
+				    display_name = EXCLUDED.display_name,
+				    avatar_url = EXCLUDED.avatar_url,
+				    profile_url = EXCLUDED.profile_url,
+				    access_level = EXCLUDED.access_level,
+				    state = EXCLUDED.state,
+				    last_synced_at = EXCLUDED.last_synced_at
+			`, member.GitLabUserID, member.Username, member.DisplayName, nullableString(member.AvatarURL),
+				member.ProfileURL, member.AccessLevel, member.State, snapshot.SyncedAt); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM directory_members
+			WHERE NOT (gitlab_user_id = ANY($1::bigint[]))
+		`, memberIDs); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM directory_team_memberships WHERE source = 'gitlab_directory'`); err != nil {
+			return err
+		}
+		for _, team := range snapshot.Teams {
+			for _, memberID := range team.MemberGitLabUserIDs {
+				if _, err := tx.Exec(ctx, `
+					INSERT INTO directory_team_memberships (team_key, gitlab_user_id, source, updated_at)
+					VALUES ($1, $2, 'gitlab_directory', $3)
+				`, team.Key, memberID, snapshot.SyncedAt); err != nil {
+					return err
+				}
+			}
+		}
+		for _, resource := range []string{"directory", "members"} {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO sync_snapshots
+				    (resource, source_revision, last_success_at, last_attempt_at, last_error, updated_at)
+				VALUES ($1, $2, $3, $3, NULL, $3)
+				ON CONFLICT (resource) DO UPDATE
+				SET source_revision = EXCLUDED.source_revision,
+				    last_success_at = EXCLUDED.last_success_at,
+				    last_attempt_at = EXCLUDED.last_attempt_at,
+				    last_error = NULL,
+				    updated_at = EXCLUDED.updated_at
+			`, resource, snapshot.SourceRevision, snapshot.SyncedAt); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List, cards []domainboard.Card, revision string, syncedAt time.Time) error {
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		for _, list := range lists {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO board_lists (key, display_name, gitlab_label, position, closed, color, updated_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
+				ON CONFLICT (key) DO UPDATE
+				SET display_name = EXCLUDED.display_name,
+				    gitlab_label = EXCLUDED.gitlab_label,
+				    position = EXCLUDED.position,
+				    closed = EXCLUDED.closed,
+				    color = EXCLUDED.color,
+				    updated_at = EXCLUDED.updated_at
+			`, list.Key, list.Name, list.GitLabLabel, list.Position, list.Closed, list.Color, syncedAt); err != nil {
+				return err
+			}
+		}
+		issueIIDs := make([]int64, 0, len(cards))
+		for _, card := range cards {
+			issueIIDs = append(issueIIDs, card.IssueIID)
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO issue_cache
+				    (issue_iid, gitlab_issue_id, title, web_url, list_key, position, team_key,
+				     assignee_gitlab_user_id, due_date, labels, sync_state, gitlab_updated_at,
+				     created_at, updated_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10::text[], '{}'),
+				        'synced', $11, $12, $12)
+				ON CONFLICT (issue_iid) DO UPDATE
+				SET gitlab_issue_id = EXCLUDED.gitlab_issue_id,
+				    title = EXCLUDED.title,
+				    web_url = EXCLUDED.web_url,
+				    list_key = EXCLUDED.list_key,
+				    position = EXCLUDED.position,
+				    team_key = EXCLUDED.team_key,
+				    assignee_gitlab_user_id = EXCLUDED.assignee_gitlab_user_id,
+				    due_date = EXCLUDED.due_date,
+				    labels = EXCLUDED.labels,
+				    sync_state = 'synced',
+				    sync_error = NULL,
+				    pending_operation_id = NULL,
+				    gitlab_updated_at = EXCLUDED.gitlab_updated_at,
+				    updated_at = EXCLUDED.updated_at
+				WHERE issue_cache.sync_state = 'synced'
+			`, card.IssueIID, card.GitLabIssueID, card.Title, nullableString(card.WebURL),
+				card.ListKey, card.Position, card.TeamKey, card.AssigneeGitLabUserID,
+				nullableDate(card.DueDate), card.Labels, card.UpdatedAt, syncedAt); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM issue_cache
+			WHERE issue_iid > 0 AND sync_state = 'synced'
+			  AND NOT (issue_iid = ANY($1::bigint[]))
+		`, issueIIDs); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `
+			INSERT INTO sync_snapshots
+			    (resource, source_revision, last_success_at, last_attempt_at, last_error, updated_at)
+			VALUES ('board', $1, $2, $2, NULL, $2)
+			ON CONFLICT (resource) DO UPDATE
+			SET source_revision = EXCLUDED.source_revision,
+			    last_success_at = EXCLUDED.last_success_at,
+			    last_attempt_at = EXCLUDED.last_attempt_at,
+			    last_error = NULL,
+			    updated_at = EXCLUDED.updated_at
+		`, revision, syncedAt)
+		return err
+	})
+}
+
+func (r *Repository) RecordSyncFailure(ctx context.Context, resource string, attemptedAt time.Time, detail string) error {
+	_, err := postgres.Executor(ctx, r.pool).Exec(ctx, `
+		UPDATE sync_snapshots
+		SET last_attempt_at = $2, last_error = $3, updated_at = $2
+		WHERE resource = $1
+	`, resource, attemptedAt, detail)
+	return err
+}
+
 func (r *Repository) Snapshot(ctx context.Context) (domaindirectory.Snapshot, error) {
 	db := postgres.Executor(ctx, r.pool)
 	var revision string
@@ -152,6 +318,33 @@ func (r *Repository) Snapshot(ctx context.Context) (domaindirectory.Snapshot, er
 				}
 			}
 		}
+	}
+	directoryMembershipRows, err := db.Query(ctx, `
+		SELECT membership.team_key, member.username
+		FROM directory_team_memberships membership
+		JOIN directory_members member ON member.gitlab_user_id = membership.gitlab_user_id
+		JOIN directory_teams team ON team.key = membership.team_key
+		WHERE membership.source = 'gitlab_directory'
+		ORDER BY team.sort_order, lower(member.display_name), lower(member.username)
+	`)
+	if err != nil {
+		return domaindirectory.Snapshot{}, fmt.Errorf("list GitLab directory memberships: %w", err)
+	}
+	defer directoryMembershipRows.Close()
+	for directoryMembershipRows.Next() {
+		var teamKey, username string
+		if err := directoryMembershipRows.Scan(&teamKey, &username); err != nil {
+			return domaindirectory.Snapshot{}, fmt.Errorf("scan GitLab directory membership: %w", err)
+		}
+		for teamIndex := range teams {
+			if teams[teamIndex].Key == teamKey {
+				teams[teamIndex].DirectoryMemberUsernames = append(teams[teamIndex].DirectoryMemberUsernames, username)
+				break
+			}
+		}
+	}
+	if err := directoryMembershipRows.Err(); err != nil {
+		return domaindirectory.Snapshot{}, fmt.Errorf("iterate GitLab directory memberships: %w", err)
 	}
 	return domaindirectory.Snapshot{Teams: teams, Members: members, SourceRevision: revision, SyncedAt: syncedAt.UTC()}, nil
 }
@@ -474,6 +667,13 @@ func nullableDate(value string) any {
 	}
 	parsed, _ := time.Parse(time.DateOnly, value)
 	return parsed
+}
+
+func nullableString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 func operationConflict(err error) bool {

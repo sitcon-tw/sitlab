@@ -2,6 +2,7 @@ package gitlab
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,17 +11,164 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	appoauth "example.com/project-template/internal/controller/application/oauth"
+	appsync "example.com/project-template/internal/controller/application/sync"
+	"example.com/project-template/internal/domain/directory"
 	"example.com/project-template/internal/domain/identity"
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	BaseURL      string
-	ClientID     string
-	ClientSecret string
-	RedirectURI  string
-	ProjectPath  string
+	BaseURL       string
+	ClientID      string
+	ClientSecret  string
+	RedirectURI   string
+	ProjectPath   string
+	AccessToken   string
+	DirectoryPath string
+	Branch        string
+}
+
+func (c *Client) DirectoryRevision(ctx context.Context) (string, error) {
+	requestURL := c.projectEndpoint("/repository/files/") + url.PathEscape(c.directoryPath()) + "?ref=" + url.QueryEscape(c.branch())
+	response, err := c.do(ctx, http.MethodHead, requestURL, nil, c.config.AccessToken, "")
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	revision := response.Header.Get("X-Gitlab-Last-Commit-Id")
+	if revision == "" {
+		revision = response.Header.Get("X-Gitlab-Commit-Id")
+	}
+	if revision == "" {
+		return "", fmt.Errorf("GitLab directory HEAD omitted commit revision")
+	}
+	return revision, nil
+}
+
+func (c *Client) DirectoryFile(ctx context.Context) (directory.File, string, error) {
+	requestURL := c.projectEndpoint("/repository/files/") + url.PathEscape(c.directoryPath()) + "?ref=" + url.QueryEscape(c.branch())
+	response, err := c.do(ctx, http.MethodGet, requestURL, nil, c.config.AccessToken, "")
+	if err != nil {
+		return directory.File{}, "", err
+	}
+	defer response.Body.Close()
+	var wire struct {
+		Content      string `json:"content"`
+		LastCommitID string `json:"last_commit_id"`
+	}
+	if err := decodeJSON(response.Body, &wire); err != nil {
+		return directory.File{}, "", fmt.Errorf("decode GitLab directory file: %w", err)
+	}
+	content, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(wire.Content, "\n", ""))
+	if err != nil {
+		return directory.File{}, "", fmt.Errorf("decode GitLab directory content: %w", err)
+	}
+	var source struct {
+		Version int `yaml:"version"`
+		Teams   []struct {
+			Key         string   `yaml:"key"`
+			Name        string   `yaml:"name"`
+			TitlePrefix string   `yaml:"title_prefix"`
+			GitLabLabel string   `yaml:"gitlab_label"`
+			Active      bool     `yaml:"active"`
+			Members     []string `yaml:"members"`
+		} `yaml:"teams"`
+	}
+	if err := yaml.Unmarshal(content, &source); err != nil {
+		return directory.File{}, "", fmt.Errorf("parse board directory YAML: %w", err)
+	}
+	file := directory.File{Version: source.Version, Teams: make([]directory.TeamConfig, 0, len(source.Teams))}
+	for _, team := range source.Teams {
+		file.Teams = append(file.Teams, directory.TeamConfig{
+			Key: team.Key, Name: team.Name, TitlePrefix: team.TitlePrefix,
+			GitLabLabel: team.GitLabLabel, Active: team.Active, Members: team.Members,
+		})
+	}
+	return file, wire.LastCommitID, nil
+}
+
+func (c *Client) ProjectMembers(ctx context.Context) ([]directory.GitLabMember, error) {
+	result := make([]directory.GitLabMember, 0)
+	page := "1"
+	for page != "" {
+		requestURL := c.projectEndpoint("/members/all?per_page=100&page=") + url.QueryEscape(page)
+		response, err := c.do(ctx, http.MethodGet, requestURL, nil, c.config.AccessToken, "")
+		if err != nil {
+			return nil, err
+		}
+		var rows []struct {
+			ID          int64  `json:"id"`
+			Username    string `json:"username"`
+			Name        string `json:"name"`
+			AvatarURL   string `json:"avatar_url"`
+			WebURL      string `json:"web_url"`
+			AccessLevel int32  `json:"access_level"`
+			State       string `json:"state"`
+		}
+		decodeErr := decodeJSON(response.Body, &rows)
+		page = response.Header.Get("X-Next-Page")
+		response.Body.Close()
+		if decodeErr != nil {
+			return nil, fmt.Errorf("decode GitLab members: %w", decodeErr)
+		}
+		for _, row := range rows {
+			result = append(result, directory.GitLabMember{
+				GitLabUserID: row.ID, Username: row.Username, DisplayName: row.Name,
+				AvatarURL: row.AvatarURL, ProfileURL: row.WebURL,
+				AccessLevel: row.AccessLevel, State: directory.MemberState(row.State),
+			})
+		}
+	}
+	return result, nil
+}
+
+func (c *Client) Issues(ctx context.Context) ([]appsync.GitLabIssue, error) {
+	result := make([]appsync.GitLabIssue, 0)
+	page := "1"
+	for page != "" {
+		requestURL := c.projectEndpoint("/issues?scope=all&state=all&order_by=updated_at&sort=desc&per_page=100&page=") + url.QueryEscape(page)
+		response, err := c.do(ctx, http.MethodGet, requestURL, nil, c.config.AccessToken, "")
+		if err != nil {
+			return nil, err
+		}
+		var rows []struct {
+			ID        int64     `json:"id"`
+			IID       int64     `json:"iid"`
+			Title     string    `json:"title"`
+			WebURL    string    `json:"web_url"`
+			Labels    []string  `json:"labels"`
+			DueDate   *string   `json:"due_date"`
+			State     string    `json:"state"`
+			UpdatedAt time.Time `json:"updated_at"`
+			Assignee  *struct {
+				ID int64 `json:"id"`
+			} `json:"assignee"`
+		}
+		decodeErr := decodeJSON(response.Body, &rows)
+		page = response.Header.Get("X-Next-Page")
+		response.Body.Close()
+		if decodeErr != nil {
+			return nil, fmt.Errorf("decode GitLab issues: %w", decodeErr)
+		}
+		for _, row := range rows {
+			issue := appsync.GitLabIssue{
+				IssueIID: row.IID, GitLabIssueID: row.ID, Title: row.Title,
+				WebURL: row.WebURL, Labels: row.Labels, State: row.State, UpdatedAt: row.UpdatedAt,
+			}
+			if row.DueDate != nil {
+				issue.DueDate = *row.DueDate
+			}
+			if row.Assignee != nil {
+				id := row.Assignee.ID
+				issue.AssigneeGitLabUserID = &id
+			}
+			result = append(result, issue)
+		}
+	}
+	return result, nil
 }
 
 type Client struct {
@@ -119,14 +267,9 @@ func (c *Client) exchangeToken(ctx context.Context, code, verifier string) (stri
 }
 
 func (c *Client) get(ctx context.Context, requestURL, accessToken string, target any) error {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	response, err := c.do(ctx, http.MethodGet, requestURL, nil, "", accessToken)
 	if err != nil {
-		return fmt.Errorf("create GitLab request: %w", err)
-	}
-	request.Header.Set("Authorization", "Bearer "+accessToken)
-	response, err := c.http.Do(request)
-	if err != nil {
-		return identity.ErrGitLabUnavailable
+		return err
 	}
 	defer response.Body.Close()
 	if response.StatusCode >= 500 {
@@ -141,8 +284,52 @@ func (c *Client) get(ctx context.Context, requestURL, accessToken string, target
 	return nil
 }
 
+func (c *Client) do(ctx context.Context, method, requestURL string, body io.Reader, privateToken, bearerToken string) (*http.Response, error) {
+	request, err := http.NewRequestWithContext(ctx, method, requestURL, body)
+	if err != nil {
+		return nil, fmt.Errorf("create GitLab request: %w", err)
+	}
+	if privateToken != "" {
+		request.Header.Set("PRIVATE-TOKEN", privateToken)
+	}
+	if bearerToken != "" {
+		request.Header.Set("Authorization", "Bearer "+bearerToken)
+	}
+	response, err := c.http.Do(request)
+	if err != nil {
+		return nil, identity.ErrGitLabUnavailable
+	}
+	if response.StatusCode >= 500 {
+		response.Body.Close()
+		return nil, identity.ErrGitLabUnavailable
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		response.Body.Close()
+		return nil, &httpStatusError{status: response.StatusCode}
+	}
+	return response, nil
+}
+
 func (c *Client) endpoint(path string) string {
 	return strings.TrimRight(c.base.String(), "/") + path
+}
+
+func (c *Client) projectEndpoint(path string) string {
+	return c.endpoint("/api/v4/projects/") + url.PathEscape(c.config.ProjectPath) + path
+}
+
+func (c *Client) directoryPath() string {
+	if strings.TrimSpace(c.config.DirectoryPath) == "" {
+		return ".sitcon/board-directory.yml"
+	}
+	return strings.TrimSpace(c.config.DirectoryPath)
+}
+
+func (c *Client) branch() string {
+	if strings.TrimSpace(c.config.Branch) == "" {
+		return "main"
+	}
+	return strings.TrimSpace(c.config.Branch)
 }
 
 func decodeJSON(reader io.Reader, target any) error {
