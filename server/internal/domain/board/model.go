@@ -15,12 +15,13 @@ const (
 	OperationSynced     OperationState = "synced"
 	OperationFailed     OperationState = "failed"
 
-	OperationCreateCard     OperationKind = "create_card"
-	OperationUpdateDetails  OperationKind = "update_details"
-	OperationUpdateTeam     OperationKind = "update_team"
-	OperationUpdateAssignee OperationKind = "update_assignee"
-	OperationUpdateDueDate  OperationKind = "update_due_date"
-	OperationMoveCard       OperationKind = "move_card"
+	OperationCreateCard      OperationKind = "create_card"
+	OperationUpdateDetails   OperationKind = "update_details"
+	OperationUpdateTeam      OperationKind = "update_team"
+	OperationUpdateAssignee  OperationKind = "update_assignee"
+	OperationUpdateStartDate OperationKind = "update_start_date"
+	OperationUpdateDueDate   OperationKind = "update_due_date"
+	OperationMoveCard        OperationKind = "move_card"
 )
 
 var (
@@ -53,6 +54,7 @@ type Card struct {
 	Position              int32
 	TeamKey               string
 	AssigneeGitLabUserIDs []int64
+	StartDate             string
 	DueDate               string
 	Labels                []string
 	SyncState             OperationState
@@ -99,6 +101,7 @@ type CanonicalIssue struct {
 	WebURL                string
 	Labels                []string
 	AssigneeGitLabUserIDs []int64
+	StartDate             string
 	DueDate               string
 	State                 string
 	CreatedAt             time.Time
@@ -112,6 +115,7 @@ type IssueMutation struct {
 	Description           string
 	Labels                []string
 	AssigneeGitLabUserIDs []int64
+	StartDate             string
 	DueDate               string
 	Closed                bool
 }

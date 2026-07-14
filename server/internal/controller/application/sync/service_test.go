@@ -58,7 +58,8 @@ func (f *gitLabFake) ApplyIssue(_ context.Context, mutation IssueMutation) (GitL
 	f.applied = &mutation
 	return GitLabIssue{
 		IssueIID: 42, GitLabIssueID: 420, Title: mutation.Title, Description: mutation.Description,
-		Labels: mutation.Labels, AssigneeGitLabUserIDs: mutation.AssigneeGitLabUserIDs, State: "opened",
+		Labels: mutation.Labels, AssigneeGitLabUserIDs: mutation.AssigneeGitLabUserIDs,
+		StartDate: mutation.StartDate, DueDate: mutation.DueDate, State: "opened",
 	}, nil
 }
 
@@ -122,7 +123,7 @@ func TestRefreshBoardMapsLabelsAndSkipsUnknownTeams(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.July, 14, 8, 0, 0, 0, time.UTC)
 	gitlab := &gitLabFake{issues: []GitLabIssue{
-		{IssueIID: 1, GitLabIssueID: 10, Title: "[開發組] 修正流程", Labels: []string{"組別::開發", "Doing"}, State: "opened", UpdatedAt: now},
+		{IssueIID: 1, GitLabIssueID: 10, Title: "[開發組] 修正流程", Labels: []string{"組別::開發", "Doing"}, StartDate: "2026-07-17", State: "opened", UpdatedAt: now},
 		{IssueIID: 2, GitLabIssueID: 20, Title: "無組別", Labels: []string{"Todo"}, State: "opened", UpdatedAt: now},
 	}}
 	repo := &repoFake{directory: directory.Snapshot{Teams: []directory.Team{{Key: "development", TitlePrefix: "[開發組]", GitLabLabel: "組別::開發", Active: true}}}}
@@ -130,7 +131,7 @@ func TestRefreshBoardMapsLabelsAndSkipsUnknownTeams(t *testing.T) {
 	if err := service.RefreshBoard(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(repo.cards) != 1 || repo.cards[0].ListKey != "doing" || repo.cards[0].Title != "修正流程" {
+	if len(repo.cards) != 1 || repo.cards[0].ListKey != "doing" || repo.cards[0].Title != "修正流程" || repo.cards[0].StartDate != "2026-07-17" {
 		t.Fatalf("cards = %#v", repo.cards)
 	}
 }
@@ -148,7 +149,7 @@ func TestProcessOneBuildsCanonicalIssueMutation(t *testing.T) {
 			Operation: board.Operation{ID: "operation", Kind: board.OperationUpdateTeam},
 			Card: board.Card{
 				IssueIID: 42, Title: "修正流程", Description: "詳細規劃", TeamKey: "development", ListKey: "doing",
-				AssigneeGitLabUserIDs: []int64{1, 2}, Labels: []string{"組別::設計", "To Do", "security"},
+				AssigneeGitLabUserIDs: []int64{1, 2}, StartDate: "2026-07-17", DueDate: "2026-07-21", Labels: []string{"組別::設計", "To Do", "security"},
 			},
 		},
 	}
@@ -158,6 +159,7 @@ func TestProcessOneBuildsCanonicalIssueMutation(t *testing.T) {
 		t.Fatalf("ProcessOne() = %v, %v, completed=%v", processed, err, repo.completed)
 	}
 	if gitlab.applied == nil || gitlab.applied.Title != "[開發組] 修正流程" || gitlab.applied.Description != "詳細規劃" ||
+		gitlab.applied.StartDate != "2026-07-17" || gitlab.applied.DueDate != "2026-07-21" ||
 		!slices.Equal(gitlab.applied.AssigneeGitLabUserIDs, []int64{1, 2}) || !slices.Equal(gitlab.applied.Labels, []string{"security", "組別::開發", "Doing"}) {
 		t.Fatalf("mutation = %#v", gitlab.applied)
 	}

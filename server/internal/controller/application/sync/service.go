@@ -155,7 +155,7 @@ func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
 		Description:           pending.Card.Description,
 		Labels:                canonicalLabels(pending.Card.Labels, team, list, directorySnapshot.Teams, boardSnapshot.Lists),
 		AssigneeGitLabUserIDs: append([]int64(nil), pending.Card.AssigneeGitLabUserIDs...),
-		DueDate:               pending.Card.DueDate, Closed: list.Closed,
+		StartDate:             pending.Card.StartDate, DueDate: pending.Card.DueDate, Closed: list.Closed,
 	}
 	issue, err := s.gitlab.ApplyIssue(ctx, mutation)
 	if err != nil {
@@ -261,7 +261,7 @@ func mapIssue(issue GitLabIssue, directorySnapshot directory.Snapshot, lists []b
 		IssueIID: issue.IssueIID, GitLabIssueID: &issue.GitLabIssueID,
 		Title: title, Description: issue.Description, WebURL: issue.WebURL, ListKey: list.Key, Position: position,
 		TeamKey: team.Key, AssigneeGitLabUserIDs: append([]int64(nil), issue.AssigneeGitLabUserIDs...),
-		DueDate: issue.DueDate, Labels: append([]string(nil), issue.Labels...),
+		StartDate: issue.StartDate, DueDate: issue.DueDate, Labels: append([]string(nil), issue.Labels...),
 		SyncState: board.OperationSynced, CreatedAt: issue.CreatedAt.UTC(), UpdatedAt: issue.UpdatedAt.UTC(),
 	}, true
 }

@@ -62,7 +62,11 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Result, error)
 	if err := domain.ValidateAssignees(directory, assigneeIDs); err != nil {
 		return Result{}, unknownAssignee()
 	}
-	dueDate, err := normalizeDueDate(input.DueDate)
+	startDate, err := normalizeDate(input.StartDate, "startDate")
+	if err != nil {
+		return Result{}, err
+	}
+	dueDate, err := normalizeDate(input.DueDate, "dueDate")
 	if err != nil {
 		return Result{}, err
 	}
@@ -81,12 +85,12 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Result, error)
 	operation := newOperation(input.OperationID, domain.OperationCreateCard, now)
 	card := domain.Card{
 		Title: title, Description: input.Description, ListKey: boardSnapshot.Lists[0].Key, TeamKey: input.TeamKey,
-		AssigneeGitLabUserIDs: append([]int64(nil), assigneeIDs...), DueDate: dueDate,
+		AssigneeGitLabUserIDs: append([]int64(nil), assigneeIDs...), StartDate: startDate, DueDate: dueDate,
 		SyncState: domain.OperationPending, PendingOperationID: input.OperationID, CreatedAt: now, UpdatedAt: now,
 	}
 	result, err := s.repo.CreateCard(ctx, Mutation{
 		Card: card, Operation: operation, RequestedByUserID: input.ActorUserID,
-		Payload: map[string]any{"title": title, "description": input.Description, "teamKey": input.TeamKey, "assigneeGitLabUserIds": assigneeIDs, "dueDate": nullableDate(dueDate)},
+		Payload: map[string]any{"title": title, "description": input.Description, "teamKey": input.TeamKey, "assigneeGitLabUserIds": assigneeIDs, "startDate": nullableDate(startDate), "dueDate": nullableDate(dueDate)},
 	})
 	if errors.Is(err, domain.ErrOperationConflict) {
 		return Result{}, operationConflict()
@@ -137,12 +141,23 @@ func (s *Service) UpdateAssignee(ctx context.Context, input UpdateAssigneeInput)
 
 func (s *Service) UpdateDueDate(ctx context.Context, input UpdateDueDateInput) (Result, error) {
 	return s.update(ctx, input.OperationID, input.ActorUserID, input.IssueIID, domain.OperationUpdateDueDate, func(card *domain.Card, _ domain.AssignmentDirectory, _ Snapshot) (map[string]any, error) {
-		dueDate, err := normalizeDueDate(input.DueDate)
+		dueDate, err := normalizeDate(input.DueDate, "dueDate")
 		if err != nil {
 			return nil, err
 		}
 		card.DueDate = dueDate
 		return map[string]any{"dueDate": nullableDate(dueDate)}, nil
+	})
+}
+
+func (s *Service) UpdateStartDate(ctx context.Context, input UpdateStartDateInput) (Result, error) {
+	return s.update(ctx, input.OperationID, input.ActorUserID, input.IssueIID, domain.OperationUpdateStartDate, func(card *domain.Card, _ domain.AssignmentDirectory, _ Snapshot) (map[string]any, error) {
+		startDate, err := normalizeDate(input.StartDate, "startDate")
+		if err != nil {
+			return nil, err
+		}
+		card.StartDate = startDate
+		return map[string]any{"startDate": nullableDate(startDate)}, nil
 	})
 }
 
@@ -260,13 +275,13 @@ func validateMutationIdentity(operationID, actorUserID string) error {
 	return nil
 }
 
-func normalizeDueDate(value *string) (string, error) {
+func normalizeDate(value *string, field string) (string, error) {
 	if value == nil || *value == "" {
 		return "", nil
 	}
 	parsed, err := time.Parse(time.DateOnly, *value)
 	if err != nil || parsed.Format(time.DateOnly) != *value {
-		return "", invalidField("dueDate", "INVALID_FORMAT", "must use YYYY-MM-DD")
+		return "", invalidField(field, "INVALID_FORMAT", "must use YYYY-MM-DD")
 	}
 	return *value, nil
 }

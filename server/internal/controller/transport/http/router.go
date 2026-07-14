@@ -103,6 +103,7 @@ func NewRouter(dep Dependencies) http.Handler {
 			protected.Put("/cards/{issueIid}/details", h.updateCardDetails)
 			protected.Put("/cards/{issueIid}/team", h.updateCardTeam)
 			protected.Put("/cards/{issueIid}/assignee", h.updateCardAssignee)
+			protected.Put("/cards/{issueIid}/start-date", h.updateCardStartDate)
 			protected.Put("/cards/{issueIid}/due-date", h.updateCardDueDate)
 			protected.Put("/cards/{issueIid}/position", h.moveCard)
 			protected.Post("/operations/{operationId}/retry", h.retryOperation)

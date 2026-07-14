@@ -81,11 +81,12 @@ func TestCreateStoresOptimisticCardAndOperation(t *testing.T) {
 	repo := &repositoryFake{board: Snapshot{Lists: []domain.List{{Key: "todo"}}}}
 	service := newTestService(repo)
 	assignees := []int64{1, 1}
+	startDate := "2026-07-17"
 	dueDate := "2026-07-21"
 
 	result, err := service.Create(context.Background(), CreateInput{
 		OperationID: testOperationID, ActorUserID: testActorID, Title: "修正  報名流程",
-		Description: "詳細規劃", TeamKey: "development", AssigneeGitLabUserIDs: assignees, DueDate: &dueDate,
+		Description: "詳細規劃", TeamKey: "development", AssigneeGitLabUserIDs: assignees, StartDate: &startDate, DueDate: &dueDate,
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -99,9 +100,30 @@ func TestCreateStoresOptimisticCardAndOperation(t *testing.T) {
 	if got := repo.createMutation.Payload["assigneeGitLabUserIds"]; !reflect.DeepEqual(got, []int64{1}) {
 		t.Fatalf("assignee payload = %#v", got)
 	}
-	if result.Card.Description != "詳細規劃" || len(result.Card.AssigneeGitLabUserIDs) != 1 {
+	if result.Card.Description != "詳細規劃" || len(result.Card.AssigneeGitLabUserIDs) != 1 || result.Card.StartDate != startDate {
 		t.Fatalf("Create() card details = %#v", result.Card)
 	}
+}
+
+func TestUpdateStartDateValidatesAndStoresDate(t *testing.T) {
+	t.Parallel()
+	repo := &repositoryFake{
+		board: Snapshot{Lists: []domain.List{{Key: "todo"}}},
+		card:  domain.Card{IssueIID: 42, TeamKey: "development", Title: "卡片"},
+	}
+	service := newTestService(repo)
+	startDate := "2026-07-18"
+	result, err := service.UpdateStartDate(context.Background(), UpdateStartDateInput{
+		OperationID: testOperationID, ActorUserID: testActorID, IssueIID: 42, StartDate: &startDate,
+	})
+	if err != nil || result.Card.StartDate != startDate || result.Operation.Kind != domain.OperationUpdateStartDate {
+		t.Fatalf("UpdateStartDate() = %#v, %v", result, err)
+	}
+	invalid := "07/18/2026"
+	_, err = service.UpdateStartDate(context.Background(), UpdateStartDateInput{
+		OperationID: "20000000-0000-0000-0000-000000000001", ActorUserID: testActorID, IssueIID: 42, StartDate: &invalid,
+	})
+	assertAppError(t, err, apperror.KindInvalid, "VALIDATION_FAILED")
 }
 
 func TestCreateRejectsInactiveAssigneeBeforePersistence(t *testing.T) {

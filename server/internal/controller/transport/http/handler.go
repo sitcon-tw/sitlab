@@ -39,6 +39,7 @@ type BoardService interface {
 	UpdateDetails(context.Context, appboard.UpdateDetailsInput) (appboard.Result, error)
 	UpdateTeam(context.Context, appboard.UpdateTeamInput) (appboard.Result, error)
 	UpdateAssignee(context.Context, appboard.UpdateAssigneeInput) (appboard.Result, error)
+	UpdateStartDate(context.Context, appboard.UpdateStartDateInput) (appboard.Result, error)
 	UpdateDueDate(context.Context, appboard.UpdateDueDateInput) (appboard.Result, error)
 	Move(context.Context, appboard.MoveInput) (appboard.Result, error)
 	Retry(context.Context, string) (board.Operation, error)

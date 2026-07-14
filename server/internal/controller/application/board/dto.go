@@ -7,6 +7,7 @@ type CreateInput struct {
 	Description           string
 	TeamKey               string
 	AssigneeGitLabUserIDs []int64
+	StartDate             *string
 	DueDate               *string
 }
 
@@ -37,6 +38,13 @@ type UpdateDueDateInput struct {
 	ActorUserID string
 	IssueIID    int64
 	DueDate     *string
+}
+
+type UpdateStartDateInput struct {
+	OperationID string
+	ActorUserID string
+	IssueIID    int64
+	StartDate   *string
 }
 
 type MoveInput struct {

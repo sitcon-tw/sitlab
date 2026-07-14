@@ -61,6 +61,7 @@ func (h handler) createCard(w http.ResponseWriter, r *http.Request) {
 		Description           string  `json:"description"`
 		TeamKey               string  `json:"teamKey"`
 		AssigneeGitLabUserIDs []int64 `json:"assigneeGitLabUserIds"`
+		StartDate             *string `json:"startDate"`
 		DueDate               *string `json:"dueDate"`
 	}
 	if err := decodeJSON(w, r, &body); err != nil {
@@ -70,7 +71,7 @@ func (h handler) createCard(w http.ResponseWriter, r *http.Request) {
 	result, err := h.board.Create(r.Context(), appboard.CreateInput{
 		OperationID: body.OperationID, ActorUserID: actorID(r), Title: body.Title,
 		Description: body.Description, TeamKey: body.TeamKey,
-		AssigneeGitLabUserIDs: body.AssigneeGitLabUserIDs, DueDate: body.DueDate,
+		AssigneeGitLabUserIDs: body.AssigneeGitLabUserIDs, StartDate: body.StartDate, DueDate: body.DueDate,
 	})
 	h.writeMutation(w, r, result, err)
 }
@@ -154,6 +155,26 @@ func (h handler) updateCardDueDate(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.board.UpdateDueDate(r.Context(), appboard.UpdateDueDateInput{
 		OperationID: body.OperationID, ActorUserID: actorID(r), IssueIID: issueIID, DueDate: body.DueDate,
+	})
+	h.writeMutation(w, r, result, err)
+}
+
+func (h handler) updateCardStartDate(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		OperationID string  `json:"operationId"`
+		StartDate   *string `json:"startDate"`
+	}
+	if err := decodeJSON(w, r, &body); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	issueIID, err := issueIID(r)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	result, err := h.board.UpdateStartDate(r.Context(), appboard.UpdateStartDateInput{
+		OperationID: body.OperationID, ActorUserID: actorID(r), IssueIID: issueIID, StartDate: body.StartDate,
 	})
 	h.writeMutation(w, r, result, err)
 }

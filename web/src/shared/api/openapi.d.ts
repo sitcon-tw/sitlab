@@ -208,6 +208,23 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/cards/{issueIid}/start-date": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Optimistically change a card start date */
+		put: operations["updateCardStartDate"];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/cards/{issueIid}/team": {
 		parameters: {
 			query?: never;
@@ -370,6 +387,7 @@ export interface components {
 			position: number;
 			teamKey: string;
 			assigneeGitLabUserIds: number[];
+			startDate: string | null;
 			dueDate: string | null;
 			labels: string[];
 			/** @enum {string} */
@@ -425,6 +443,7 @@ export interface components {
 			teamKey: string;
 			description: string;
 			assigneeGitLabUserIds: number[];
+			startDate: string | null;
 			dueDate: string | null;
 		};
 		/**
@@ -516,7 +535,7 @@ export interface components {
 		DurableOperation: {
 			id: components["schemas"]["uuid"];
 			/** @enum {string} */
-			kind: "create_card" | "update_details" | "update_team" | "update_assignee" | "update_due_date" | "move_card";
+			kind: "create_card" | "update_details" | "update_team" | "update_assignee" | "update_start_date" | "update_due_date" | "move_card";
 			/** @enum {string} */
 			state: "pending" | "processing" | "synced" | "failed";
 			/** Format: int32 */
@@ -644,6 +663,10 @@ export interface components {
 		UpdateCardDueDateRequest: {
 			operationId: components["schemas"]["uuid"];
 			dueDate: string | null;
+		};
+		UpdateCardStartDateRequest: {
+			operationId: components["schemas"]["uuid"];
+			startDate: string | null;
 		};
 		UpdateCardTeamRequest: {
 			operationId: components["schemas"]["uuid"];
@@ -1316,6 +1339,88 @@ export interface operations {
 		requestBody: {
 			content: {
 				"application/json": components["schemas"]["MoveCardRequest"];
+			};
+		};
+		responses: {
+			/** @description The request has been accepted for processing, but processing has not yet completed. */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CardMutationResponse"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The request conflicts with the current state of the server. */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	updateCardStartDate: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["UpdateCardStartDateRequest"];
 			};
 		};
 		responses: {

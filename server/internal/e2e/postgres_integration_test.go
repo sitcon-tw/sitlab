@@ -101,10 +101,11 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 
 	boardService := appboard.NewService(store, directoryService, noop.NewTracerProvider().Tracer("test"))
 	operationID := uuid.NewString()
+	startDate := "2026-07-17"
 	dueDate := "2026-07-21"
 	created, err := boardService.Create(ctx, appboard.CreateInput{
 		OperationID: operationID, ActorUserID: user.ID, Title: "修正報名流程",
-		Description: "詳細規劃", TeamKey: "development", AssigneeGitLabUserIDs: []int64{101}, DueDate: &dueDate,
+		Description: "詳細規劃", TeamKey: "development", AssigneeGitLabUserIDs: []int64{101}, StartDate: &startDate, DueDate: &dueDate,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -123,8 +124,21 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 		t.Fatalf("process create = %v, %v, mutation=%#v", processed, err, gitlab.lastMutation)
 	}
 	canonical, err := store.ByOperation(ctx, operationID)
-	if err != nil || canonical.Card.IssueIID != 42 {
+	if err != nil || canonical.Card.IssueIID != 42 || canonical.Card.StartDate != startDate {
 		t.Fatalf("canonical create = %#v, err = %v", canonical, err)
+	}
+
+	updatedStartDate := "2026-07-18"
+	startChanged, err := boardService.UpdateStartDate(ctx, appboard.UpdateStartDateInput{
+		OperationID: uuid.NewString(), ActorUserID: user.ID,
+		IssueIID: canonical.Card.IssueIID, StartDate: &updatedStartDate,
+	})
+	if err != nil || startChanged.Card.StartDate != updatedStartDate {
+		t.Fatalf("start date mutation = %#v, err = %v", startChanged.Card, err)
+	}
+	processed, err = syncService.ProcessOne(ctx)
+	if err != nil || !processed || gitlab.lastMutation == nil || gitlab.lastMutation.StartDate != updatedStartDate {
+		t.Fatalf("process start date = %v, %v, mutation=%#v", processed, err, gitlab.lastMutation)
 	}
 
 	changed, err := boardService.UpdateTeam(ctx, appboard.UpdateTeamInput{
@@ -168,7 +182,7 @@ func (f *operationGitLabFake) ApplyIssue(_ context.Context, mutation appsync.Iss
 		IssueIID: 42, GitLabIssueID: 420, Title: mutation.Title, Description: mutation.Description,
 		WebURL: "https://gitlab.example/issues/42", Labels: mutation.Labels,
 		AssigneeGitLabUserIDs: mutation.AssigneeGitLabUserIDs,
-		DueDate:               mutation.DueDate, State: "opened", CreatedAt: f.now, UpdatedAt: f.now,
+		StartDate:             mutation.StartDate, DueDate: mutation.DueDate, State: "opened", CreatedAt: f.now, UpdatedAt: f.now,
 	}, nil
 }
 

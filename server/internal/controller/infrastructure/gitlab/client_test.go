@@ -28,12 +28,12 @@ func TestSnapshotEndpointsParseMembersAndIssues(t *testing.T) {
 				t.Fatal(err)
 			}
 			assigneeIDs, _ := payload["assignee_ids"].([]any)
-			if payload["title"] != "[開發組] 新卡" || payload["description"] != "詳細規劃" || len(assigneeIDs) != 2 || assigneeIDs[0] != float64(101) || assigneeIDs[1] != float64(202) {
+			if payload["title"] != "[開發組] 新卡" || payload["description"] != "詳細規劃" || payload["start_date"] != "2026-07-17" || len(assigneeIDs) != 2 || assigneeIDs[0] != float64(101) || assigneeIDs[1] != float64(202) {
 				t.Errorf("issue payload = %#v", payload)
 			}
-			return response(http.StatusCreated, `{"id":20,"iid":2,"title":"[開發組] 新卡","description":"詳細規劃","web_url":"https://gitlab.example/issues/2","labels":["組別::開發","To Do"],"state":"opened","created_at":"2026-07-14T08:00:00Z","updated_at":"2026-07-14T08:01:00Z","assignees":[{"id":101},{"id":202}]}`), nil
+			return response(http.StatusCreated, `{"id":20,"iid":2,"title":"[開發組] 新卡","description":"詳細規劃","web_url":"https://gitlab.example/issues/2","labels":["組別::開發","To Do"],"start_date":"2026-07-17","due_date":"2026-07-21","state":"opened","created_at":"2026-07-14T08:00:00Z","updated_at":"2026-07-14T08:01:00Z","assignees":[{"id":101},{"id":202}]}`), nil
 		case request.Method == http.MethodGet && strings.Contains(request.URL.Path, "/issues"):
-			return response(http.StatusOK, `[{"id":10,"iid":1,"title":"[開發組] 修正流程","description":"工作拆解","web_url":"https://gitlab.example/issues/1","labels":["組別::開發","To Do"],"due_date":"2026-07-21","state":"opened","created_at":"2026-07-13T08:00:00Z","updated_at":"2026-07-14T08:00:00Z","assignees":[{"id":101},{"id":202}]}]`), nil
+			return response(http.StatusOK, `[{"id":10,"iid":1,"title":"[開發組] 修正流程","description":"工作拆解","web_url":"https://gitlab.example/issues/1","labels":["組別::開發","To Do"],"start_date":"2026-07-17","due_date":"2026-07-21","state":"opened","created_at":"2026-07-13T08:00:00Z","updated_at":"2026-07-14T08:00:00Z","assignees":[{"id":101},{"id":202}]}]`), nil
 		default:
 			return response(http.StatusNotFound, `{}`), nil
 		}
@@ -50,14 +50,14 @@ func TestSnapshotEndpointsParseMembersAndIssues(t *testing.T) {
 		t.Fatalf("ProjectMembers() = %#v, %v", members, err)
 	}
 	issues, err := client.Issues(context.Background())
-	if err != nil || len(issues) != 1 || len(issues[0].AssigneeGitLabUserIDs) != 2 || issues[0].Description != "工作拆解" {
+	if err != nil || len(issues) != 1 || len(issues[0].AssigneeGitLabUserIDs) != 2 || issues[0].Description != "工作拆解" || issues[0].StartDate != "2026-07-17" {
 		t.Fatalf("Issues() = %#v, %v", issues, err)
 	}
 	created, err := client.ApplyIssue(context.Background(), sync.IssueMutation{
-		Create: true, Title: "[開發組] 新卡", Description: "詳細規劃",
+		Create: true, Title: "[開發組] 新卡", Description: "詳細規劃", StartDate: "2026-07-17", DueDate: "2026-07-21",
 		Labels: []string{"組別::開發", "To Do"}, AssigneeGitLabUserIDs: []int64{101, 202},
 	})
-	if err != nil || created.IssueIID != 2 {
+	if err != nil || created.IssueIID != 2 || created.StartDate != "2026-07-17" {
 		t.Fatalf("ApplyIssue() = %#v, %v", created, err)
 	}
 }

@@ -91,6 +91,9 @@ func (boardFake) UpdateTeam(context.Context, appboard.UpdateTeamInput) (appboard
 func (boardFake) UpdateAssignee(context.Context, appboard.UpdateAssigneeInput) (appboard.Result, error) {
 	return mutationResult(board.OperationUpdateAssignee), nil
 }
+func (boardFake) UpdateStartDate(context.Context, appboard.UpdateStartDateInput) (appboard.Result, error) {
+	return mutationResult(board.OperationUpdateStartDate), nil
+}
 func (boardFake) UpdateDueDate(context.Context, appboard.UpdateDueDateInput) (appboard.Result, error) {
 	return mutationResult(board.OperationUpdateDueDate), nil
 }
@@ -166,6 +169,13 @@ func TestCardMutationUsesAcceptedContractAndCSRF(t *testing.T) {
 	forbidden := perform(testRouter(nil, ""), http.MethodPost, "/api/v1/cards", `{}`, false)
 	if forbidden.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated mutation = %d", forbidden.Code)
+	}
+}
+
+func TestUpdateCardStartDateUsesAcceptedContract(t *testing.T) {
+	response := perform(testRouter(nil, ""), http.MethodPut, "/api/v1/cards/127/start-date", `{"operationId":"10000000-0000-0000-0000-000000000001","startDate":"2026-07-18"}`, true)
+	if response.Code != http.StatusAccepted || !strings.Contains(response.Body.String(), `"kind":"update_start_date"`) {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
 	}
 }
 

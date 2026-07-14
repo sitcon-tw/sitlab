@@ -72,6 +72,19 @@ interface CardService {
 		| UnprocessableEntityProblem
 		| InternalServerProblem;
 
+	@operationId("updateCardStartDate")
+	@summary("Optimistically change a card start date")
+	@put
+	@route("/{issueIid}/start-date")
+	updateCardStartDate(...IssueIidPath, ...CSRFHeader, @body body: UpdateCardStartDateRequest):
+		| AcceptedJson<CardMutationResponse>
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| ConflictProblem
+		| UnprocessableEntityProblem
+		| InternalServerProblem;
+
 	@operationId("updateCardDueDate")
 	@summary("Optimistically change a card due date")
 	@put

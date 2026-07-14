@@ -90,6 +90,7 @@ func (c *Client) ApplyIssue(ctx context.Context, mutation appsync.IssueMutation)
 		"title":        mutation.Title,
 		"description":  mutation.Description,
 		"labels":       mutation.Labels,
+		"start_date":   mutation.StartDate,
 		"due_date":     mutation.DueDate,
 		"assignee_ids": mutation.AssigneeGitLabUserIDs,
 	}
@@ -308,6 +309,7 @@ type issueWire struct {
 	Description string    `json:"description"`
 	WebURL      string    `json:"web_url"`
 	Labels      []string  `json:"labels"`
+	StartDate   *string   `json:"start_date"`
 	DueDate     *string   `json:"due_date"`
 	State       string    `json:"state"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -327,6 +329,9 @@ func mapIssueWire(row issueWire) appsync.GitLabIssue {
 	}
 	if row.DueDate != nil {
 		issue.DueDate = *row.DueDate
+	}
+	if row.StartDate != nil {
+		issue.StartDate = *row.StartDate
 	}
 	for _, assignee := range row.Assignees {
 		issue.AssigneeGitLabUserIDs = append(issue.AssigneeGitLabUserIDs, assignee.ID)

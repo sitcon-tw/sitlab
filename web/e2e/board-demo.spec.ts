@@ -70,12 +70,16 @@ test.describe("SITCON Board demo visual audit", () => {
 		const details = page.getByRole("dialog", { name: "#127 卡片詳細資料" });
 		await expect(details.getByLabel("組別")).toHaveValue("development");
 		await expect(details.getByLabel("狀態")).toHaveValue("todo");
-		await expect(details.getByText("Start time")).toBeVisible();
+		await expect(details.getByLabel("Start")).toHaveValue("2026-07-17");
+		await expect(details.getByLabel("Due")).toHaveValue("2026-07-21");
+		await details.getByRole("textbox", { name: "描述" }).fill("## 驗收條件\n\n- [ ] 補齊測試\n\n[規格](https://example.com/spec)");
+		await details.getByRole("button", { name: "預覽" }).click();
+		await expect(details.getByRole("heading", { name: "驗收條件" })).toBeVisible();
+		await page.screenshot({ path: "../docs/assets/sitcon-board-details.png", fullPage: true });
 		await details.getByRole("button", { name: "變更 Assignee" }).click();
 		const picker = page.getByRole("dialog", { name: "選擇 Assignee" });
 		await picker.getByRole("checkbox", { name: /沈明軒/ }).click();
 		await expect(picker.getByText("已選擇 2 人")).toBeVisible();
-		await page.screenshot({ path: "../docs/assets/sitcon-board-details.png", fullPage: true });
 	});
 
 	test("card details stay operable at 320px", async ({ page }) => {
@@ -85,10 +89,12 @@ test.describe("SITCON Board demo visual audit", () => {
 
 		const details = page.getByRole("dialog", { name: "#129 卡片詳細資料" });
 		await expect(details.getByLabel("標題")).toBeVisible();
-		await expect(details.getByLabel("描述")).toBeVisible();
-		const startTime = details.getByText("Start time");
-		await startTime.scrollIntoViewIfNeeded();
-		await expect(startTime).toBeInViewport();
+		await expect(details.getByRole("textbox", { name: "描述" })).toBeVisible();
+		const startDate = details.getByLabel("Start");
+		await startDate.scrollIntoViewIfNeeded();
+		await expect(startDate).toBeInViewport();
+		await expect(startDate).toHaveValue("");
+		await expect(details.getByLabel("Due")).toHaveValue("2026-07-25");
 		await expect(details.getByRole("button", { name: "儲存細節" })).toBeVisible();
 		await page.screenshot({ path: "../docs/assets/sitcon-board-details-mobile.png", fullPage: true });
 	});

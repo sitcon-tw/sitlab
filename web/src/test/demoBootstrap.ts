@@ -67,6 +67,7 @@ function card(
 	position: number,
 	teamKey: string,
 	assigneeGitLabUserIds: number[],
+	startDate: string | null,
 	dueDate: string | null,
 	syncState: BoardCard["syncState"] = "synced"
 ): BoardCard {
@@ -80,6 +81,7 @@ function card(
 		position,
 		teamKey,
 		assigneeGitLabUserIds,
+		startDate,
 		dueDate,
 		labels: [],
 		syncState,
@@ -113,13 +115,13 @@ export const demoBootstrap: Bootstrap = {
 			{ key: "closed", name: "Closed", gitLabLabel: "Closed", position: 5, closed: true, color: "success" }
 		],
 		cards: [
-			card(127, "修正報名系統寄信流程", "釐清失敗重送條件，補上整合測試與觀測紀錄。", "todo", 0, "development", [114], "2026-07-21"),
-			card(128, "整理志工行前通知", "", "inbox", 0, "administration", [101, 102], "2026-07-23"),
-			card(129, "確認議程講者資料", "", "wating", 0, "program", [], "2026-07-25"),
-			card(130, "製作工作人員識別證", "", "doing", 0, "design", [109], "2026-07-20"),
-			card(131, "盤點會場網路設備", "", "doing", 1, "venue", [107], "2026-07-22", "failed"),
-			card(132, "校對官網議程文案", "", "review", 0, "editorial", [117], "2026-07-19"),
-			card(133, "完成主視覺社群素材", "", "closed", 0, "marketing", [118, 119], "2026-07-16")
+			card(127, "修正報名系統寄信流程", "釐清失敗重送條件，補上整合測試與觀測紀錄。", "todo", 0, "development", [114], "2026-07-17", "2026-07-21"),
+			card(128, "整理志工行前通知", "", "inbox", 0, "administration", [101, 102], null, "2026-07-23"),
+			card(129, "確認議程講者資料", "", "wating", 0, "program", [], null, "2026-07-25"),
+			card(130, "製作工作人員識別證", "", "doing", 0, "design", [109], "2026-07-16", "2026-07-20"),
+			card(131, "盤點會場網路設備", "", "doing", 1, "venue", [107], null, "2026-07-22", "failed"),
+			card(132, "校對官網議程文案", "", "review", 0, "editorial", [117], "2026-07-15", "2026-07-19"),
+			card(133, "完成主視覺社群素材", "", "closed", 0, "marketing", [118, 119], "2026-07-12", "2026-07-16")
 		],
 		syncedAt: "2026-07-14T08:00:00Z"
 	},

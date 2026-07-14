@@ -708,14 +708,15 @@
 }
 
 .cardDetail label > span,
-.detailAssignees > span {
+.detailAssignees > span,
+.detailDescriptionHeader > span {
 	color: var(--sb-text-subtle);
 	font-size: 0.6875rem;
 	font-weight: 750;
 	text-transform: uppercase;
 }
 
-.cardDetail input,
+.cardDetail input:not([type="checkbox"]),
 .cardDetail select,
 .cardDetail textarea {
 	width: 100%;
@@ -726,7 +727,7 @@
 	border-radius: 0.25rem;
 }
 
-.cardDetail input,
+.cardDetail input:not([type="checkbox"]),
 .cardDetail select {
 	height: 2.5rem;
 	padding: 0 0.75rem;
@@ -744,6 +745,144 @@
 	font-weight: 750;
 }
 
+.detailDescription {
+	display: grid;
+	gap: 0.375rem;
+}
+
+.detailDescriptionHeader {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.descriptionModes {
+	display: inline-grid;
+	grid-auto-flow: column;
+	padding: 0.125rem;
+	background: var(--sb-surface-subtle);
+	border: 1px solid var(--sb-border);
+	border-radius: 0.25rem;
+}
+
+.descriptionModes button {
+	min-width: 3.5rem;
+	height: 1.75rem;
+	padding: 0 0.625rem;
+	color: var(--sb-text-muted);
+	background: transparent;
+	border: 0;
+	border-radius: 0.1875rem;
+	font-size: 0.75rem;
+	font-weight: 700;
+}
+
+.descriptionModes button[aria-pressed="true"] {
+	color: var(--sb-text);
+	background: var(--sb-surface);
+	box-shadow: var(--sb-shadow-card);
+}
+
+.markdownPreview {
+	min-height: 10rem;
+	padding: 0.75rem;
+	overflow-x: auto;
+	color: var(--sb-text);
+	background: var(--sb-control);
+	border: 1px solid var(--sb-border);
+	border-radius: 0.25rem;
+	overflow-wrap: anywhere;
+}
+
+.markdownPreview > :first-child {
+	margin-top: 0;
+}
+
+.markdownPreview > :last-child {
+	margin-bottom: 0;
+}
+
+.markdownPreview h1,
+.markdownPreview h2,
+.markdownPreview h3 {
+	margin: 1rem 0 0.5rem;
+	font-size: 1rem;
+	line-height: 1.4;
+}
+
+.markdownPreview p,
+.markdownPreview ul,
+.markdownPreview ol,
+.markdownPreview blockquote,
+.markdownPreview pre,
+.markdownPreview table {
+	margin: 0.625rem 0;
+}
+
+.markdownPreview ul,
+.markdownPreview ol {
+	padding-left: 1.5rem;
+}
+
+.markdownPreview li + li {
+	margin-top: 0.25rem;
+}
+
+.markdownPreview a {
+	color: var(--sb-brand-hover);
+	font-weight: 650;
+}
+
+.markdownPreview blockquote {
+	padding-left: 0.75rem;
+	color: var(--sb-text-muted);
+	border-left: 0.1875rem solid var(--sb-border-strong);
+}
+
+.markdownPreview code {
+	padding: 0.125rem 0.25rem;
+	background: var(--sb-surface-subtle);
+	border-radius: 0.1875rem;
+	font-family: var(--pt-font-mono);
+	font-size: 0.8125rem;
+}
+
+.markdownPreview pre {
+	padding: 0.75rem;
+	overflow-x: auto;
+	background: var(--sb-surface-subtle);
+	border-radius: 0.25rem;
+}
+
+.markdownPreview pre code {
+	padding: 0;
+	background: transparent;
+}
+
+.markdownPreview table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.markdownPreview th,
+.markdownPreview td {
+	padding: 0.375rem 0.5rem;
+	border: 1px solid var(--sb-border);
+	text-align: left;
+}
+
+.markdownPreview input[type="checkbox"] {
+	width: 1rem;
+	height: 1rem;
+	margin: 0 0.375rem 0 0;
+	vertical-align: middle;
+}
+
+.emptyPreview {
+	color: var(--sb-text-subtle);
+}
+
 .detailGrid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -754,27 +893,15 @@
 	width: 100%;
 }
 
-.detailStart {
+.detailAssignees,
+.detailDates {
+	grid-column: 1 / -1;
+}
+
+.detailDates {
 	display: grid;
-	grid-template-columns: auto auto minmax(0, 1fr);
-	gap: 0.5rem;
-	align-items: center;
-	min-height: 2.5rem;
-	padding: 0 0.75rem;
-	color: var(--sb-text-subtle);
-	background: var(--sb-surface-subtle);
-	border-left: 0.1875rem solid var(--sb-blue);
-}
-
-.detailStart span {
-	font-family: var(--pt-font-mono);
-	font-size: 0.6875rem;
-}
-
-.detailStart strong {
-	justify-self: end;
-	color: var(--sb-text);
-	font-size: 0.75rem;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.75rem;
 }
 
 .detailActions {
@@ -915,10 +1042,12 @@
 }
 
 .cardTitle:focus-visible,
+.descriptionModes button:focus-visible,
+.markdownPreview a:focus-visible,
 .pickerFooter button:focus-visible,
 .detailActions a:focus-visible,
 .detailActions button:focus-visible,
-.cardDetail input:focus-visible,
+.cardDetail input:not([type="checkbox"]):focus-visible,
 .cardDetail select:focus-visible,
 .cardDetail textarea:focus-visible {
 	outline: 2px solid var(--sb-focus);
@@ -1042,14 +1171,8 @@
 		width: calc(100vw - 1rem);
 	}
 
-	.detailStart {
-		grid-template-columns: auto minmax(0, 1fr);
-		padding: 0.625rem 0.75rem;
-	}
-
-	.detailStart strong {
-		grid-column: 1 / -1;
-		justify-self: start;
+	.detailDates {
+		grid-template-columns: 1fr;
 	}
 
 	.detailActions {

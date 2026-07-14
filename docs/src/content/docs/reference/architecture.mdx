@@ -33,7 +33,7 @@ Domain knows no frameworks. Application use cases own narrow consumed ports and 
 
 ## Mutations
 
-Card mutations update optimistic `issue_cache` and insert a `durable_operation` in one transaction. New cards receive a temporary negative IID. The worker sends current canonical title, description, due date, labels, and the `assignee_ids` array to GitLab, replaces temporary IIDs after creation, and reconciles responses. The join table preserves multiple assignees while deferred foreign keys allow temporary IIDs to become GitLab IIDs. Failed operations keep the optimistic state and can be retried.
+Card mutations update optimistic `issue_cache` and insert a `durable_operation` in one transaction. New cards receive a temporary negative IID. The worker sends current canonical title, Markdown description, `start_date`, `due_date`, labels, and the `assignee_ids` array to GitLab, replaces temporary IIDs after creation, and reconciles responses. The join table preserves multiple assignees while deferred foreign keys allow temporary IIDs to become GitLab IIDs. Failed operations keep the optimistic state and can be retried.
 
 ## Frontend ownership
 

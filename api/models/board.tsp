@@ -1,7 +1,7 @@
 namespace SitconBoard;
 
 alias OperationState = "pending" | "processing" | "synced" | "failed";
-alias OperationKind = "create_card" | "update_details" | "update_team" | "update_assignee" | "update_due_date" | "move_card";
+alias OperationKind = "create_card" | "update_details" | "update_team" | "update_assignee" | "update_start_date" | "update_due_date" | "move_card";
 alias SyncHealth = "synced" | "syncing" | "offline";
 
 model BoardList {
@@ -23,6 +23,7 @@ model BoardCard {
 	position: int32;
 	teamKey: string;
 	assigneeGitLabUserIds: int64[];
+	startDate: plainDate | null;
 	dueDate: plainDate | null;
 	labels: string[];
 	syncState: OperationState;
@@ -84,6 +85,7 @@ model CreateCardRequest {
 
 	description: string;
 	assigneeGitLabUserIds: int64[];
+	startDate: plainDate | null;
 	dueDate: plainDate | null;
 }
 
@@ -112,6 +114,11 @@ model UpdateCardAssigneeRequest {
 model UpdateCardDueDateRequest {
 	operationId: uuid;
 	dueDate: plainDate | null;
+}
+
+model UpdateCardStartDateRequest {
+	operationId: uuid;
+	startDate: plainDate | null;
 }
 
 model MoveCardRequest {

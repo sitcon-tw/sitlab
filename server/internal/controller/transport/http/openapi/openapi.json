@@ -885,6 +885,108 @@
 				]
 			}
 		},
+		"/cards/{issueIid}/start-date": {
+			"put": {
+				"operationId": "updateCardStartDate",
+				"summary": "Optimistically change a card start date",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					},
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"202": {
+						"description": "The request has been accepted for processing, but processing has not yet completed.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CardMutationResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with the current state of the server.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateCardStartDateRequest"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
 		"/cards/{issueIid}/team": {
 			"put": {
 				"operationId": "updateCardTeam",
@@ -1426,6 +1528,7 @@
 					"position",
 					"teamKey",
 					"assigneeGitLabUserIds",
+					"startDate",
 					"dueDate",
 					"labels",
 					"syncState",
@@ -1482,6 +1585,17 @@
 							"type": "integer",
 							"format": "int64"
 						}
+					},
+					"startDate": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "date"
+							},
+							{
+								"type": "null"
+							}
+						]
 					},
 					"dueDate": {
 						"anyOf": [
@@ -1644,7 +1758,7 @@
 			},
 			"CreateCardRequest": {
 				"type": "object",
-				"required": ["operationId", "title", "teamKey", "description", "assigneeGitLabUserIds", "dueDate"],
+				"required": ["operationId", "title", "teamKey", "description", "assigneeGitLabUserIds", "startDate", "dueDate"],
 				"properties": {
 					"operationId": {
 						"$ref": "#/components/schemas/uuid"
@@ -1667,6 +1781,17 @@
 							"type": "integer",
 							"format": "int64"
 						}
+					},
+					"startDate": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "date"
+							},
+							{
+								"type": "null"
+							}
+						]
 					},
 					"dueDate": {
 						"anyOf": [
@@ -1889,7 +2014,7 @@
 					},
 					"kind": {
 						"type": "string",
-						"enum": ["create_card", "update_details", "update_team", "update_assignee", "update_due_date", "move_card"]
+						"enum": ["create_card", "update_details", "update_team", "update_assignee", "update_start_date", "update_due_date", "move_card"]
 					},
 					"state": {
 						"type": "string",
@@ -2151,6 +2276,26 @@
 						"$ref": "#/components/schemas/uuid"
 					},
 					"dueDate": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "date"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				}
+			},
+			"UpdateCardStartDateRequest": {
+				"type": "object",
+				"required": ["operationId", "startDate"],
+				"properties": {
+					"operationId": {
+						"$ref": "#/components/schemas/uuid"
+					},
+					"startDate": {
 						"anyOf": [
 							{
 								"type": "string",

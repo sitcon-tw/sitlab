@@ -189,10 +189,10 @@ func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List,
 			command, err := tx.Exec(ctx, `
 				INSERT INTO issue_cache
 				    (issue_iid, gitlab_issue_id, title, description, web_url, list_key, position, team_key,
-				     due_date, labels, sync_state, gitlab_updated_at,
+				     start_date, due_date, labels, sync_state, gitlab_updated_at,
 				     created_at, updated_at)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10::text[], '{}'),
-				        'synced', $11, $12, $13)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11::text[], '{}'),
+				        'synced', $12, $13, $14)
 				ON CONFLICT (issue_iid) DO UPDATE
 				SET gitlab_issue_id = EXCLUDED.gitlab_issue_id,
 				    title = EXCLUDED.title,
@@ -201,6 +201,7 @@ func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List,
 				    list_key = EXCLUDED.list_key,
 				    position = EXCLUDED.position,
 				    team_key = EXCLUDED.team_key,
+				    start_date = EXCLUDED.start_date,
 				    due_date = EXCLUDED.due_date,
 				    labels = EXCLUDED.labels,
 				    sync_state = 'synced',
@@ -211,7 +212,7 @@ func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List,
 				    updated_at = EXCLUDED.updated_at
 				WHERE issue_cache.sync_state = 'synced'
 			`, card.IssueIID, card.GitLabIssueID, card.Title, card.Description, nullableString(card.WebURL),
-				card.ListKey, card.Position, card.TeamKey, nullableDate(card.DueDate), card.Labels,
+				card.ListKey, card.Position, card.TeamKey, nullableDate(card.StartDate), nullableDate(card.DueDate), card.Labels,
 				card.UpdatedAt, card.CreatedAt, syncedAt)
 			if err != nil {
 				return err
@@ -694,12 +695,12 @@ func (r *Repository) CreateCard(ctx context.Context, mutation domainboard.Mutati
 		var issueIID int64
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO issue_cache
-			    (title, description, list_key, position, team_key, due_date,
+			    (title, description, list_key, position, team_key, start_date, due_date,
 			     labels, sync_state, pending_operation_id, created_at, updated_at)
-			VALUES ($1, $2, $3, 0, $4, $5, COALESCE($6::text[], '{}'), $7, $8, $9, $10)
+			VALUES ($1, $2, $3, 0, $4, $5, $6, COALESCE($7::text[], '{}'), $8, $9, $10, $11)
 			RETURNING issue_iid
 		`, mutation.Card.Title, mutation.Card.Description, mutation.Card.ListKey, mutation.Card.TeamKey,
-			nullableDate(mutation.Card.DueDate), mutation.Card.Labels, mutation.Card.SyncState,
+			nullableDate(mutation.Card.StartDate), nullableDate(mutation.Card.DueDate), mutation.Card.Labels, mutation.Card.SyncState,
 			uuid.MustParse(mutation.Card.PendingOperationID), mutation.Card.CreatedAt, mutation.Card.UpdatedAt,
 		).Scan(&issueIID); err != nil {
 			return err
@@ -741,11 +742,11 @@ func (r *Repository) UpdateCard(ctx context.Context, mutation domainboard.Mutati
 		command, err := tx.Exec(ctx, `
 			UPDATE issue_cache
 			SET title = $2, description = $3, list_key = $4, position = $5, team_key = $6,
-			    due_date = $7, labels = COALESCE($8::text[], '{}'),
-			    sync_state = $9, sync_error = NULL, pending_operation_id = $10, updated_at = $11
+			    start_date = $7, due_date = $8, labels = COALESCE($9::text[], '{}'),
+			    sync_state = $10, sync_error = NULL, pending_operation_id = $11, updated_at = $12
 			WHERE issue_iid = $1
 		`, mutation.Card.IssueIID, mutation.Card.Title, mutation.Card.Description, mutation.Card.ListKey, mutation.Card.Position,
-			mutation.Card.TeamKey, nullableDate(mutation.Card.DueDate),
+			mutation.Card.TeamKey, nullableDate(mutation.Card.StartDate), nullableDate(mutation.Card.DueDate),
 			mutation.Card.Labels, mutation.Card.SyncState, uuid.MustParse(mutation.Card.PendingOperationID), mutation.Card.UpdatedAt)
 		if err != nil {
 			return err
@@ -823,7 +824,7 @@ const selectCards = `
 	           FROM issue_cache_assignees assignee
 	           WHERE assignee.issue_iid = card.issue_iid
 	       ), '{}'),
-	       card.due_date, card.labels, card.sync_state, card.sync_error,
+	       card.start_date, card.due_date, card.labels, card.sync_state, card.sync_error,
 	       card.pending_operation_id, card.created_at, card.updated_at
 	FROM issue_cache card
 	JOIN board_lists board_list ON board_list.key = card.list_key
@@ -836,12 +837,12 @@ type rowScanner interface {
 func scanCard(row rowScanner) (domainboard.Card, error) {
 	var card domainboard.Card
 	var webURL, syncError *string
-	var dueDate pgtype.Date
+	var startDate, dueDate pgtype.Date
 	var pendingOperationID *uuid.UUID
 	err := row.Scan(
 		&card.IssueIID, &card.GitLabIssueID, &card.Title, &card.Description, &webURL,
 		&card.ListKey, &card.Position, &card.TeamKey, &card.AssigneeGitLabUserIDs,
-		&dueDate, &card.Labels, &card.SyncState, &syncError,
+		&startDate, &dueDate, &card.Labels, &card.SyncState, &syncError,
 		&pendingOperationID, &card.CreatedAt, &card.UpdatedAt,
 	)
 	if err != nil {
@@ -852,6 +853,9 @@ func scanCard(row rowScanner) (domainboard.Card, error) {
 	}
 	if dueDate.Valid {
 		card.DueDate = dueDate.Time.Format(time.DateOnly)
+	}
+	if startDate.Valid {
+		card.StartDate = startDate.Time.Format(time.DateOnly)
 	}
 	if syncError != nil {
 		card.SyncError = *syncError

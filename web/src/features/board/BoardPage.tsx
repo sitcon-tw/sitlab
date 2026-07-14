@@ -1,10 +1,23 @@
 import { clearCsrfToken, errorMessage } from "@/shared/api/client";
 import { Avatar } from "@/shared/Avatar";
 import { Dialog } from "@project-template/ui";
-import { CalendarClock, Check, ChevronDown, CloudOff, ExternalLink, GripVertical, LogOut, Plus, RefreshCw, Save, Users } from "lucide-react";
+import { Check, ChevronDown, CloudOff, ExternalLink, GripVertical, LogOut, Plus, RefreshCw, Save, Users } from "lucide-react";
 import { useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { AssigneePicker } from "./AssigneePicker";
-import { createCard, logout, moveCard, retryOperation, savePreferences, updateAssignee, updateDetails, updateDueDate, updateTeam } from "./boardApi";
+import {
+	createCard,
+	logout,
+	moveCard,
+	retryOperation,
+	savePreferences,
+	updateAssignee,
+	updateDetails,
+	updateDueDate,
+	updateStartDate,
+	updateTeam
+} from "./boardApi";
 import styles from "./BoardPage.module.css";
 import { MembersDrawer } from "./MembersDrawer";
 import { memberById, preferredAssignees, taipeiDateAfter, type BoardCard, type Bootstrap } from "./model";
@@ -15,7 +28,7 @@ export interface BoardPageProps {
 	backgroundOffline: boolean;
 }
 
-type CardPatch = Partial<Pick<BoardCard, "title" | "description" | "teamKey" | "assigneeGitLabUserIds" | "dueDate" | "listKey" | "position">>;
+type CardPatch = Partial<Pick<BoardCard, "title" | "description" | "teamKey" | "assigneeGitLabUserIds" | "startDate" | "dueDate" | "listKey" | "position">>;
 
 export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: BoardPageProps) {
 	const [membersOpen, setMembersOpen] = useState(false);
@@ -76,7 +89,14 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 		execute();
 	};
 
-	const handleCreate = (input: { title: string; description: string; teamKey: string; assigneeGitLabUserIds: number[]; dueDate: string | null }) => {
+	const handleCreate = (input: {
+		title: string;
+		description: string;
+		teamKey: string;
+		assigneeGitLabUserIds: number[];
+		startDate: string | null;
+		dueDate: string | null;
+	}) => {
 		const operationId = crypto.randomUUID();
 		const temporaryIid = nextTemporaryIid.current;
 		nextTemporaryIid.current -= 1;
@@ -90,6 +110,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 			position: cards.filter((card) => card.listKey === lists[0]?.key).length,
 			teamKey: input.teamKey,
 			assigneeGitLabUserIds: input.assigneeGitLabUserIds,
+			startDate: input.startDate,
 			dueDate: input.dueDate,
 			labels: [],
 			syncState: "pending",
@@ -145,6 +166,10 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 
 	const handleDueDate = (card: BoardCard, dueDate: string | null) => {
 		runCardMutation(card, { dueDate }, (operationId) => updateDueDate(card, operationId, dueDate));
+	};
+
+	const handleStartDate = (card: BoardCard, startDate: string | null) => {
+		runCardMutation(card, { startDate }, (operationId) => updateStartDate(card, operationId, startDate));
 	};
 
 	const handleMove = (card: BoardCard, listKey: string) => {
@@ -239,6 +264,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 					onTeam={(teamKey) => handleTeam(detailCard, teamKey)}
 					onMove={(listKey) => handleMove(detailCard, listKey)}
 					onAssignee={(memberIds) => handleAssignee(detailCard, memberIds)}
+					onStartDate={(startDate) => handleStartDate(detailCard, startDate)}
 					onDueDate={(dueDate) => handleDueDate(detailCard, dueDate)}
 				/>
 			) : null}
@@ -304,7 +330,14 @@ function QuickCreate({
 	onCreate
 }: {
 	bootstrap: Bootstrap;
-	onCreate: (input: { title: string; description: string; teamKey: string; assigneeGitLabUserIds: number[]; dueDate: string | null }) => void;
+	onCreate: (input: {
+		title: string;
+		description: string;
+		teamKey: string;
+		assigneeGitLabUserIds: number[];
+		startDate: string | null;
+		dueDate: string | null;
+	}) => void;
 }) {
 	const defaultTeam = bootstrap.preferences.defaultTeamKey ?? bootstrap.teams.find((team) => team.active)?.key ?? "";
 	const [title, setTitle] = useState("");
@@ -325,7 +358,7 @@ function QuickCreate({
 		event.preventDefault();
 		const normalized = title.trim();
 		if (!normalized || !teamKey) return;
-		onCreate({ title: normalized, description: "", teamKey, assigneeGitLabUserIds: assignees, dueDate: dueDate || null });
+		onCreate({ title: normalized, description: "", teamKey, assigneeGitLabUserIds: assignees, startDate: null, dueDate: dueDate || null });
 		setTitle("");
 	};
 
@@ -448,6 +481,7 @@ function CardDetail({
 	onTeam,
 	onMove,
 	onAssignee,
+	onStartDate,
 	onDueDate
 }: {
 	card: BoardCard;
@@ -457,10 +491,12 @@ function CardDetail({
 	onTeam: (teamKey: string) => void;
 	onMove: (listKey: string) => void;
 	onAssignee: (memberIds: number[]) => void;
+	onStartDate: (startDate: string | null) => void;
 	onDueDate: (dueDate: string | null) => void;
 }) {
 	const [title, setTitle] = useState(card.title);
 	const [description, setDescription] = useState(card.description);
+	const [descriptionMode, setDescriptionMode] = useState<"edit" | "preview">("edit");
 	const teams = bootstrap.teams.filter((team) => team.active).sort((a, b) => a.sortOrder - b.sortOrder);
 	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
 	const save = (event: React.FormEvent) => {
@@ -482,10 +518,47 @@ function CardDetail({
 					<span>標題</span>
 					<input value={title} maxLength={255} onChange={(event) => setTitle(event.target.value)} />
 				</label>
-				<label className={styles.detailDescription}>
-					<span>描述</span>
-					<textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="工作內容、驗收條件、相關連結..." rows={8} />
-				</label>
+				<section className={styles.detailDescription}>
+					<header className={styles.detailDescriptionHeader}>
+						<span>描述</span>
+						<div className={styles.descriptionModes} role="group" aria-label="描述顯示模式">
+							<button type="button" aria-pressed={descriptionMode === "edit"} onClick={() => setDescriptionMode("edit")}>
+								編輯
+							</button>
+							<button type="button" aria-pressed={descriptionMode === "preview"} onClick={() => setDescriptionMode("preview")}>
+								預覽
+							</button>
+						</div>
+					</header>
+					{descriptionMode === "edit" ? (
+						<textarea
+							aria-label="描述"
+							value={description}
+							onChange={(event) => setDescription(event.target.value)}
+							placeholder="工作內容、驗收條件、相關連結..."
+							rows={8}
+						/>
+					) : (
+						<div className={styles.markdownPreview} aria-label="描述預覽">
+							{description.trim() ? (
+								<ReactMarkdown
+									remarkPlugins={[remarkGfm]}
+									components={{
+										a: ({ href, children }) => (
+											<a href={href} target="_blank" rel="noreferrer">
+												{children}
+											</a>
+										)
+									}}
+								>
+									{description}
+								</ReactMarkdown>
+							) : (
+								<p className={styles.emptyPreview}>尚無描述</p>
+							)}
+						</div>
+					)}
+				</section>
 				<div className={styles.detailGrid}>
 					<label>
 						<span>組別</span>
@@ -511,15 +584,16 @@ function CardDetail({
 						<span>Assignee</span>
 						<AssigneePicker bootstrap={bootstrap} teamKey={card.teamKey} value={card.assigneeGitLabUserIds} onChange={onAssignee} label="變更 Assignee" />
 					</div>
-					<label>
-						<span>期限</span>
-						<input type="date" value={card.dueDate ?? ""} onChange={(event) => onDueDate(event.target.value || null)} />
-					</label>
-				</div>
-				<div className={styles.detailStart}>
-					<CalendarClock size="1rem" aria-hidden="true" />
-					<span>Start time</span>
-					<strong>{formatDateTime(card.createdAt)}</strong>
+					<div className={styles.detailDates}>
+						<label>
+							<span>Start</span>
+							<input type="date" value={card.startDate ?? ""} onChange={(event) => onStartDate(event.target.value || null)} />
+						</label>
+						<label>
+							<span>Due</span>
+							<input type="date" value={card.dueDate ?? ""} onChange={(event) => onDueDate(event.target.value || null)} />
+						</label>
+					</div>
 				</div>
 				<footer className={styles.detailActions}>
 					{card.webUrl ? (

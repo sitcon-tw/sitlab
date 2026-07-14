@@ -7,6 +7,7 @@ export async function createCard(input: {
 	description: string;
 	teamKey: string;
 	assigneeGitLabUserIds: number[];
+	startDate: string | null;
 	dueDate: string | null;
 }) {
 	return expectData(
@@ -49,6 +50,15 @@ export async function updateDueDate(card: BoardCard, operationId: string, dueDat
 		await api.PUT("/cards/{issueIid}/due-date", {
 			params: { path: { issueIid: card.issueIid }, header: { "X-CSRF-Token": await getCsrfToken() } },
 			body: { operationId, dueDate }
+		})
+	);
+}
+
+export async function updateStartDate(card: BoardCard, operationId: string, startDate: string | null) {
+	return expectData(
+		await api.PUT("/cards/{issueIid}/start-date", {
+			params: { path: { issueIid: card.issueIid }, header: { "X-CSRF-Token": await getCsrfToken() } },
+			body: { operationId, startDate }
 		})
 	);
 }

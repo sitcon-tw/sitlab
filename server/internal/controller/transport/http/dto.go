@@ -67,6 +67,7 @@ type cardResponse struct {
 	Position              int32                `json:"position"`
 	TeamKey               string               `json:"teamKey"`
 	AssigneeGitLabUserIDs []int64              `json:"assigneeGitLabUserIds"`
+	StartDate             *string              `json:"startDate"`
 	DueDate               *string              `json:"dueDate"`
 	Labels                []string             `json:"labels"`
 	SyncState             board.OperationState `json:"syncState"`
@@ -154,7 +155,7 @@ func mapCard(item board.Card) cardResponse {
 		Title: item.Title, Description: item.Description, WebURL: optionalString(item.WebURL), ListKey: item.ListKey,
 		Position: item.Position, TeamKey: item.TeamKey,
 		AssigneeGitLabUserIDs: append([]int64{}, item.AssigneeGitLabUserIDs...),
-		DueDate:               optionalString(item.DueDate), Labels: append([]string{}, item.Labels...),
+		StartDate:             optionalString(item.StartDate), DueDate: optionalString(item.DueDate), Labels: append([]string{}, item.Labels...),
 		SyncState: item.SyncState, SyncError: optionalString(item.SyncError),
 		PendingOperationID: optionalString(item.PendingOperationID), CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
 	}

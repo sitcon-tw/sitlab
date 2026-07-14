@@ -1,9 +1,9 @@
 import { demoBootstrap } from "@/test/demoBootstrap";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createCard, moveCard, retryOperation, updateAssignee, updateDetails, updateDueDate, updateTeam } from "./boardApi";
+import { createCard, moveCard, retryOperation, updateAssignee, updateDetails, updateDueDate, updateStartDate, updateTeam } from "./boardApi";
 import { BoardPage } from "./BoardPage";
 import type { Bootstrap } from "./model";
 
@@ -16,6 +16,7 @@ vi.mock("./boardApi", () => ({
 	updateAssignee: vi.fn(),
 	updateDetails: vi.fn(),
 	updateDueDate: vi.fn(),
+	updateStartDate: vi.fn(),
 	updateTeam: vi.fn()
 }));
 
@@ -32,6 +33,7 @@ describe("SITCON Board interactions", () => {
 		vi.mocked(updateAssignee).mockReset();
 		vi.mocked(updateDetails).mockReset();
 		vi.mocked(updateDueDate).mockReset();
+		vi.mocked(updateStartDate).mockReset();
 		vi.mocked(updateTeam).mockReset();
 	});
 
@@ -96,23 +98,34 @@ describe("SITCON Board interactions", () => {
 		expect(moveCard).toHaveBeenCalledOnce();
 	});
 
-	it("edits detailed planning and displays Start time", async () => {
+	it("edits GitLab Start date and previews Markdown planning", async () => {
 		const user = userEvent.setup();
 		vi.mocked(updateDetails).mockReturnValue(new Promise(() => undefined));
+		vi.mocked(updateStartDate).mockReturnValue(new Promise(() => undefined));
 		render(<Harness />);
 
 		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
 		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
-		expect(within(dialog).getByText("Start time")).toBeVisible();
-		expect(within(dialog).getByText("2026年7月10日 上午11:30")).toBeVisible();
+		expect(within(dialog).getByLabelText("Start")).toHaveValue("2026-07-17");
+		expect(within(dialog).getByLabelText("Due")).toHaveValue("2026-07-21");
+		await user.clear(within(dialog).getByLabelText("Start"));
+		await user.type(within(dialog).getByLabelText("Start"), "2026-07-18");
+		expect(updateStartDate).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), "2026-07-18");
 
 		await user.clear(within(dialog).getByLabelText("標題"));
 		await user.type(within(dialog).getByLabelText("標題"), "完成寄信失敗重送");
-		await user.clear(within(dialog).getByLabelText("描述"));
-		await user.type(within(dialog).getByLabelText("描述"), "補齊驗收條件與測試案例");
+		fireEvent.change(within(dialog).getByLabelText("描述"), { target: { value: "## 驗收條件\n\n- [ ] 補齊測試\n\n[規格](https://example.com/spec)" } });
+		await user.click(within(dialog).getByRole("button", { name: "預覽" }));
+		expect(within(dialog).getByRole("heading", { name: "驗收條件" })).toBeVisible();
+		expect(within(dialog).getByRole("link", { name: "規格" })).toHaveAttribute("href", "https://example.com/spec");
 		await user.click(within(dialog).getByRole("button", { name: "儲存細節" }));
 
-		expect(updateDetails).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), "完成寄信失敗重送", "補齊驗收條件與測試案例");
+		expect(updateDetails).toHaveBeenCalledWith(
+			expect.objectContaining({ issueIid: 127 }),
+			expect.any(String),
+			"完成寄信失敗重送",
+			"## 驗收條件\n\n- [ ] 補齊測試\n\n[規格](https://example.com/spec)"
+		);
 		await user.click(within(dialog).getByRole("button", { name: "Close dialog" }));
 		expect(screen.getByRole("heading", { name: "[開發組] 完成寄信失敗重送" })).toBeVisible();
 	});
