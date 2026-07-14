@@ -43,6 +43,10 @@ export function clearCsrfToken() {
 	csrfToken = null;
 }
 
+export function setCsrfToken(token: string) {
+	csrfToken = token;
+}
+
 export interface ApiResult<T> {
 	data?: T;
 	error?: unknown;
