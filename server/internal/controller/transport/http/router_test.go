@@ -112,6 +112,12 @@ func (bootstrapFake) Get(context.Context, identity.SessionClaims) (appbootstrap.
 	}, nil
 }
 
+type bootstrapFailureFake struct{}
+
+func (bootstrapFailureFake) Get(context.Context, identity.SessionClaims) (appbootstrap.Result, error) {
+	return appbootstrap.Result{}, errors.New("snapshot unavailable")
+}
+
 type syncFake struct{}
 
 func (syncFake) RequestRefresh() time.Time { return time.Unix(2, 0) }
@@ -169,6 +175,19 @@ func TestProductionHTMLInjectsBootstrapWithoutLoadingFetch(t *testing.T) {
 	body := response.Body.String()
 	if response.Code != http.StatusOK || !strings.Contains(body, `id="__SITCON_BOOTSTRAP__"`) || !strings.Contains(body, `"teams"`) {
 		t.Fatalf("html = %d %s", response.Code, body)
+	}
+}
+
+func TestProductionHTMLRenewsValidSessionWhenBootstrapIsUnavailable(t *testing.T) {
+	webDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(webDir, "index.html"), []byte("<html><head></head><body></body></html>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler := spaHandler(webDir, authFake{}, bootstrapFailureFake{}, CookieConfig{Name: "test_session", TTL: 14 * 24 * time.Hour})
+	response := perform(handler, http.MethodGet, "/", "", true)
+	cookies := response.Result().Cookies()
+	if response.Code != http.StatusOK || len(cookies) != 1 || !cookies[0].Expires.Equal(renewedExpiry) {
+		t.Fatalf("rolling HTML session = %d %#v", response.Code, cookies)
 	}
 }
 

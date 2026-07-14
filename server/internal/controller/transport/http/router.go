@@ -139,13 +139,13 @@ func spaHandler(root string, auth AuthService, bootstrap BootstrapService, cooki
 		}
 		if sessionCookie, err := r.Cookie(cookie.Name); err == nil && sessionCookie.Value != "" {
 			if claims, verifyErr := auth.VerifySession(r.Context(), sessionCookie.Value); verifyErr == nil {
+				setRollingCookie(w, cookie, sessionCookie.Value, claims.ExpiresAt)
 				if state, stateErr := bootstrap.Get(r.Context(), claims); stateErr == nil {
 					payload, marshalErr := json.Marshal(mapBootstrap(state))
 					if marshalErr == nil {
 						script := append([]byte(`<script id="__SITCON_BOOTSTRAP__" type="application/json">`), payload...)
 						script = append(script, []byte(`</script>`)...)
 						index = bytes.Replace(index, []byte("</head>"), append(script, []byte("</head>")...), 1)
-						setRollingCookie(w, cookie, sessionCookie.Value, claims.ExpiresAt)
 					}
 				}
 			}
