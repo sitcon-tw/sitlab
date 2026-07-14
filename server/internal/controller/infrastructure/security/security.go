@@ -1,6 +1,8 @@
 package security
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -9,6 +11,43 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 )
+
+type Cipher struct {
+	aead cipher.AEAD
+}
+
+func NewCipher(key string) (Cipher, error) {
+	digest := sha256.Sum256([]byte(key))
+	block, err := aes.NewCipher(digest[:])
+	if err != nil {
+		return Cipher{}, fmt.Errorf("create oauth state cipher: %w", err)
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return Cipher{}, fmt.Errorf("create oauth state GCM: %w", err)
+	}
+	return Cipher{aead: aead}, nil
+}
+
+func (c Cipher) Seal(value string) ([]byte, error) {
+	nonce := make([]byte, c.aead.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, fmt.Errorf("read cipher nonce: %w", err)
+	}
+	return c.aead.Seal(nonce, nonce, []byte(value), nil), nil
+}
+
+func (c Cipher) Open(value []byte) (string, error) {
+	nonceSize := c.aead.NonceSize()
+	if len(value) < nonceSize {
+		return "", fmt.Errorf("oauth state ciphertext is truncated")
+	}
+	plaintext, err := c.aead.Open(nil, value[:nonceSize], value[nonceSize:], nil)
+	if err != nil {
+		return "", fmt.Errorf("open oauth state ciphertext: %w", err)
+	}
+	return string(plaintext), nil
+}
 
 type PasswordHasher struct {
 	cost int

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"example.com/project-template/internal/controller/infrastructure/postgres/sqlc"
@@ -29,6 +30,19 @@ func Queries(ctx context.Context, base *sqlc.Queries) *sqlc.Queries {
 		return base.WithTx(tx)
 	}
 	return base
+}
+
+type DBTX interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func Executor(ctx context.Context, pool *pgxpool.Pool) DBTX {
+	if tx, ok := txFromContext(ctx); ok {
+		return tx
+	}
+	return pool
 }
 
 func txFromContext(ctx context.Context) (pgx.Tx, bool) {

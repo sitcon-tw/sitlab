@@ -17,13 +17,12 @@ CREATE TABLE auth_sessions (
     user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token_hash bytea NOT NULL UNIQUE,
     csrf_token_hash bytea,
-    idle_expires_at timestamptz NOT NULL,
-    absolute_expires_at timestamptz NOT NULL,
+    expires_at timestamptz NOT NULL,
     created_at timestamptz NOT NULL,
-    last_seen_at timestamptz NOT NULL
+    last_used_at timestamptz NOT NULL
 );
 CREATE INDEX auth_sessions_user_id_idx ON auth_sessions (user_id);
-CREATE INDEX auth_sessions_expiry_idx ON auth_sessions (idle_expires_at, absolute_expires_at);
+CREATE INDEX auth_sessions_expiry_idx ON auth_sessions (expires_at);
 
 CREATE TABLE oauth_states (
     state_hash bytea PRIMARY KEY,
