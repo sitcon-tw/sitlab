@@ -1,0 +1,145 @@
+.page {
+	display: grid;
+	grid-template-columns: minmax(18rem, 28rem) minmax(24rem, 1fr);
+	min-height: 100vh;
+	min-height: 100svh;
+	background: var(--sb-page);
+}
+
+.login {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	padding: clamp(2rem, 6vw, 5rem);
+	background: var(--sb-surface);
+	border-right: 1px solid var(--sb-border);
+}
+
+.identity {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+}
+
+.mark {
+	display: grid;
+	width: 4rem;
+	height: 4rem;
+	place-items: center;
+	color: var(--sb-on-brand);
+	background: var(--sb-brand);
+	border-radius: 0.5rem;
+	font-weight: 800;
+	line-height: 0.9;
+}
+
+.mark span:first-child {
+	font-size: 1.65rem;
+}
+
+.mark span:last-child {
+	font-size: 0.75rem;
+}
+
+.eyebrow {
+	margin: 0 0 0.25rem;
+	color: var(--sb-brand);
+	font-size: 0.75rem;
+	font-weight: 800;
+	text-transform: uppercase;
+}
+
+.identity h1 {
+	margin: 0;
+	font-size: 1.75rem;
+	line-height: 1.2;
+}
+
+.description {
+	margin: 2rem 0;
+	color: var(--sb-text-muted);
+}
+
+.loginButton {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	min-height: 3rem;
+	padding: 0 1.25rem;
+	color: var(--sb-on-brand);
+	background: var(--sb-brand);
+	border-radius: 0.375rem;
+	font-weight: 750;
+	text-decoration: none;
+	transition: background var(--sb-motion-fast);
+}
+
+.loginButton:hover {
+	background: var(--sb-brand-hover);
+}
+
+.loginButton:focus-visible {
+	outline: 2px solid var(--sb-focus);
+	outline-offset: 3px;
+}
+
+.security {
+	display: flex;
+	align-items: center;
+	gap: 0.375rem;
+	margin: 1rem 0 0;
+	color: var(--sb-text-subtle);
+	font-size: 0.75rem;
+}
+
+.boardPreview {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(8rem, 1fr));
+	gap: 1rem;
+	align-items: start;
+	padding: clamp(3rem, 7vw, 7rem) clamp(2rem, 5vw, 5rem);
+	overflow: hidden;
+}
+
+.previewLane {
+	display: grid;
+	gap: 0.75rem;
+}
+
+.previewLane > span {
+	width: 55%;
+	height: 0.625rem;
+	background: var(--sb-border-strong);
+	border-radius: 0.125rem;
+}
+
+.previewLane i {
+	display: block;
+	height: 6rem;
+	background: var(--sb-surface);
+	border: 1px solid var(--sb-border);
+	border-radius: 0.375rem;
+	box-shadow: var(--sb-shadow-card);
+}
+
+.previewLane:nth-child(2) i:first-of-type,
+.previewLane:nth-child(4) i:first-of-type {
+	border-top: 0.25rem solid var(--sb-accent);
+}
+
+@media (max-width: 44rem) {
+	.page {
+		display: block;
+	}
+
+	.login {
+		min-height: 100svh;
+		padding: 2rem;
+		border-right: 0;
+	}
+
+	.boardPreview {
+		display: none;
+	}
+}

@@ -10,3 +10,60 @@ select,
 textarea {
 	-webkit-tap-highlight-color: transparent;
 }
+
+.sb-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	min-height: 2.5rem;
+	padding: 0 1rem;
+	border: 1px solid transparent;
+	border-radius: 0.25rem;
+	font-weight: 750;
+	letter-spacing: 0;
+}
+
+.sb-button-primary {
+	color: var(--sb-on-brand);
+	background: var(--sb-brand);
+}
+
+.sb-button-primary:hover:not(:disabled) {
+	background: var(--sb-brand-hover);
+}
+
+.sb-button:disabled {
+	opacity: 0.48;
+}
+
+.sb-button:focus-visible {
+	outline: 2px solid var(--sb-focus);
+	outline-offset: 2px;
+}
+
+.sb-startup-error {
+	display: grid;
+	width: min(100% - 2rem, 34rem);
+	min-height: 100svh;
+	margin: 0 auto;
+	place-content: center;
+	justify-items: start;
+}
+
+.sb-startup-error h1 {
+	margin: 0;
+	font-size: 1.75rem;
+}
+
+.sb-startup-error > p:not(.sb-brand) {
+	margin: 0.5rem 0 1.5rem;
+	color: var(--sb-text-muted);
+}
+
+.sb-brand {
+	margin: 0 0 0.5rem;
+	color: var(--sb-brand);
+	font-size: 0.75rem;
+	font-weight: 850;
+}

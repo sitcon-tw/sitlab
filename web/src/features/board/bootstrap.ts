@@ -24,3 +24,9 @@ export async function loadInitialBootstrap() {
 	setCsrfToken(result.csrfToken);
 	return result;
 }
+
+export async function refreshBootstrap() {
+	const result = expectData(await api.GET("/bootstrap"));
+	setCsrfToken(result.csrfToken);
+	return result;
+}
