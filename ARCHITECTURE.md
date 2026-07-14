@@ -24,7 +24,7 @@ Production traffic is ready only after directory, member, and board snapshots ex
 
 Dependencies point inward: HTTP transport calls application use cases, application packages own narrow ports, infrastructure implements those ports, and domain packages own board, directory, identity, and sync models. The file adapter supplies the repository-owned directory bundled into the image; the GitLab adapter supplies members and issues. PostgreSQL adapters do not import application or transport packages. The composition root is the only package that constructs concrete adapters.
 
-Card mutations write the optimistic card cache and a durable operation in one transaction. A worker sends the current canonical card intent to GitLab, then reconciles the GitLab response. New cards use a temporary negative IID; PostgreSQL updates it to GitLab's positive IID with deferred cascading foreign keys. Failed operations retain the optimistic UI state and can be retried.
+Card mutations write the optimistic card cache and a durable operation in one transaction. A worker sends the current canonical card intent, including title, description, due date, labels, and GitLab-native multiple assignees, then reconciles the GitLab response. New cards use a temporary negative IID; PostgreSQL updates it to GitLab's positive IID with deferred cascading foreign keys. Failed operations retain the optimistic UI state and can be retried. Normal pending, processing, and successful sync states remain quiet in the browser; only offline or failed states surface technical status.
 
 ## Identity And Security
 
@@ -32,7 +32,7 @@ GitLab OAuth uses Authorization Code with PKCE and a single-use server-side stat
 
 ## Frontend Ownership
 
-`web/src/features/board` owns Board state and optimistic reconciliation. `web/src/features/onboarding` owns primary-team confirmation. TanStack Query owns server snapshots, feature state owns unsaved interaction, and bootstrap initialization pre-fills the first render. Team names, title prefixes, member lists, board lists, and cards come from the backend.
+`web/src/features/board` owns Board state, the detailed planning dialog, multiple-assignee selection, and optimistic reconciliation. `web/src/features/onboarding` owns primary-team confirmation. TanStack Query owns server snapshots, feature state owns unsaved interaction, and bootstrap initialization pre-fills the first render. Team names, title prefixes, member lists, the six ordered board lists, and cards come from the backend.
 
 ## Contract Flow
 

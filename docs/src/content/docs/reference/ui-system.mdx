@@ -11,13 +11,16 @@ The shared package owns reusable primitives and the SITCON browser token source.
 
 Product CSS consumes semantic `--sb-*` roles for surface, text, border, focus, action, assignment, and sync state. Shared primitives use `--pt-*` aliases backed by those same values. Raw color literals belong only in the token source, browser metadata, or a documented platform bridge. Both dark and light themes preserve the same hierarchy and semantic meaning.
 
+The dark product header uses the official white SITCON logo shipped by the `sitcon-tw/2027` source. Its ink, paper, mist, acid, coral, and blue values inform the semantic roles; product code does not recreate or recolor the brand mark.
+
 ## Interaction contract
 
 - Use `:focus-visible` for keyboard focus.
 - Dialogs and drawers trap focus and return it to the trigger.
 - Icon-only controls have accessible names and tooltips when the symbol is not universal.
 - Production Board never replaces injected bootstrap with a loading page, skeleton, spinner, or empty columns.
-- Background sync, optimistic pending, durable failure, retry, offline snapshot, empty lane, and success states are part of the primary feature.
+- Healthy background sync, optimistic pending, processing, and success remain visually quiet. Offline snapshots and durable failures are visible and retryable.
+- Card surfaces expose title, description preview, due date, and assignees. Team and status controls live in the detailed planning dialog with editable title and description, multiple assignees, due date, Start time, and the GitLab issue link.
 - Controls keep stable dimensions so dynamic labels and counters do not shift the surrounding layout.
 
 ## Verification

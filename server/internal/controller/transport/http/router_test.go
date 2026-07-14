@@ -82,6 +82,9 @@ func mutationResult(kind board.OperationKind) appboard.Result {
 func (boardFake) Create(context.Context, appboard.CreateInput) (appboard.Result, error) {
 	return mutationResult(board.OperationCreateCard), nil
 }
+func (boardFake) UpdateDetails(context.Context, appboard.UpdateDetailsInput) (appboard.Result, error) {
+	return mutationResult(board.OperationUpdateDetails), nil
+}
 func (boardFake) UpdateTeam(context.Context, appboard.UpdateTeamInput) (appboard.Result, error) {
 	return mutationResult(board.OperationUpdateTeam), nil
 }
@@ -156,7 +159,7 @@ func TestAuthenticatedRequestRenewsCookieAndReturnsBootstrap(t *testing.T) {
 }
 
 func TestCardMutationUsesAcceptedContractAndCSRF(t *testing.T) {
-	response := perform(testRouter(nil, ""), http.MethodPost, "/api/v1/cards", `{"operationId":"10000000-0000-0000-0000-000000000001","title":"修正流程","teamKey":"development","assigneeGitLabUserId":101,"dueDate":"2026-07-21"}`, true)
+	response := perform(testRouter(nil, ""), http.MethodPost, "/api/v1/cards", `{"operationId":"10000000-0000-0000-0000-000000000001","title":"修正流程","description":"詳細規劃","teamKey":"development","assigneeGitLabUserIds":[101],"dueDate":"2026-07-21"}`, true)
 	if response.Code != http.StatusAccepted || !strings.Contains(response.Body.String(), `"card"`) || !strings.Contains(response.Body.String(), `"operation"`) {
 		t.Fatalf("response = %d %s", response.Code, response.Body.String())
 	}

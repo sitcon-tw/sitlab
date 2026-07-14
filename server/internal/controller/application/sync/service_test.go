@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -12,6 +13,21 @@ import (
 	"example.com/project-template/internal/domain/board"
 	"example.com/project-template/internal/domain/directory"
 )
+
+func TestDefaultBoardListsMatchGitLabBoard(t *testing.T) {
+	t.Parallel()
+	want := []board.List{
+		{Key: "wating", Name: "Wating", GitLabLabel: "Wating", Position: 0, Color: "#dc2626"},
+		{Key: "inbox", Name: "Inbox", GitLabLabel: "Inbox", Position: 1, Color: "#64748b"},
+		{Key: "todo", Name: "To Do", GitLabLabel: "To Do", Position: 2, Color: "#0891b2"},
+		{Key: "doing", Name: "Doing", GitLabLabel: "Doing", Position: 3, Color: "#2563eb"},
+		{Key: "review", Name: "Review", GitLabLabel: "Review", Position: 4, Color: "#b45309"},
+		{Key: "closed", Name: "Closed", GitLabLabel: "Closed", Position: 5, Closed: true, Color: "#15803d"},
+	}
+	if !reflect.DeepEqual(DefaultBoardLists, want) {
+		t.Fatalf("DefaultBoardLists = %#v", DefaultBoardLists)
+	}
+}
 
 type gitLabFake struct {
 	members []directory.GitLabMember
@@ -40,7 +56,10 @@ func (f *gitLabFake) ProjectMembers(context.Context) ([]directory.GitLabMember, 
 func (f *gitLabFake) Issues(context.Context) ([]GitLabIssue, error) { return f.issues, nil }
 func (f *gitLabFake) ApplyIssue(_ context.Context, mutation IssueMutation) (GitLabIssue, error) {
 	f.applied = &mutation
-	return GitLabIssue{IssueIID: 42, GitLabIssueID: 420, Title: mutation.Title, Labels: mutation.Labels, State: "opened"}, nil
+	return GitLabIssue{
+		IssueIID: 42, GitLabIssueID: 420, Title: mutation.Title, Description: mutation.Description,
+		Labels: mutation.Labels, AssigneeGitLabUserIDs: mutation.AssigneeGitLabUserIDs, State: "opened",
+	}, nil
 }
 
 type repoFake struct {
@@ -127,7 +146,10 @@ func TestProcessOneBuildsCanonicalIssueMutation(t *testing.T) {
 		board: appboard.Snapshot{Lists: DefaultBoardLists},
 		pending: &PendingOperation{
 			Operation: board.Operation{ID: "operation", Kind: board.OperationUpdateTeam},
-			Card:      board.Card{IssueIID: 42, Title: "修正流程", TeamKey: "development", ListKey: "doing", Labels: []string{"組別::設計", "Todo", "security"}},
+			Card: board.Card{
+				IssueIID: 42, Title: "修正流程", Description: "詳細規劃", TeamKey: "development", ListKey: "doing",
+				AssigneeGitLabUserIDs: []int64{1, 2}, Labels: []string{"組別::設計", "To Do", "security"},
+			},
 		},
 	}
 	service := NewService(gitlab, &directorySourceFake{}, repo, nil, noop.NewTracerProvider().Tracer("test"))
@@ -135,7 +157,8 @@ func TestProcessOneBuildsCanonicalIssueMutation(t *testing.T) {
 	if err != nil || !processed || !repo.completed {
 		t.Fatalf("ProcessOne() = %v, %v, completed=%v", processed, err, repo.completed)
 	}
-	if gitlab.applied == nil || gitlab.applied.Title != "[開發組] 修正流程" || !slices.Equal(gitlab.applied.Labels, []string{"security", "組別::開發", "Doing"}) {
+	if gitlab.applied == nil || gitlab.applied.Title != "[開發組] 修正流程" || gitlab.applied.Description != "詳細規劃" ||
+		!slices.Equal(gitlab.applied.AssigneeGitLabUserIDs, []int64{1, 2}) || !slices.Equal(gitlab.applied.Labels, []string{"security", "組別::開發", "Doing"}) {
 		t.Fatalf("mutation = %#v", gitlab.applied)
 	}
 }

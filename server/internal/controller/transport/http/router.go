@@ -100,6 +100,7 @@ func NewRouter(dep Dependencies) http.Handler {
 			protected.Get("/directory", h.directoryState)
 			protected.Put("/me/preferences", h.updatePreferences)
 			protected.Post("/cards", h.createCard)
+			protected.Put("/cards/{issueIid}/details", h.updateCardDetails)
 			protected.Put("/cards/{issueIid}/team", h.updateCardTeam)
 			protected.Put("/cards/{issueIid}/assignee", h.updateCardAssignee)
 			protected.Put("/cards/{issueIid}/due-date", h.updateCardDueDate)

@@ -1,15 +1,15 @@
 import { Avatar } from "@/shared/Avatar";
 import { Dialog } from "@project-template/ui";
-import { Search, UserRound, X } from "lucide-react";
+import { Check, Search, UsersRound, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import styles from "./BoardPage.module.css";
-import { activeMembers, memberById, type Bootstrap, type DirectoryMember } from "./model";
+import { activeMembers, type Bootstrap, type DirectoryMember } from "./model";
 
 export interface AssigneePickerProps {
 	bootstrap: Bootstrap;
 	teamKey: string;
-	value: number | null;
-	onChange: (gitLabUserId: number | null) => void;
+	value: number[];
+	onChange: (gitLabUserIds: number[]) => void;
 	label: string;
 	compact?: boolean;
 }
@@ -17,16 +17,21 @@ export interface AssigneePickerProps {
 export function AssigneePicker({ bootstrap, teamKey, value, onChange, label, compact = false }: AssigneePickerProps) {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
-	const selected = memberById(bootstrap, value);
+	const selected = value.flatMap((id) => {
+		const member = bootstrap.members.find((candidate) => candidate.gitLabUserId === id);
+		return member ? [member] : [];
+	});
 	const members = useMemo(() => sortMembers(activeMembers(bootstrap), teamKey, bootstrap.me.gitLabUserId, query), [bootstrap, query, teamKey]);
 	const teamName = bootstrap.teams.find((team) => team.key === teamKey)?.name ?? "目前組別";
 	const teamMembers = members.filter((member) => member.teamKeys.includes(teamKey));
 	const otherMembers = members.filter((member) => !member.teamKeys.includes(teamKey));
 
-	const choose = (gitLabUserId: number | null) => {
-		onChange(gitLabUserId);
-		setOpen(false);
-		setQuery("");
+	const changeOpen = (next: boolean) => {
+		setOpen(next);
+		if (!next) setQuery("");
+	};
+	const toggle = (gitLabUserId: number) => {
+		onChange(value.includes(gitLabUserId) ? value.filter((id) => id !== gitLabUserId) : [...value, gitLabUserId]);
 	};
 
 	return (
@@ -38,10 +43,19 @@ export function AssigneePicker({ bootstrap, teamKey, value, onChange, label, com
 				title={label}
 				onClick={() => setOpen(true)}
 			>
-				{selected ? <Avatar name={selected.displayName} src={selected.avatarUrl} size="sm" /> : <UserRound size="1rem" aria-hidden="true" />}
-				{compact ? null : <span>{selected ? selected.displayName : "未指派"}</span>}
+				{selected.length ? (
+					<span className={styles.assigneeStack} aria-hidden="true">
+						{selected.slice(0, 3).map((member) => (
+							<Avatar key={member.gitLabUserId} name={member.displayName} src={member.avatarUrl} size="sm" />
+						))}
+					</span>
+				) : (
+					<UsersRound size="1rem" aria-hidden="true" />
+				)}
+				{compact ? null : <span>{assigneeLabel(selected)}</span>}
+				{compact && selected.length > 3 ? <small>+{selected.length - 3}</small> : null}
 			</button>
-			<Dialog open={open} onOpenChange={setOpen} title="選擇 Assignee" description={`優先顯示${teamName}成員，也可以搜尋全部專案成員。`}>
+			<Dialog open={open} onOpenChange={changeOpen} title="選擇 Assignee" description={`${teamName}與其他專案成員`}>
 				<div className={styles.pickerSearch}>
 					<Search size="1rem" aria-hidden="true" />
 					<input
@@ -59,18 +73,25 @@ export function AssigneePicker({ bootstrap, teamKey, value, onChange, label, com
 					) : null}
 				</div>
 				<div className={styles.pickerList}>
-					<button type="button" className={styles.memberOption} data-selected={value === null} onClick={() => choose(null)}>
+					<button type="button" className={styles.memberOption} data-selected={value.length === 0} onClick={() => onChange([])}>
 						<span className={styles.unassignedAvatar}>
-							<UserRound size="1rem" aria-hidden="true" />
+							<UsersRound size="1rem" aria-hidden="true" />
 						</span>
 						<span>
 							<strong>未指派</strong>
-							<small>暫不指定負責人</small>
+							<small>清除所有負責人</small>
 						</span>
+						{value.length === 0 ? <Check size="1rem" aria-hidden="true" /> : null}
 					</button>
-					<MemberGroup label={teamName} members={teamMembers} value={value} currentUserId={bootstrap.me.gitLabUserId} onChoose={choose} />
-					<MemberGroup label="其他組別的人" members={otherMembers} value={value} currentUserId={bootstrap.me.gitLabUserId} onChoose={choose} />
+					<MemberGroup label={teamName} members={teamMembers} value={value} currentUserId={bootstrap.me.gitLabUserId} onToggle={toggle} />
+					<MemberGroup label="其他組別的人" members={otherMembers} value={value} currentUserId={bootstrap.me.gitLabUserId} onToggle={toggle} />
 					{members.length === 0 ? <p className={styles.noResults}>找不到符合的可指派成員</p> : null}
+				</div>
+				<div className={styles.pickerFooter}>
+					<span>{value.length ? `已選擇 ${value.length} 人` : "尚未指派"}</span>
+					<button type="button" onClick={() => changeOpen(false)}>
+						完成
+					</button>
 				</div>
 			</Dialog>
 		</>
@@ -82,38 +103,50 @@ function MemberGroup({
 	members,
 	value,
 	currentUserId,
-	onChoose
+	onToggle
 }: {
 	label: string;
 	members: DirectoryMember[];
-	value: number | null;
+	value: number[];
 	currentUserId: number;
-	onChoose: (id: number) => void;
+	onToggle: (id: number) => void;
 }) {
 	if (!members.length) return null;
 	return (
 		<section className={styles.memberGroup} aria-label={label}>
 			<h3>{label}</h3>
-			{members.map((member) => (
-				<button
-					type="button"
-					className={styles.memberOption}
-					data-selected={value === member.gitLabUserId}
-					key={member.gitLabUserId}
-					onClick={() => onChoose(member.gitLabUserId)}
-				>
-					<Avatar name={member.displayName} src={member.avatarUrl} />
-					<span>
-						<strong>{member.displayName}</strong>
-						<small>
-							@{member.username}
-							{member.gitLabUserId === currentUserId ? " · 你" : ""}
-						</small>
-					</span>
-				</button>
-			))}
+			{members.map((member) => {
+				const selected = value.includes(member.gitLabUserId);
+				return (
+					<button
+						type="button"
+						role="checkbox"
+						aria-checked={selected}
+						className={styles.memberOption}
+						data-selected={selected}
+						key={member.gitLabUserId}
+						onClick={() => onToggle(member.gitLabUserId)}
+					>
+						<Avatar name={member.displayName} src={member.avatarUrl} />
+						<span>
+							<strong>{member.displayName}</strong>
+							<small>
+								@{member.username}
+								{member.gitLabUserId === currentUserId ? " · 你" : ""}
+							</small>
+						</span>
+						{selected ? <Check size="1rem" aria-hidden="true" /> : null}
+					</button>
+				);
+			})}
 		</section>
 	);
+}
+
+function assigneeLabel(members: DirectoryMember[]) {
+	if (!members.length) return "未指派";
+	if (members.length === 1) return members[0]?.displayName ?? "1 位負責人";
+	return `${members.length} 位負責人`;
 }
 
 function sortMembers(members: DirectoryMember[], teamKey: string, currentUserId: number, query: string) {

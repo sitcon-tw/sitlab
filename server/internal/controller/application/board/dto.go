@@ -1,12 +1,21 @@
 package board
 
 type CreateInput struct {
-	OperationID          string
-	ActorUserID          string
-	Title                string
-	TeamKey              string
-	AssigneeGitLabUserID *int64
-	DueDate              *string
+	OperationID           string
+	ActorUserID           string
+	Title                 string
+	Description           string
+	TeamKey               string
+	AssigneeGitLabUserIDs []int64
+	DueDate               *string
+}
+
+type UpdateDetailsInput struct {
+	OperationID string
+	ActorUserID string
+	IssueIID    int64
+	Title       string
+	Description string
 }
 
 type UpdateTeamInput struct {
@@ -17,10 +26,10 @@ type UpdateTeamInput struct {
 }
 
 type UpdateAssigneeInput struct {
-	OperationID          string
-	ActorUserID          string
-	IssueIID             int64
-	AssigneeGitLabUserID *int64
+	OperationID           string
+	ActorUserID           string
+	IssueIID              int64
+	AssigneeGitLabUserIDs []int64
 }
 
 type UpdateDueDateInput struct {

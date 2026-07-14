@@ -18,7 +18,7 @@ func (f fakeDirectory) IsMemberOf(id int64, team string) bool {
 	return f.memberships[team][id]
 }
 
-func TestDefaultAssignee(t *testing.T) {
+func TestDefaultAssignees(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name, selected, primary string
@@ -31,15 +31,15 @@ func TestDefaultAssignee(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := DefaultAssignee(tt.selected, tt.primary, 123)
-			if (got != nil) != tt.want {
-				t.Fatalf("DefaultAssignee() = %v, want assigned %v", got, tt.want)
+			got := DefaultAssignees(tt.selected, tt.primary, 123)
+			if (len(got) > 0) != tt.want {
+				t.Fatalf("DefaultAssignees() = %v, want assigned %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestReconcileAssignee(t *testing.T) {
+func TestReconcileAssignees(t *testing.T) {
 	t.Parallel()
 	directory := fakeDirectory{
 		teams:      map[string]bool{"development": true, "design": true},
@@ -49,29 +49,29 @@ func TestReconcileAssignee(t *testing.T) {
 			"design":      {},
 		},
 	}
-	one, two := int64(1), int64(2)
 	tests := []struct {
 		name    string
 		team    string
-		current *int64
+		current []int64
 		cleared bool
 		wantErr error
 	}{
-		{name: "preserve active member", team: "development", current: &one},
-		{name: "clear member from other team", team: "design", current: &one, cleared: true},
-		{name: "clear inactive member", team: "development", current: &two, cleared: true},
+		{name: "preserve active member", team: "development", current: []int64{1}},
+		{name: "clear member from other team", team: "design", current: []int64{1}, cleared: true},
+		{name: "clear inactive member", team: "development", current: []int64{2}, cleared: true},
+		{name: "deduplicate members", team: "development", current: []int64{1, 1}, cleared: true},
 		{name: "leave unassigned", team: "design"},
-		{name: "unknown team", team: "unknown", current: &one, wantErr: ErrTeamNotFound},
+		{name: "unknown team", team: "unknown", current: []int64{1}, wantErr: ErrTeamNotFound},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, cleared, err := ReconcileAssignee(directory, tt.team, tt.current)
+			got, cleared, err := ReconcileAssignees(directory, tt.team, tt.current)
 			if !errors.Is(err, tt.wantErr) || cleared != tt.cleared {
 				t.Fatalf("ReconcileAssignee() = %v, %v, %v", got, cleared, err)
 			}
-			if tt.cleared && got != nil {
-				t.Fatalf("ReconcileAssignee() kept %d", *got)
+			if tt.cleared && len(got) != 0 && tt.name != "deduplicate members" {
+				t.Fatalf("ReconcileAssignees() kept %v", got)
 			}
 		})
 	}

@@ -33,11 +33,11 @@ Domain knows no frameworks. Application use cases own narrow consumed ports and 
 
 ## Mutations
 
-Card mutations update optimistic `issue_cache` and insert a `durable_operation` in one transaction. New cards receive a temporary negative IID. The worker sends current canonical intent to GitLab, replaces temporary IIDs after creation, and reconciles responses. Failed operations keep the optimistic state and can be retried.
+Card mutations update optimistic `issue_cache` and insert a `durable_operation` in one transaction. New cards receive a temporary negative IID. The worker sends current canonical title, description, due date, labels, and the `assignee_ids` array to GitLab, replaces temporary IIDs after creation, and reconciles responses. The join table preserves multiple assignees while deferred foreign keys allow temporary IIDs to become GitLab IIDs. Failed operations keep the optimistic state and can be retried.
 
 ## Frontend ownership
 
-TanStack Query owns the bootstrap server snapshot. `features/onboarding` owns primary-team confirmation. `features/board` owns transient drafts, optimistic mutation, assignment reconciliation, drag/drop and keyboard controls. Team names, prefixes, labels, members, lists, and cards always come from bootstrap.
+TanStack Query owns the bootstrap server snapshot. `features/onboarding` owns primary-team confirmation. `features/board` owns transient drafts, the detailed planning dialog, optimistic mutation, multiple-assignee reconciliation, drag/drop and keyboard controls. The Board uses the ordered `Wating`, `Inbox`, `To Do`, `Doing`, `Review`, and `Closed` lists. Team names, prefixes, labels, members, lists, and cards always come from bootstrap.
 
 ## Security
 

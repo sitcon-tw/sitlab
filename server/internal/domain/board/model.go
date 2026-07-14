@@ -16,6 +16,7 @@ const (
 	OperationFailed     OperationState = "failed"
 
 	OperationCreateCard     OperationKind = "create_card"
+	OperationUpdateDetails  OperationKind = "update_details"
 	OperationUpdateTeam     OperationKind = "update_team"
 	OperationUpdateAssignee OperationKind = "update_assignee"
 	OperationUpdateDueDate  OperationKind = "update_due_date"
@@ -43,20 +44,22 @@ type List struct {
 }
 
 type Card struct {
-	IssueIID             int64
-	GitLabIssueID        *int64
-	Title                string
-	WebURL               string
-	ListKey              string
-	Position             int32
-	TeamKey              string
-	AssigneeGitLabUserID *int64
-	DueDate              string
-	Labels               []string
-	SyncState            OperationState
-	SyncError            string
-	PendingOperationID   string
-	UpdatedAt            time.Time
+	IssueIID              int64
+	GitLabIssueID         *int64
+	Title                 string
+	Description           string
+	WebURL                string
+	ListKey               string
+	Position              int32
+	TeamKey               string
+	AssigneeGitLabUserIDs []int64
+	DueDate               string
+	Labels                []string
+	SyncState             OperationState
+	SyncError             string
+	PendingOperationID    string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 type Operation struct {
@@ -89,25 +92,28 @@ type Result struct {
 }
 
 type CanonicalIssue struct {
-	IssueIID             int64
-	GitLabIssueID        int64
-	Title                string
-	WebURL               string
-	Labels               []string
-	AssigneeGitLabUserID *int64
-	DueDate              string
-	State                string
-	UpdatedAt            time.Time
+	IssueIID              int64
+	GitLabIssueID         int64
+	Title                 string
+	Description           string
+	WebURL                string
+	Labels                []string
+	AssigneeGitLabUserIDs []int64
+	DueDate               string
+	State                 string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 type IssueMutation struct {
-	Create               bool
-	IssueIID             int64
-	Title                string
-	Labels               []string
-	AssigneeGitLabUserID *int64
-	DueDate              string
-	Closed               bool
+	Create                bool
+	IssueIID              int64
+	Title                 string
+	Description           string
+	Labels                []string
+	AssigneeGitLabUserIDs []int64
+	DueDate               string
+	Closed                bool
 }
 
 type PendingOperation struct {
@@ -145,33 +151,49 @@ func ComposeGitLabTitle(prefix, title string) string {
 	return prefix + " " + title
 }
 
-func DefaultAssignee(selectedTeamKey, primaryTeamKey string, currentGitLabUserID int64) *int64 {
+func DefaultAssignees(selectedTeamKey, primaryTeamKey string, currentGitLabUserID int64) []int64 {
 	if selectedTeamKey == "" || selectedTeamKey != primaryTeamKey || currentGitLabUserID <= 0 {
 		return nil
 	}
-	value := currentGitLabUserID
-	return &value
+	return []int64{currentGitLabUserID}
 }
 
-func ReconcileAssignee(directory AssignmentDirectory, teamKey string, current *int64) (*int64, bool, error) {
+func ReconcileAssignees(directory AssignmentDirectory, teamKey string, current []int64) ([]int64, bool, error) {
 	if !directory.TeamExists(teamKey) {
 		return current, false, ErrTeamNotFound
 	}
-	if current == nil {
-		return nil, false, nil
+	reconciled := make([]int64, 0, len(current))
+	seen := make(map[int64]struct{}, len(current))
+	for _, gitLabUserID := range current {
+		if _, exists := seen[gitLabUserID]; exists {
+			continue
+		}
+		seen[gitLabUserID] = struct{}{}
+		if directory.IsAssignable(gitLabUserID) && directory.IsMemberOf(gitLabUserID, teamKey) {
+			reconciled = append(reconciled, gitLabUserID)
+		}
 	}
-	if directory.IsAssignable(*current) && directory.IsMemberOf(*current, teamKey) {
-		return current, false, nil
-	}
-	return nil, true, nil
+	return reconciled, len(reconciled) != len(current), nil
 }
 
-func ValidateAssignee(directory AssignmentDirectory, gitLabUserID *int64) error {
-	if gitLabUserID == nil {
-		return nil
+func NormalizeAssigneeIDs(values []int64) []int64 {
+	result := make([]int64, 0, len(values))
+	seen := make(map[int64]struct{}, len(values))
+	for _, value := range values {
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
 	}
-	if !directory.IsAssignable(*gitLabUserID) {
-		return ErrMemberNotAssignable
+	return result
+}
+
+func ValidateAssignees(directory AssignmentDirectory, gitLabUserIDs []int64) error {
+	for _, gitLabUserID := range gitLabUserIDs {
+		if !directory.IsAssignable(gitLabUserID) {
+			return ErrMemberNotAssignable
+		}
 	}
 	return nil
 }

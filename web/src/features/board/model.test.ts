@@ -1,11 +1,11 @@
 import { demoBootstrap } from "@/test/demoBootstrap";
 import { describe, expect, it } from "vitest";
-import { preferredAssignee, taipeiDateAfter, teamMembers } from "./model";
+import { preferredAssignees, taipeiDateAfter, teamMembers } from "./model";
 
 describe("board defaults", () => {
 	it("uses the current user only for their primary team", () => {
-		expect(preferredAssignee(demoBootstrap, "development")).toBe(demoBootstrap.me.gitLabUserId);
-		expect(preferredAssignee(demoBootstrap, "design")).toBeNull();
+		expect(preferredAssignees(demoBootstrap, "development")).toEqual([demoBootstrap.me.gitLabUserId]);
+		expect(preferredAssignees(demoBootstrap, "design")).toEqual([]);
 	});
 
 	it("formats the seven-day default in the Taipei calendar", () => {

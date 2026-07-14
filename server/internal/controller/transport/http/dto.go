@@ -58,20 +58,22 @@ type boardListResponse struct {
 }
 
 type cardResponse struct {
-	IssueIID             int64                `json:"issueIid"`
-	IssueID              *int64               `json:"issueId"`
-	Title                string               `json:"title"`
-	WebURL               *string              `json:"webUrl"`
-	ListKey              string               `json:"listKey"`
-	Position             int32                `json:"position"`
-	TeamKey              string               `json:"teamKey"`
-	AssigneeGitLabUserID *int64               `json:"assigneeGitLabUserId"`
-	DueDate              *string              `json:"dueDate"`
-	Labels               []string             `json:"labels"`
-	SyncState            board.OperationState `json:"syncState"`
-	SyncError            *string              `json:"syncError"`
-	PendingOperationID   *string              `json:"pendingOperationId"`
-	UpdatedAt            time.Time            `json:"updatedAt"`
+	IssueIID              int64                `json:"issueIid"`
+	IssueID               *int64               `json:"issueId"`
+	Title                 string               `json:"title"`
+	Description           string               `json:"description"`
+	WebURL                *string              `json:"webUrl"`
+	ListKey               string               `json:"listKey"`
+	Position              int32                `json:"position"`
+	TeamKey               string               `json:"teamKey"`
+	AssigneeGitLabUserIDs []int64              `json:"assigneeGitLabUserIds"`
+	DueDate               *string              `json:"dueDate"`
+	Labels                []string             `json:"labels"`
+	SyncState             board.OperationState `json:"syncState"`
+	SyncError             *string              `json:"syncError"`
+	PendingOperationID    *string              `json:"pendingOperationId"`
+	CreatedAt             time.Time            `json:"createdAt"`
+	UpdatedAt             time.Time            `json:"updatedAt"`
 }
 
 type operationResponse struct {
@@ -149,12 +151,12 @@ func mapBoardList(item board.List) boardListResponse {
 func mapCard(item board.Card) cardResponse {
 	return cardResponse{
 		IssueIID: item.IssueIID, IssueID: item.GitLabIssueID,
-		Title: item.Title, WebURL: optionalString(item.WebURL), ListKey: item.ListKey,
+		Title: item.Title, Description: item.Description, WebURL: optionalString(item.WebURL), ListKey: item.ListKey,
 		Position: item.Position, TeamKey: item.TeamKey,
-		AssigneeGitLabUserID: item.AssigneeGitLabUserID,
-		DueDate:              optionalString(item.DueDate), Labels: append([]string{}, item.Labels...),
+		AssigneeGitLabUserIDs: append([]int64{}, item.AssigneeGitLabUserIDs...),
+		DueDate:               optionalString(item.DueDate), Labels: append([]string{}, item.Labels...),
 		SyncState: item.SyncState, SyncError: optionalString(item.SyncError),
-		PendingOperationID: optionalString(item.PendingOperationID), UpdatedAt: item.UpdatedAt,
+		PendingOperationID: optionalString(item.PendingOperationID), CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
 	}
 }
 

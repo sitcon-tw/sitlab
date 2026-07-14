@@ -58,7 +58,8 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Result, error)
 	if !directory.TeamExists(input.TeamKey) {
 		return Result{}, unknownTeam("teamKey")
 	}
-	if err := domain.ValidateAssignee(directory, input.AssigneeGitLabUserID); err != nil {
+	assigneeIDs := domain.NormalizeAssigneeIDs(input.AssigneeGitLabUserIDs)
+	if err := domain.ValidateAssignees(directory, assigneeIDs); err != nil {
 		return Result{}, unknownAssignee()
 	}
 	dueDate, err := normalizeDueDate(input.DueDate)
@@ -79,13 +80,13 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Result, error)
 	now := s.now().UTC()
 	operation := newOperation(input.OperationID, domain.OperationCreateCard, now)
 	card := domain.Card{
-		Title: title, ListKey: boardSnapshot.Lists[0].Key, TeamKey: input.TeamKey,
-		AssigneeGitLabUserID: cloneInt64(input.AssigneeGitLabUserID), DueDate: dueDate,
-		SyncState: domain.OperationPending, PendingOperationID: input.OperationID, UpdatedAt: now,
+		Title: title, Description: input.Description, ListKey: boardSnapshot.Lists[0].Key, TeamKey: input.TeamKey,
+		AssigneeGitLabUserIDs: append([]int64(nil), assigneeIDs...), DueDate: dueDate,
+		SyncState: domain.OperationPending, PendingOperationID: input.OperationID, CreatedAt: now, UpdatedAt: now,
 	}
 	result, err := s.repo.CreateCard(ctx, Mutation{
 		Card: card, Operation: operation, RequestedByUserID: input.ActorUserID,
-		Payload: map[string]any{"title": title, "teamKey": input.TeamKey, "assigneeGitLabUserId": input.AssigneeGitLabUserID, "dueDate": nullableDate(dueDate)},
+		Payload: map[string]any{"title": title, "description": input.Description, "teamKey": input.TeamKey, "assigneeGitLabUserIds": assigneeIDs, "dueDate": nullableDate(dueDate)},
 	})
 	if errors.Is(err, domain.ErrOperationConflict) {
 		return Result{}, operationConflict()
@@ -96,9 +97,21 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Result, error)
 	return result, nil
 }
 
+func (s *Service) UpdateDetails(ctx context.Context, input UpdateDetailsInput) (Result, error) {
+	return s.update(ctx, input.OperationID, input.ActorUserID, input.IssueIID, domain.OperationUpdateDetails, func(card *domain.Card, _ domain.AssignmentDirectory, _ Snapshot) (map[string]any, error) {
+		title := domain.NormalizeTitle(input.Title)
+		if !domain.ValidTitle(title) {
+			return nil, invalidField("title", "INVALID_LENGTH", "must be between 1 and 255 characters")
+		}
+		card.Title = title
+		card.Description = input.Description
+		return map[string]any{"title": title, "description": input.Description}, nil
+	})
+}
+
 func (s *Service) UpdateTeam(ctx context.Context, input UpdateTeamInput) (Result, error) {
 	return s.update(ctx, input.OperationID, input.ActorUserID, input.IssueIID, domain.OperationUpdateTeam, func(card *domain.Card, directorySnapshot domain.AssignmentDirectory, _ Snapshot) (map[string]any, error) {
-		assignee, _, err := domain.ReconcileAssignee(directorySnapshot, input.TeamKey, card.AssigneeGitLabUserID)
+		assigneeIDs, _, err := domain.ReconcileAssignees(directorySnapshot, input.TeamKey, card.AssigneeGitLabUserIDs)
 		if errors.Is(err, domain.ErrTeamNotFound) {
 			return nil, unknownTeam("teamKey")
 		}
@@ -106,18 +119,19 @@ func (s *Service) UpdateTeam(ctx context.Context, input UpdateTeamInput) (Result
 			return nil, err
 		}
 		card.TeamKey = input.TeamKey
-		card.AssigneeGitLabUserID = cloneInt64(assignee)
-		return map[string]any{"teamKey": input.TeamKey, "assigneeGitLabUserId": assignee}, nil
+		card.AssigneeGitLabUserIDs = append([]int64(nil), assigneeIDs...)
+		return map[string]any{"teamKey": input.TeamKey, "assigneeGitLabUserIds": assigneeIDs}, nil
 	})
 }
 
 func (s *Service) UpdateAssignee(ctx context.Context, input UpdateAssigneeInput) (Result, error) {
 	return s.update(ctx, input.OperationID, input.ActorUserID, input.IssueIID, domain.OperationUpdateAssignee, func(card *domain.Card, directorySnapshot domain.AssignmentDirectory, _ Snapshot) (map[string]any, error) {
-		if err := domain.ValidateAssignee(directorySnapshot, input.AssigneeGitLabUserID); err != nil {
+		assigneeIDs := domain.NormalizeAssigneeIDs(input.AssigneeGitLabUserIDs)
+		if err := domain.ValidateAssignees(directorySnapshot, assigneeIDs); err != nil {
 			return nil, unknownAssignee()
 		}
-		card.AssigneeGitLabUserID = cloneInt64(input.AssigneeGitLabUserID)
-		return map[string]any{"assigneeGitLabUserId": input.AssigneeGitLabUserID}, nil
+		card.AssigneeGitLabUserIDs = append([]int64(nil), assigneeIDs...)
+		return map[string]any{"assigneeGitLabUserIds": assigneeIDs}, nil
 	})
 }
 
@@ -264,14 +278,6 @@ func nullableDate(value string) any {
 	return value
 }
 
-func cloneInt64(value *int64) *int64 {
-	if value == nil {
-		return nil
-	}
-	copy := *value
-	return &copy
-}
-
 func newOperation(id string, kind domain.OperationKind, now time.Time) domain.Operation {
 	return domain.Operation{ID: id, Kind: kind, State: domain.OperationPending, CreatedAt: now, UpdatedAt: now}
 }
@@ -281,7 +287,7 @@ func unknownTeam(name string) error {
 }
 
 func unknownAssignee() error {
-	return apperror.Invalid("MEMBER_NOT_ASSIGNABLE", "assignee is not an active GitLab project member", apperror.Field{Name: "assigneeGitLabUserId", Code: "UNKNOWN_MEMBER", Message: "must identify an active project member"})
+	return apperror.Invalid("MEMBER_NOT_ASSIGNABLE", "an assignee is not an active GitLab project member", apperror.Field{Name: "assigneeGitLabUserIds", Code: "UNKNOWN_MEMBER", Message: "must contain only active project members"})
 }
 
 func invalidField(name, code, message string) error {

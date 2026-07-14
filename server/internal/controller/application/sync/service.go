@@ -16,10 +16,12 @@ import (
 )
 
 var DefaultBoardLists = []board.List{
-	{Key: "todo", Name: "待處理", GitLabLabel: "Todo", Position: 0, Color: "#64748b"},
-	{Key: "doing", Name: "進行中", GitLabLabel: "Doing", Position: 1, Color: "#2563eb"},
-	{Key: "review", Name: "待確認", GitLabLabel: "Review", Position: 2, Color: "#b45309"},
-	{Key: "closed", Name: "已完成", GitLabLabel: "Closed", Position: 3, Closed: true, Color: "#15803d"},
+	{Key: "wating", Name: "Wating", GitLabLabel: "Wating", Position: 0, Color: "#dc2626"},
+	{Key: "inbox", Name: "Inbox", GitLabLabel: "Inbox", Position: 1, Color: "#64748b"},
+	{Key: "todo", Name: "To Do", GitLabLabel: "To Do", Position: 2, Color: "#0891b2"},
+	{Key: "doing", Name: "Doing", GitLabLabel: "Doing", Position: 3, Color: "#2563eb"},
+	{Key: "review", Name: "Review", GitLabLabel: "Review", Position: 4, Color: "#b45309"},
+	{Key: "closed", Name: "Closed", GitLabLabel: "Closed", Position: 5, Closed: true, Color: "#15803d"},
 }
 
 type Service struct {
@@ -147,12 +149,13 @@ func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
 		return true, err
 	}
 	mutation := IssueMutation{
-		Create:               pending.Operation.Kind == board.OperationCreateCard,
-		IssueIID:             pending.Card.IssueIID,
-		Title:                board.ComposeGitLabTitle(team.TitlePrefix, pending.Card.Title),
-		Labels:               canonicalLabels(pending.Card.Labels, team, list, directorySnapshot.Teams, boardSnapshot.Lists),
-		AssigneeGitLabUserID: pending.Card.AssigneeGitLabUserID,
-		DueDate:              pending.Card.DueDate, Closed: list.Closed,
+		Create:                pending.Operation.Kind == board.OperationCreateCard,
+		IssueIID:              pending.Card.IssueIID,
+		Title:                 board.ComposeGitLabTitle(team.TitlePrefix, pending.Card.Title),
+		Description:           pending.Card.Description,
+		Labels:                canonicalLabels(pending.Card.Labels, team, list, directorySnapshot.Teams, boardSnapshot.Lists),
+		AssigneeGitLabUserIDs: append([]int64(nil), pending.Card.AssigneeGitLabUserIDs...),
+		DueDate:               pending.Card.DueDate, Closed: list.Closed,
 	}
 	issue, err := s.gitlab.ApplyIssue(ctx, mutation)
 	if err != nil {
@@ -256,10 +259,10 @@ func mapIssue(issue GitLabIssue, directorySnapshot directory.Snapshot, lists []b
 	positions[list.Key]++
 	return board.Card{
 		IssueIID: issue.IssueIID, GitLabIssueID: &issue.GitLabIssueID,
-		Title: title, WebURL: issue.WebURL, ListKey: list.Key, Position: position,
-		TeamKey: team.Key, AssigneeGitLabUserID: issue.AssigneeGitLabUserID,
+		Title: title, Description: issue.Description, WebURL: issue.WebURL, ListKey: list.Key, Position: position,
+		TeamKey: team.Key, AssigneeGitLabUserIDs: append([]int64(nil), issue.AssigneeGitLabUserIDs...),
 		DueDate: issue.DueDate, Labels: append([]string(nil), issue.Labels...),
-		SyncState: board.OperationSynced, UpdatedAt: issue.UpdatedAt.UTC(),
+		SyncState: board.OperationSynced, CreatedAt: issue.CreatedAt.UTC(), UpdatedAt: issue.UpdatedAt.UTC(),
 	}, true
 }
 

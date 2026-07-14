@@ -157,6 +157,23 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/cards/{issueIid}/details": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Optimistically update card details */
+		put: operations["updateCardDetails"];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/cards/{issueIid}/due-date": {
 		parameters: {
 			query?: never;
@@ -346,18 +363,21 @@ export interface components {
 			issueIid: number;
 			issueId: number | null;
 			title: string;
+			description: string;
 			webUrl: string | null;
 			listKey: string;
 			/** Format: int32 */
 			position: number;
 			teamKey: string;
-			assigneeGitLabUserId: number | null;
+			assigneeGitLabUserIds: number[];
 			dueDate: string | null;
 			labels: string[];
 			/** @enum {string} */
 			syncState: "pending" | "processing" | "synced" | "failed";
 			syncError: string | null;
 			pendingOperationId: components["schemas"]["uuid"] | null;
+			/** Format: date-time */
+			createdAt: string;
 			/** Format: date-time */
 			updatedAt: string;
 		};
@@ -403,7 +423,8 @@ export interface components {
 			operationId: components["schemas"]["uuid"];
 			title: string;
 			teamKey: string;
-			assigneeGitLabUserId: number | null;
+			description: string;
+			assigneeGitLabUserIds: number[];
 			dueDate: string | null;
 		};
 		/**
@@ -495,7 +516,7 @@ export interface components {
 		DurableOperation: {
 			id: components["schemas"]["uuid"];
 			/** @enum {string} */
-			kind: "create_card" | "update_team" | "update_assignee" | "update_due_date" | "move_card";
+			kind: "create_card" | "update_details" | "update_team" | "update_assignee" | "update_due_date" | "move_card";
 			/** @enum {string} */
 			state: "pending" | "processing" | "synced" | "failed";
 			/** Format: int32 */
@@ -613,7 +634,12 @@ export interface components {
 		};
 		UpdateCardAssigneeRequest: {
 			operationId: components["schemas"]["uuid"];
-			assigneeGitLabUserId: number | null;
+			assigneeGitLabUserIds: number[];
+		};
+		UpdateCardDetailsRequest: {
+			operationId: components["schemas"]["uuid"];
+			title: string;
+			description: string;
 		};
 		UpdateCardDueDateRequest: {
 			operationId: components["schemas"]["uuid"];
@@ -1044,6 +1070,88 @@ export interface operations {
 		requestBody: {
 			content: {
 				"application/json": components["schemas"]["UpdateCardAssigneeRequest"];
+			};
+		};
+		responses: {
+			/** @description The request has been accepted for processing, but processing has not yet completed. */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CardMutationResponse"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The request conflicts with the current state of the server. */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	updateCardDetails: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["UpdateCardDetailsRequest"];
 			};
 		};
 		responses: {

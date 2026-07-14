@@ -80,12 +80,12 @@ func TestCreateStoresOptimisticCardAndOperation(t *testing.T) {
 	t.Parallel()
 	repo := &repositoryFake{board: Snapshot{Lists: []domain.List{{Key: "todo"}}}}
 	service := newTestService(repo)
-	assignee := int64(1)
+	assignees := []int64{1, 1}
 	dueDate := "2026-07-21"
 
 	result, err := service.Create(context.Background(), CreateInput{
 		OperationID: testOperationID, ActorUserID: testActorID, Title: "修正  報名流程",
-		TeamKey: "development", AssigneeGitLabUserID: &assignee, DueDate: &dueDate,
+		Description: "詳細規劃", TeamKey: "development", AssigneeGitLabUserIDs: assignees, DueDate: &dueDate,
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -96,8 +96,11 @@ func TestCreateStoresOptimisticCardAndOperation(t *testing.T) {
 	if repo.createMutation == nil || repo.createMutation.Card.Title != "修正 報名流程" || repo.createMutation.Operation.Kind != domain.OperationCreateCard {
 		t.Fatalf("stored mutation = %#v", repo.createMutation)
 	}
-	if got := repo.createMutation.Payload["assigneeGitLabUserId"]; !reflect.DeepEqual(got, &assignee) {
+	if got := repo.createMutation.Payload["assigneeGitLabUserIds"]; !reflect.DeepEqual(got, []int64{1}) {
 		t.Fatalf("assignee payload = %#v", got)
+	}
+	if result.Card.Description != "詳細規劃" || len(result.Card.AssigneeGitLabUserIDs) != 1 {
+		t.Fatalf("Create() card details = %#v", result.Card)
 	}
 }
 
@@ -105,10 +108,9 @@ func TestCreateRejectsInactiveAssigneeBeforePersistence(t *testing.T) {
 	t.Parallel()
 	repo := &repositoryFake{board: Snapshot{Lists: []domain.List{{Key: "todo"}}}}
 	service := newTestService(repo)
-	assignee := int64(99)
 	_, err := service.Create(context.Background(), CreateInput{
 		OperationID: testOperationID, ActorUserID: testActorID, Title: "修正流程",
-		TeamKey: "development", AssigneeGitLabUserID: &assignee,
+		TeamKey: "development", AssigneeGitLabUserIDs: []int64{99},
 	})
 	assertAppError(t, err, apperror.KindInvalid, "MEMBER_NOT_ASSIGNABLE")
 	if repo.createMutation != nil {
@@ -118,10 +120,9 @@ func TestCreateRejectsInactiveAssigneeBeforePersistence(t *testing.T) {
 
 func TestChangingTeamClearsIncompatibleAssignee(t *testing.T) {
 	t.Parallel()
-	one := int64(1)
 	repo := &repositoryFake{
 		board: Snapshot{Lists: []domain.List{{Key: "todo"}}},
-		card:  domain.Card{IssueIID: 42, TeamKey: "development", AssigneeGitLabUserID: &one},
+		card:  domain.Card{IssueIID: 42, TeamKey: "development", AssigneeGitLabUserIDs: []int64{1}},
 	}
 	service := newTestService(repo)
 	result, err := service.UpdateTeam(context.Background(), UpdateTeamInput{
@@ -130,8 +131,27 @@ func TestChangingTeamClearsIncompatibleAssignee(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdateTeam() error = %v", err)
 	}
-	if result.Card.AssigneeGitLabUserID != nil || result.Card.TeamKey != "design" {
+	if len(result.Card.AssigneeGitLabUserIDs) != 0 || result.Card.TeamKey != "design" {
 		t.Fatalf("UpdateTeam() card = %#v", result.Card)
+	}
+}
+
+func TestUpdateDetailsNormalizesTitle(t *testing.T) {
+	t.Parallel()
+	repo := &repositoryFake{
+		board: Snapshot{Lists: []domain.List{{Key: "todo"}}},
+		card:  domain.Card{IssueIID: 42, TeamKey: "development", Title: "舊標題"},
+	}
+	service := newTestService(repo)
+	result, err := service.UpdateDetails(context.Background(), UpdateDetailsInput{
+		OperationID: testOperationID, ActorUserID: testActorID, IssueIID: 42,
+		Title: "新  標題", Description: "工作拆解",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Card.Title != "新 標題" || result.Card.Description != "工作拆解" {
+		t.Fatalf("UpdateDetails() = %#v", result.Card)
 	}
 }
 

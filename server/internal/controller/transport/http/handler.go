@@ -36,6 +36,7 @@ type DirectoryService interface {
 
 type BoardService interface {
 	Create(context.Context, appboard.CreateInput) (appboard.Result, error)
+	UpdateDetails(context.Context, appboard.UpdateDetailsInput) (appboard.Result, error)
 	UpdateTeam(context.Context, appboard.UpdateTeamInput) (appboard.Result, error)
 	UpdateAssignee(context.Context, appboard.UpdateAssigneeInput) (appboard.Result, error)
 	UpdateDueDate(context.Context, appboard.UpdateDueDateInput) (appboard.Result, error)

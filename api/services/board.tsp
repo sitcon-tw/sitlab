@@ -33,6 +33,19 @@ interface CardService {
 		| ServiceUnavailableProblem
 		| InternalServerProblem;
 
+	@operationId("updateCardDetails")
+	@summary("Optimistically update card details")
+	@put
+	@route("/{issueIid}/details")
+	updateCardDetails(...IssueIidPath, ...CSRFHeader, @body body: UpdateCardDetailsRequest):
+		| AcceptedJson<CardMutationResponse>
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| ConflictProblem
+		| UnprocessableEntityProblem
+		| InternalServerProblem;
+
 	@operationId("updateCardTeam")
 	@summary("Optimistically change a card team")
 	@put

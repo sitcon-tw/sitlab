@@ -3,7 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createCard, moveCard, retryOperation, updateAssignee, updateDueDate, updateTeam } from "./boardApi";
+import { createCard, moveCard, retryOperation, updateAssignee, updateDetails, updateDueDate, updateTeam } from "./boardApi";
 import { BoardPage } from "./BoardPage";
 import type { Bootstrap } from "./model";
 
@@ -14,6 +14,7 @@ vi.mock("./boardApi", () => ({
 	retryOperation: vi.fn(),
 	savePreferences: vi.fn(),
 	updateAssignee: vi.fn(),
+	updateDetails: vi.fn(),
 	updateDueDate: vi.fn(),
 	updateTeam: vi.fn()
 }));
@@ -29,6 +30,7 @@ describe("SITCON Board interactions", () => {
 		vi.mocked(moveCard).mockReset();
 		vi.mocked(retryOperation).mockReset();
 		vi.mocked(updateAssignee).mockReset();
+		vi.mocked(updateDetails).mockReset();
 		vi.mocked(updateDueDate).mockReset();
 		vi.mocked(updateTeam).mockReset();
 	});
@@ -60,21 +62,73 @@ describe("SITCON Board interactions", () => {
 		await user.click(screen.getByRole("button", { name: "建立卡片" }));
 
 		expect(screen.getByRole("heading", { name: "[開發組] 新增值班表" })).toBeVisible();
-		expect(screen.getByText("同步中")).toBeVisible();
+		expect(screen.queryByText("同步中")).not.toBeInTheDocument();
 		expect(createCard).toHaveBeenCalledOnce();
 	});
 
-	it("moves a card immediately through its keyboard-accessible status control", async () => {
+	it("renders the configured board columns in order", () => {
+		render(<Harness />);
+
+		const board = screen.getByRole("region", { name: "SITCON 2027 工作看板" });
+		expect(
+			within(board)
+				.getAllByRole("heading", { level: 2 })
+				.map((heading) => heading.textContent)
+		).toEqual(["Wating", "Inbox", "To Do", "Doing", "Review", "Closed"]);
+	});
+
+	it("keeps team and status controls in card details and moves optimistically", async () => {
 		const user = userEvent.setup();
 		vi.mocked(moveCard).mockReturnValue(new Promise(() => undefined));
 		render(<Harness />);
 		const title = "[開發組] 修正報名系統寄信流程";
 
-		await user.selectOptions(screen.getByLabelText(`${title}的狀態`), "doing");
+		expect(screen.queryByLabelText(`${title}的狀態`)).not.toBeInTheDocument();
+		await user.click(screen.getByRole("heading", { name: title }));
+		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		expect(within(dialog).getByLabelText("組別")).toHaveValue("development");
+		await user.selectOptions(within(dialog).getByLabelText("狀態"), "doing");
+		await user.click(within(dialog).getByRole("button", { name: "Close dialog" }));
 
 		const doingLane = screen.getByRole("heading", { name: "Doing" }).closest("section");
 		expect(doingLane).not.toBeNull();
 		expect(within(doingLane as HTMLElement).getByRole("heading", { name: title })).toBeVisible();
 		expect(moveCard).toHaveBeenCalledOnce();
+	});
+
+	it("edits detailed planning and displays Start time", async () => {
+		const user = userEvent.setup();
+		vi.mocked(updateDetails).mockReturnValue(new Promise(() => undefined));
+		render(<Harness />);
+
+		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		expect(within(dialog).getByText("Start time")).toBeVisible();
+		expect(within(dialog).getByText("2026年7月10日 上午11:30")).toBeVisible();
+
+		await user.clear(within(dialog).getByLabelText("標題"));
+		await user.type(within(dialog).getByLabelText("標題"), "完成寄信失敗重送");
+		await user.clear(within(dialog).getByLabelText("描述"));
+		await user.type(within(dialog).getByLabelText("描述"), "補齊驗收條件與測試案例");
+		await user.click(within(dialog).getByRole("button", { name: "儲存細節" }));
+
+		expect(updateDetails).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), "完成寄信失敗重送", "補齊驗收條件與測試案例");
+		await user.click(within(dialog).getByRole("button", { name: "Close dialog" }));
+		expect(screen.getByRole("heading", { name: "[開發組] 完成寄信失敗重送" })).toBeVisible();
+	});
+
+	it("selects more than one assignee", async () => {
+		const user = userEvent.setup();
+		vi.mocked(updateAssignee).mockReturnValue(new Promise(() => undefined));
+		render(<Harness />);
+		const title = "[開發組] 修正報名系統寄信流程";
+
+		await user.click(screen.getByRole("button", { name: `變更 ${title} 的 Assignee` }));
+		const dialog = screen.getByRole("dialog", { name: "選擇 Assignee" });
+		expect(within(dialog).getByRole("checkbox", { name: /Yorukot/ })).toBeChecked();
+		await user.click(within(dialog).getByRole("checkbox", { name: /沈明軒/ }));
+
+		expect(updateAssignee).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), [114, 115]);
+		expect(within(dialog).getByText("已選擇 2 人")).toBeVisible();
 	});
 });

@@ -579,6 +579,108 @@
 				]
 			}
 		},
+		"/cards/{issueIid}/details": {
+			"put": {
+				"operationId": "updateCardDetails",
+				"summary": "Optimistically update card details",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					},
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"202": {
+						"description": "The request has been accepted for processing, but processing has not yet completed.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CardMutationResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with the current state of the server.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateCardDetailsRequest"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
 		"/cards/{issueIid}/due-date": {
 			"put": {
 				"operationId": "updateCardDueDate",
@@ -1318,16 +1420,18 @@
 					"issueIid",
 					"issueId",
 					"title",
+					"description",
 					"webUrl",
 					"listKey",
 					"position",
 					"teamKey",
-					"assigneeGitLabUserId",
+					"assigneeGitLabUserIds",
 					"dueDate",
 					"labels",
 					"syncState",
 					"syncError",
 					"pendingOperationId",
+					"createdAt",
 					"updatedAt"
 				],
 				"properties": {
@@ -1347,6 +1451,9 @@
 						]
 					},
 					"title": {
+						"type": "string"
+					},
+					"description": {
 						"type": "string"
 					},
 					"webUrl": {
@@ -1369,16 +1476,12 @@
 					"teamKey": {
 						"type": "string"
 					},
-					"assigneeGitLabUserId": {
-						"anyOf": [
-							{
-								"type": "integer",
-								"format": "int64"
-							},
-							{
-								"type": "null"
-							}
-						]
+					"assigneeGitLabUserIds": {
+						"type": "array",
+						"items": {
+							"type": "integer",
+							"format": "int64"
+						}
 					},
 					"dueDate": {
 						"anyOf": [
@@ -1420,6 +1523,10 @@
 								"type": "null"
 							}
 						]
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
 					},
 					"updatedAt": {
 						"type": "string",
@@ -1537,7 +1644,7 @@
 			},
 			"CreateCardRequest": {
 				"type": "object",
-				"required": ["operationId", "title", "teamKey", "assigneeGitLabUserId", "dueDate"],
+				"required": ["operationId", "title", "teamKey", "description", "assigneeGitLabUserIds", "dueDate"],
 				"properties": {
 					"operationId": {
 						"$ref": "#/components/schemas/uuid"
@@ -1551,16 +1658,15 @@
 						"type": "string",
 						"minLength": 1
 					},
-					"assigneeGitLabUserId": {
-						"anyOf": [
-							{
-								"type": "integer",
-								"format": "int64"
-							},
-							{
-								"type": "null"
-							}
-						]
+					"description": {
+						"type": "string"
+					},
+					"assigneeGitLabUserIds": {
+						"type": "array",
+						"items": {
+							"type": "integer",
+							"format": "int64"
+						}
 					},
 					"dueDate": {
 						"anyOf": [
@@ -1783,7 +1889,7 @@
 					},
 					"kind": {
 						"type": "string",
-						"enum": ["create_card", "update_team", "update_assignee", "update_due_date", "move_card"]
+						"enum": ["create_card", "update_details", "update_team", "update_assignee", "update_due_date", "move_card"]
 					},
 					"state": {
 						"type": "string",
@@ -2006,21 +2112,34 @@
 			},
 			"UpdateCardAssigneeRequest": {
 				"type": "object",
-				"required": ["operationId", "assigneeGitLabUserId"],
+				"required": ["operationId", "assigneeGitLabUserIds"],
 				"properties": {
 					"operationId": {
 						"$ref": "#/components/schemas/uuid"
 					},
-					"assigneeGitLabUserId": {
-						"anyOf": [
-							{
-								"type": "integer",
-								"format": "int64"
-							},
-							{
-								"type": "null"
-							}
-						]
+					"assigneeGitLabUserIds": {
+						"type": "array",
+						"items": {
+							"type": "integer",
+							"format": "int64"
+						}
+					}
+				}
+			},
+			"UpdateCardDetailsRequest": {
+				"type": "object",
+				"required": ["operationId", "title", "description"],
+				"properties": {
+					"operationId": {
+						"$ref": "#/components/schemas/uuid"
+					},
+					"title": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 255
+					},
+					"description": {
+						"type": "string"
 					}
 				}
 			},

@@ -30,21 +30,25 @@
 :root,
 :root[data-theme="light"] {
 	color-scheme: light;
-	--sb-page: #f2f4f3;
-	--sb-lane: #e9edeb;
+	--sb-page: #edf1ee;
+	--sb-lane: #e1e6e2;
 	--sb-surface: #ffffff;
 	--sb-surface-raised: #ffffff;
-	--sb-surface-subtle: #edf1ef;
-	--sb-control: #fbfcfb;
-	--sb-text: #18201d;
-	--sb-text-muted: #52605a;
-	--sb-text-subtle: #74817b;
+	--sb-surface-subtle: #dce5df;
+	--sb-control: #fafbf9;
+	--sb-text: #101312;
+	--sb-text-muted: #4d5752;
+	--sb-text-subtle: #6e7772;
 	--sb-on-brand: #ffffff;
-	--sb-border: #d4dbd7;
-	--sb-border-strong: #929e98;
-	--sb-brand: #137a55;
-	--sb-brand-hover: #0d6545;
-	--sb-accent: #e9b83f;
+	--sb-border: #cbd2cd;
+	--sb-border-strong: #898f8b;
+	--sb-brand: #77b55a;
+	--sb-brand-hover: #619b49;
+	--sb-accent: #c9ff3d;
+	--sb-coral: #ff625b;
+	--sb-blue: #7d88ff;
+	--sb-header: #101312;
+	--sb-header-text: #f2efe5;
 	--sb-focus: #116da0;
 	--sb-positive: #167348;
 	--sb-positive-muted: #dcf0e5;
@@ -103,6 +107,10 @@
 	--sb-brand: #62c99b;
 	--sb-brand-hover: #82dbb4;
 	--sb-accent: #efc766;
+	--sb-coral: #ff938b;
+	--sb-blue: #9ba3ff;
+	--sb-header: #101312;
+	--sb-header-text: #f2efe5;
 	--sb-focus: #73bce5;
 	--sb-positive: #75d5a6;
 	--sb-positive-muted: #1d4935;

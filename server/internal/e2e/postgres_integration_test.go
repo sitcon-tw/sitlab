@@ -101,11 +101,10 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 
 	boardService := appboard.NewService(store, directoryService, noop.NewTracerProvider().Tracer("test"))
 	operationID := uuid.NewString()
-	assigneeID := int64(101)
 	dueDate := "2026-07-21"
 	created, err := boardService.Create(ctx, appboard.CreateInput{
 		OperationID: operationID, ActorUserID: user.ID, Title: "修正報名流程",
-		TeamKey: "development", AssigneeGitLabUserID: &assigneeID, DueDate: &dueDate,
+		Description: "詳細規劃", TeamKey: "development", AssigneeGitLabUserIDs: []int64{101}, DueDate: &dueDate,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -135,7 +134,7 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed.Card.TeamKey != "administration" || changed.Card.AssigneeGitLabUserID != nil {
+	if changed.Card.TeamKey != "administration" || len(changed.Card.AssigneeGitLabUserIDs) != 0 {
 		t.Fatalf("team mutation = %#v", changed.Card)
 	}
 	processed, err = syncService.ProcessOne(ctx)
@@ -166,10 +165,10 @@ func (*operationGitLabFake) Issues(context.Context) ([]appsync.GitLabIssue, erro
 func (f *operationGitLabFake) ApplyIssue(_ context.Context, mutation appsync.IssueMutation) (appsync.GitLabIssue, error) {
 	f.lastMutation = &mutation
 	return appsync.GitLabIssue{
-		IssueIID: 42, GitLabIssueID: 420, Title: mutation.Title,
+		IssueIID: 42, GitLabIssueID: 420, Title: mutation.Title, Description: mutation.Description,
 		WebURL: "https://gitlab.example/issues/42", Labels: mutation.Labels,
-		AssigneeGitLabUserID: mutation.AssigneeGitLabUserID,
-		DueDate:              mutation.DueDate, State: "opened", UpdatedAt: f.now,
+		AssigneeGitLabUserIDs: mutation.AssigneeGitLabUserIDs,
+		DueDate:               mutation.DueDate, State: "opened", CreatedAt: f.now, UpdatedAt: f.now,
 	}, nil
 }
 
@@ -193,9 +192,12 @@ func seedSnapshots(t *testing.T, ctx context.Context, pool *pgxpool.Pool, now ti
 		    ('design', 202, 'gitlab_directory', $1)`,
 		`INSERT INTO board_lists (key, display_name, gitlab_label, position, closed, color, updated_at)
 		VALUES
-		    ('todo', '待處理', 'Todo', 0, false, '#64748b', $1),
-		    ('doing', '進行中', 'Doing', 1, false, '#2563eb', $1),
-		    ('closed', '已完成', 'Closed', 2, true, '#15803d', $1)`,
+		    ('wating', 'Wating', 'Wating', 0, false, '#dc2626', $1),
+		    ('inbox', 'Inbox', 'Inbox', 1, false, '#64748b', $1),
+		    ('todo', 'To Do', 'To Do', 2, false, '#0891b2', $1),
+		    ('doing', 'Doing', 'Doing', 3, false, '#2563eb', $1),
+		    ('review', 'Review', 'Review', 4, false, '#b45309', $1),
+		    ('closed', 'Closed', 'Closed', 5, true, '#15803d', $1)`,
 		`INSERT INTO sync_snapshots
 		    (resource, source_revision, last_success_at, last_attempt_at, updated_at)
 		VALUES

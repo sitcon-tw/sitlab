@@ -56,11 +56,12 @@ func (h handler) updatePreferences(w http.ResponseWriter, r *http.Request) {
 
 func (h handler) createCard(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		OperationID          string  `json:"operationId"`
-		Title                string  `json:"title"`
-		TeamKey              string  `json:"teamKey"`
-		AssigneeGitLabUserID *int64  `json:"assigneeGitLabUserId"`
-		DueDate              *string `json:"dueDate"`
+		OperationID           string  `json:"operationId"`
+		Title                 string  `json:"title"`
+		Description           string  `json:"description"`
+		TeamKey               string  `json:"teamKey"`
+		AssigneeGitLabUserIDs []int64 `json:"assigneeGitLabUserIds"`
+		DueDate               *string `json:"dueDate"`
 	}
 	if err := decodeJSON(w, r, &body); err != nil {
 		writeError(w, r, err)
@@ -68,7 +69,30 @@ func (h handler) createCard(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.board.Create(r.Context(), appboard.CreateInput{
 		OperationID: body.OperationID, ActorUserID: actorID(r), Title: body.Title,
-		TeamKey: body.TeamKey, AssigneeGitLabUserID: body.AssigneeGitLabUserID, DueDate: body.DueDate,
+		Description: body.Description, TeamKey: body.TeamKey,
+		AssigneeGitLabUserIDs: body.AssigneeGitLabUserIDs, DueDate: body.DueDate,
+	})
+	h.writeMutation(w, r, result, err)
+}
+
+func (h handler) updateCardDetails(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		OperationID string `json:"operationId"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+	if err := decodeJSON(w, r, &body); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	issueIID, err := issueIID(r)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	result, err := h.board.UpdateDetails(r.Context(), appboard.UpdateDetailsInput{
+		OperationID: body.OperationID, ActorUserID: actorID(r), IssueIID: issueIID,
+		Title: body.Title, Description: body.Description,
 	})
 	h.writeMutation(w, r, result, err)
 }
@@ -95,8 +119,8 @@ func (h handler) updateCardTeam(w http.ResponseWriter, r *http.Request) {
 
 func (h handler) updateCardAssignee(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		OperationID          string `json:"operationId"`
-		AssigneeGitLabUserID *int64 `json:"assigneeGitLabUserId"`
+		OperationID           string  `json:"operationId"`
+		AssigneeGitLabUserIDs []int64 `json:"assigneeGitLabUserIds"`
 	}
 	if err := decodeJSON(w, r, &body); err != nil {
 		writeError(w, r, err)
@@ -109,7 +133,7 @@ func (h handler) updateCardAssignee(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.board.UpdateAssignee(r.Context(), appboard.UpdateAssigneeInput{
 		OperationID: body.OperationID, ActorUserID: actorID(r), IssueIID: issueIID,
-		AssigneeGitLabUserID: body.AssigneeGitLabUserID,
+		AssigneeGitLabUserIDs: body.AssigneeGitLabUserIDs,
 	})
 	h.writeMutation(w, r, result, err)
 }

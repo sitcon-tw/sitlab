@@ -14,7 +14,7 @@ test.describe("SITCON Board demo visual audit", () => {
 		test(`${viewport.name} ${viewport.width}px stays contained`, async ({ page }) => {
 			await page.setViewportSize(viewport);
 			await page.goto("/");
-			await expect(page.getByRole("heading", { name: "Todo" })).toBeVisible();
+			await expect(page.getByRole("heading", { name: "To Do" })).toBeVisible();
 			await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 
 			const layout = await page.evaluate(() => {
@@ -58,7 +58,38 @@ test.describe("SITCON Board demo visual audit", () => {
 
 		await page.getByRole("button", { name: "選擇新卡片 Assignee" }).click();
 		await expect(page.getByRole("dialog", { name: "選擇 Assignee" })).toBeVisible();
-		await expect(page.getByRole("button", { name: /Yorukot/ })).toBeVisible();
+		await expect(page.getByRole("checkbox", { name: /Yorukot/ })).toBeVisible();
 		await page.screenshot({ path: "../docs/assets/sitcon-board-assignee-mobile.png", fullPage: true });
+	});
+
+	test("card details expose planning, scheduling, and multiple assignees", async ({ page }) => {
+		await page.setViewportSize({ width: 928, height: 800 });
+		await page.goto("/");
+		await page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }).click();
+
+		const details = page.getByRole("dialog", { name: "#127 卡片詳細資料" });
+		await expect(details.getByLabel("組別")).toHaveValue("development");
+		await expect(details.getByLabel("狀態")).toHaveValue("todo");
+		await expect(details.getByText("Start time")).toBeVisible();
+		await details.getByRole("button", { name: "變更 Assignee" }).click();
+		const picker = page.getByRole("dialog", { name: "選擇 Assignee" });
+		await picker.getByRole("checkbox", { name: /沈明軒/ }).click();
+		await expect(picker.getByText("已選擇 2 人")).toBeVisible();
+		await page.screenshot({ path: "../docs/assets/sitcon-board-details.png", fullPage: true });
+	});
+
+	test("card details stay operable at 320px", async ({ page }) => {
+		await page.setViewportSize({ width: 320, height: 720 });
+		await page.goto("/");
+		await page.getByRole("heading", { name: "[議程組] 確認議程講者資料" }).click();
+
+		const details = page.getByRole("dialog", { name: "#129 卡片詳細資料" });
+		await expect(details.getByLabel("標題")).toBeVisible();
+		await expect(details.getByLabel("描述")).toBeVisible();
+		const startTime = details.getByText("Start time");
+		await startTime.scrollIntoViewIfNeeded();
+		await expect(startTime).toBeInViewport();
+		await expect(details.getByRole("button", { name: "儲存細節" })).toBeVisible();
+		await page.screenshot({ path: "../docs/assets/sitcon-board-details-mobile.png", fullPage: true });
 	});
 });

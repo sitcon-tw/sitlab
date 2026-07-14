@@ -1,7 +1,7 @@
 namespace SitconBoard;
 
 alias OperationState = "pending" | "processing" | "synced" | "failed";
-alias OperationKind = "create_card" | "update_team" | "update_assignee" | "update_due_date" | "move_card";
+alias OperationKind = "create_card" | "update_details" | "update_team" | "update_assignee" | "update_due_date" | "move_card";
 alias SyncHealth = "synced" | "syncing" | "offline";
 
 model BoardList {
@@ -17,16 +17,18 @@ model BoardCard {
 	issueIid: int64;
 	issueId: int64 | null;
 	title: string;
+	description: string;
 	webUrl: string | null;
 	listKey: string;
 	position: int32;
 	teamKey: string;
-	assigneeGitLabUserId: int64 | null;
+	assigneeGitLabUserIds: int64[];
 	dueDate: plainDate | null;
 	labels: string[];
 	syncState: OperationState;
 	syncError: string | null;
 	pendingOperationId: uuid | null;
+	createdAt: utcDateTime;
 	updatedAt: utcDateTime;
 }
 
@@ -80,8 +82,19 @@ model CreateCardRequest {
 	@minLength(1)
 	teamKey: string;
 
-	assigneeGitLabUserId: int64 | null;
+	description: string;
+	assigneeGitLabUserIds: int64[];
 	dueDate: plainDate | null;
+}
+
+model UpdateCardDetailsRequest {
+	operationId: uuid;
+
+	@minLength(1)
+	@maxLength(255)
+	title: string;
+
+	description: string;
 }
 
 model UpdateCardTeamRequest {
@@ -93,7 +106,7 @@ model UpdateCardTeamRequest {
 
 model UpdateCardAssigneeRequest {
 	operationId: uuid;
-	assigneeGitLabUserId: int64 | null;
+	assigneeGitLabUserIds: int64[];
 }
 
 model UpdateCardDueDateRequest {

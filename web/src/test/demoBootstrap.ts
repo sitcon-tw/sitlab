@@ -62,10 +62,11 @@ const members: DirectoryMember[] = memberDefinitions.map(([gitLabUserId, usernam
 function card(
 	issueIid: number,
 	title: string,
+	description: string,
 	listKey: string,
 	position: number,
 	teamKey: string,
-	assigneeGitLabUserId: number | null,
+	assigneeGitLabUserIds: number[],
 	dueDate: string | null,
 	syncState: BoardCard["syncState"] = "synced"
 ): BoardCard {
@@ -73,16 +74,18 @@ function card(
 		issueIid,
 		issueId: 9000 + issueIid,
 		title,
+		description,
 		webUrl: `https://gitlab.com/sitcon-tw/2027/-/issues/${issueIid}`,
 		listKey,
 		position,
 		teamKey,
-		assigneeGitLabUserId,
+		assigneeGitLabUserIds,
 		dueDate,
 		labels: [],
 		syncState,
 		syncError: syncState === "failed" ? "GitLab 暫時無法更新，請稍後重試。" : null,
 		pendingOperationId: syncState === "failed" ? "10000000-0000-4000-8000-000000000099" : null,
+		createdAt: "2026-07-10T03:30:00Z",
 		updatedAt: "2026-07-14T08:00:00Z"
 	};
 }
@@ -102,19 +105,21 @@ export const demoBootstrap: Bootstrap = {
 	members,
 	board: {
 		lists: [
-			{ key: "todo", name: "Todo", gitLabLabel: "Todo", position: 1, closed: false, color: "neutral" },
-			{ key: "doing", name: "Doing", gitLabLabel: "Doing", position: 2, closed: false, color: "accent" },
-			{ key: "review", name: "Review", gitLabLabel: "Review", position: 3, closed: false, color: "warning" },
-			{ key: "closed", name: "Closed", gitLabLabel: "Closed", position: 4, closed: true, color: "success" }
+			{ key: "wating", name: "Wating", gitLabLabel: "Wating", position: 0, closed: false, color: "critical" },
+			{ key: "inbox", name: "Inbox", gitLabLabel: "Inbox", position: 1, closed: false, color: "neutral" },
+			{ key: "todo", name: "To Do", gitLabLabel: "To Do", position: 2, closed: false, color: "accent" },
+			{ key: "doing", name: "Doing", gitLabLabel: "Doing", position: 3, closed: false, color: "info" },
+			{ key: "review", name: "Review", gitLabLabel: "Review", position: 4, closed: false, color: "warning" },
+			{ key: "closed", name: "Closed", gitLabLabel: "Closed", position: 5, closed: true, color: "success" }
 		],
 		cards: [
-			card(127, "修正報名系統寄信流程", "todo", 0, "development", 114, "2026-07-21"),
-			card(128, "整理志工行前通知", "todo", 1, "administration", 101, "2026-07-23"),
-			card(129, "確認議程講者資料", "todo", 2, "program", null, "2026-07-25"),
-			card(130, "製作工作人員識別證", "doing", 0, "design", 109, "2026-07-20"),
-			card(131, "盤點會場網路設備", "doing", 1, "venue", 107, "2026-07-22", "failed"),
-			card(132, "校對官網議程文案", "review", 0, "editorial", 117, "2026-07-19"),
-			card(133, "完成主視覺社群素材", "closed", 0, "marketing", 118, "2026-07-16")
+			card(127, "修正報名系統寄信流程", "釐清失敗重送條件，補上整合測試與觀測紀錄。", "todo", 0, "development", [114], "2026-07-21"),
+			card(128, "整理志工行前通知", "", "inbox", 0, "administration", [101, 102], "2026-07-23"),
+			card(129, "確認議程講者資料", "", "wating", 0, "program", [], "2026-07-25"),
+			card(130, "製作工作人員識別證", "", "doing", 0, "design", [109], "2026-07-20"),
+			card(131, "盤點會場網路設備", "", "doing", 1, "venue", [107], "2026-07-22", "failed"),
+			card(132, "校對官網議程文案", "", "review", 0, "editorial", [117], "2026-07-19"),
+			card(133, "完成主視覺社群素材", "", "closed", 0, "marketing", [118, 119], "2026-07-16")
 		],
 		syncedAt: "2026-07-14T08:00:00Z"
 	},

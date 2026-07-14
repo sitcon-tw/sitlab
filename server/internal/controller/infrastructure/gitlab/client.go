@@ -71,19 +71,7 @@ func (c *Client) Issues(ctx context.Context) ([]appsync.GitLabIssue, error) {
 		if err != nil {
 			return nil, err
 		}
-		var rows []struct {
-			ID        int64     `json:"id"`
-			IID       int64     `json:"iid"`
-			Title     string    `json:"title"`
-			WebURL    string    `json:"web_url"`
-			Labels    []string  `json:"labels"`
-			DueDate   *string   `json:"due_date"`
-			State     string    `json:"state"`
-			UpdatedAt time.Time `json:"updated_at"`
-			Assignee  *struct {
-				ID int64 `json:"id"`
-			} `json:"assignee"`
-		}
+		var rows []issueWire
 		decodeErr := decodeJSON(response.Body, &rows)
 		page = response.Header.Get("X-Next-Page")
 		response.Body.Close()
@@ -91,18 +79,7 @@ func (c *Client) Issues(ctx context.Context) ([]appsync.GitLabIssue, error) {
 			return nil, fmt.Errorf("decode GitLab issues: %w", decodeErr)
 		}
 		for _, row := range rows {
-			issue := appsync.GitLabIssue{
-				IssueIID: row.IID, GitLabIssueID: row.ID, Title: row.Title,
-				WebURL: row.WebURL, Labels: row.Labels, State: row.State, UpdatedAt: row.UpdatedAt,
-			}
-			if row.DueDate != nil {
-				issue.DueDate = *row.DueDate
-			}
-			if row.Assignee != nil {
-				id := row.Assignee.ID
-				issue.AssigneeGitLabUserID = &id
-			}
-			result = append(result, issue)
+			result = append(result, mapIssueWire(row))
 		}
 	}
 	return result, nil
@@ -110,24 +87,18 @@ func (c *Client) Issues(ctx context.Context) ([]appsync.GitLabIssue, error) {
 
 func (c *Client) ApplyIssue(ctx context.Context, mutation appsync.IssueMutation) (appsync.GitLabIssue, error) {
 	payload := map[string]any{
-		"title":    mutation.Title,
-		"labels":   mutation.Labels,
-		"due_date": mutation.DueDate,
+		"title":        mutation.Title,
+		"description":  mutation.Description,
+		"labels":       mutation.Labels,
+		"due_date":     mutation.DueDate,
+		"assignee_ids": mutation.AssigneeGitLabUserIDs,
 	}
 	method := http.MethodPut
 	requestURL := c.projectEndpoint("/issues/") + strconv.FormatInt(mutation.IssueIID, 10)
 	if mutation.Create {
 		method = http.MethodPost
 		requestURL = c.projectEndpoint("/issues")
-		if mutation.AssigneeGitLabUserID != nil {
-			payload["assignee_id"] = *mutation.AssigneeGitLabUserID
-		}
 	} else {
-		assigneeIDs := []int64{}
-		if mutation.AssigneeGitLabUserID != nil {
-			assigneeIDs = append(assigneeIDs, *mutation.AssigneeGitLabUserID)
-		}
-		payload["assignee_ids"] = assigneeIDs
 		if mutation.Closed {
 			payload["state_event"] = "close"
 		} else {
@@ -331,30 +302,37 @@ type gitLabMember struct {
 }
 
 type issueWire struct {
-	ID        int64     `json:"id"`
-	IID       int64     `json:"iid"`
-	Title     string    `json:"title"`
-	WebURL    string    `json:"web_url"`
-	Labels    []string  `json:"labels"`
-	DueDate   *string   `json:"due_date"`
-	State     string    `json:"state"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Assignee  *struct {
+	ID          int64     `json:"id"`
+	IID         int64     `json:"iid"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	WebURL      string    `json:"web_url"`
+	Labels      []string  `json:"labels"`
+	DueDate     *string   `json:"due_date"`
+	State       string    `json:"state"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Assignees   []struct {
+		ID int64 `json:"id"`
+	} `json:"assignees"`
+	Assignee *struct {
 		ID int64 `json:"id"`
 	} `json:"assignee"`
 }
 
 func mapIssueWire(row issueWire) appsync.GitLabIssue {
 	issue := appsync.GitLabIssue{
-		IssueIID: row.IID, GitLabIssueID: row.ID, Title: row.Title,
-		WebURL: row.WebURL, Labels: row.Labels, State: row.State, UpdatedAt: row.UpdatedAt,
+		IssueIID: row.IID, GitLabIssueID: row.ID, Title: row.Title, Description: row.Description,
+		WebURL: row.WebURL, Labels: row.Labels, State: row.State, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 	if row.DueDate != nil {
 		issue.DueDate = *row.DueDate
 	}
-	if row.Assignee != nil {
-		id := row.Assignee.ID
-		issue.AssigneeGitLabUserID = &id
+	for _, assignee := range row.Assignees {
+		issue.AssigneeGitLabUserIDs = append(issue.AssigneeGitLabUserIDs, assignee.ID)
+	}
+	if len(issue.AssigneeGitLabUserIDs) == 0 && row.Assignee != nil {
+		issue.AssigneeGitLabUserIDs = append(issue.AssigneeGitLabUserIDs, row.Assignee.ID)
 	}
 	return issue
 }

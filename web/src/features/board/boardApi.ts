@@ -1,11 +1,27 @@
 import { api, expectData, getCsrfToken } from "@/shared/api/client";
 import type { BoardCard } from "./model";
 
-export async function createCard(input: { operationId: string; title: string; teamKey: string; assigneeGitLabUserId: number | null; dueDate: string | null }) {
+export async function createCard(input: {
+	operationId: string;
+	title: string;
+	description: string;
+	teamKey: string;
+	assigneeGitLabUserIds: number[];
+	dueDate: string | null;
+}) {
 	return expectData(
 		await api.POST("/cards", {
 			params: { header: { "X-CSRF-Token": await getCsrfToken() } },
 			body: input
+		})
+	);
+}
+
+export async function updateDetails(card: BoardCard, operationId: string, title: string, description: string) {
+	return expectData(
+		await api.PUT("/cards/{issueIid}/details", {
+			params: { path: { issueIid: card.issueIid }, header: { "X-CSRF-Token": await getCsrfToken() } },
+			body: { operationId, title, description }
 		})
 	);
 }
@@ -19,11 +35,11 @@ export async function updateTeam(card: BoardCard, operationId: string, teamKey: 
 	);
 }
 
-export async function updateAssignee(card: BoardCard, operationId: string, assigneeGitLabUserId: number | null) {
+export async function updateAssignee(card: BoardCard, operationId: string, assigneeGitLabUserIds: number[]) {
 	return expectData(
 		await api.PUT("/cards/{issueIid}/assignee", {
 			params: { path: { issueIid: card.issueIid }, header: { "X-CSRF-Token": await getCsrfToken() } },
-			body: { operationId, assigneeGitLabUserId }
+			body: { operationId, assigneeGitLabUserIds }
 		})
 	);
 }
