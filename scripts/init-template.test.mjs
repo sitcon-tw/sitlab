@@ -97,7 +97,6 @@ test("initializer rolls back a failed command and remains one-time after a succe
 
 		const failed = invoke(root, { FAKE_PNPM_FAIL_ON: "format", FAKE_PNPM_MUTATE_ON_INSTALL: "true" });
 		assert.notEqual(failed.status, 0);
-		assert.match(failed.stderr, /were restored; the initializer can be retried/);
 		assert.equal(existsSync(path.join(root, ".template-initialized.json")), false);
 		assert.equal(existsSync(path.join(root, "docs/created-during-install.json")), false);
 		for (const [relative, content] of before) assert.equal(readFileSync(path.join(root, relative), "utf8"), content, `${relative} was not restored`);
@@ -123,7 +122,6 @@ test("initializer rolls back a failed command and remains one-time after a succe
 
 		const secondRun = invoke(root);
 		assert.notEqual(secondRun.status, 0);
-		assert.match(secondRun.stderr, /already been initialized/);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

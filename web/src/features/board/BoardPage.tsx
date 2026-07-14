@@ -1,6 +1,6 @@
 import { clearCsrfToken, errorMessage } from "@/shared/api/client";
 import { Avatar } from "@/shared/Avatar";
-import { CalendarDays, Check, ChevronDown, Cloud, CloudOff, ExternalLink, GripVertical, LogOut, Plus, RefreshCw, Users, Wifi } from "lucide-react";
+import { Check, ChevronDown, Cloud, CloudOff, ExternalLink, GripVertical, LogOut, Plus, RefreshCw, Users, Wifi } from "lucide-react";
 import { useRef, useState } from "react";
 import { AssigneePicker } from "./AssigneePicker";
 import { createCard, logout, moveCard, retryOperation, savePreferences, updateAssignee, updateDueDate, updateTeam } from "./boardApi";
@@ -240,7 +240,7 @@ function BoardHeader({ bootstrap, backgroundOffline, onMembers }: { bootstrap: B
 				<span>/ 2027</span>
 			</div>
 			<nav className={styles.headerActions} aria-label="看板工具">
-				<button type="button" className={styles.headerButton} onClick={onMembers}>
+				<button type="button" className={styles.headerButton} aria-label="成員" title="查看籌備團隊" onClick={onMembers}>
 					<Users size="1rem" aria-hidden="true" />
 					<span>成員</span>
 				</button>
@@ -338,7 +338,6 @@ function QuickCreate({
 			/>
 			<AssigneePicker bootstrap={bootstrap} teamKey={teamKey} value={assignee} onChange={setAssignee} label="選擇新卡片 Assignee" />
 			<label className={styles.dateControl} title="新卡片期限">
-				<CalendarDays size="0.9375rem" aria-hidden="true" />
 				<span className={styles.srOnly}>期限</span>
 				<input type="date" value={dueDate} aria-label="新卡片期限" onChange={(event) => setDueDate(event.target.value)} />
 			</label>
@@ -424,7 +423,6 @@ function CardItem({
 			</div>
 			<footer className={styles.cardFooter}>
 				<label className={styles.cardDate} data-overdue={overdue}>
-					<CalendarDays size="0.875rem" aria-hidden="true" />
 					<span className={styles.srOnly}>期限</span>
 					<input type="date" aria-label={`${title}的期限`} value={card.dueDate ?? ""} onChange={(event) => onDueDate(event.target.value || null)} />
 				</label>
