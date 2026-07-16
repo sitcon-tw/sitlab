@@ -16,12 +16,23 @@ import (
 )
 
 var DefaultBoardLists = []board.List{
-	{Key: "wating", Name: "Wating", GitLabLabel: "Wating", Position: 0, Color: "#dc2626"},
-	{Key: "inbox", Name: "Inbox", GitLabLabel: "Inbox", Position: 1, Color: "#64748b"},
-	{Key: "todo", Name: "To Do", GitLabLabel: "To Do", Position: 2, Color: "#0891b2"},
-	{Key: "doing", Name: "Doing", GitLabLabel: "Doing", Position: 3, Color: "#2563eb"},
-	{Key: "review", Name: "Review", GitLabLabel: "Review", Position: 4, Color: "#b45309"},
-	{Key: "closed", Name: "Closed", GitLabLabel: "Closed", Position: 5, Closed: true, Color: "#15803d"},
+	{Key: "wating", Name: "Wating", GitLabLabel: "Status::Waiting", Position: 0, Color: "#dc2626"},
+	{Key: "inbox", Name: "Inbox", GitLabLabel: "Status::Inbox", Position: 1, Color: "#64748b"},
+	{Key: "todo", Name: "To Do", GitLabLabel: "Status::To Do", Position: 2, Color: "#0891b2"},
+	{Key: "doing", Name: "Doing", GitLabLabel: "Status::Doing", Position: 3, Color: "#2563eb"},
+	{Key: "review", Name: "Review", GitLabLabel: "Status::Review", Position: 4, Color: "#b45309"},
+	{Key: "closed", Name: "Closed", Position: 5, Closed: true, Color: "#15803d"},
+}
+
+var legacyStatusLabels = map[string]string{
+	"Wating":  "wating",
+	"Waiting": "wating",
+	"Inbox":   "inbox",
+	"To Do":   "todo",
+	"Todo":    "todo",
+	"Doing":   "doing",
+	"Review":  "review",
+	"Closed":  "closed",
 }
 
 type Service struct {
@@ -247,10 +258,21 @@ func mapIssue(issue GitLabIssue, directorySnapshot directory.Snapshot, lists []b
 			}
 		}
 	} else {
+		matchedScoped := false
 		for _, candidate := range lists {
 			if !candidate.Closed && slices.Contains(issue.Labels, candidate.GitLabLabel) {
 				list = candidate
+				matchedScoped = true
 				break
+			}
+		}
+		if !matchedScoped {
+			for _, label := range issue.Labels {
+				legacyKey, legacy := legacyStatusLabels[label]
+				if candidate, found := boardList(lists, legacyKey); legacy && found && !candidate.Closed {
+					list = candidate
+					break
+				}
 			}
 		}
 	}
@@ -315,7 +337,9 @@ func canonicalLabels(existing []string, team directory.Team, list board.List, te
 	}
 	labels := make([]string, 0, len(existing)+2)
 	for _, label := range existing {
-		if _, isReserved := reserved[label]; !isReserved {
+		_, isReserved := reserved[label]
+		_, isLegacyStatus := legacyStatusLabels[label]
+		if !isReserved && !isLegacyStatus && !strings.HasPrefix(label, "Status::") {
 			labels = append(labels, label)
 		}
 	}

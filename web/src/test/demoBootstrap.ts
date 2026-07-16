@@ -107,12 +107,12 @@ export const demoBootstrap: Bootstrap = {
 	members,
 	board: {
 		lists: [
-			{ key: "wating", name: "Wating", gitLabLabel: "Wating", position: 0, closed: false, color: "critical" },
-			{ key: "inbox", name: "Inbox", gitLabLabel: "Inbox", position: 1, closed: false, color: "neutral" },
-			{ key: "todo", name: "To Do", gitLabLabel: "To Do", position: 2, closed: false, color: "accent" },
-			{ key: "doing", name: "Doing", gitLabLabel: "Doing", position: 3, closed: false, color: "info" },
-			{ key: "review", name: "Review", gitLabLabel: "Review", position: 4, closed: false, color: "warning" },
-			{ key: "closed", name: "Closed", gitLabLabel: "Closed", position: 5, closed: true, color: "success" }
+			{ key: "wating", name: "Wating", gitLabLabel: "Status::Waiting", position: 0, closed: false, color: "critical" },
+			{ key: "inbox", name: "Inbox", gitLabLabel: "Status::Inbox", position: 1, closed: false, color: "neutral" },
+			{ key: "todo", name: "To Do", gitLabLabel: "Status::To Do", position: 2, closed: false, color: "accent" },
+			{ key: "doing", name: "Doing", gitLabLabel: "Status::Doing", position: 3, closed: false, color: "info" },
+			{ key: "review", name: "Review", gitLabLabel: "Status::Review", position: 4, closed: false, color: "warning" },
+			{ key: "closed", name: "Closed", gitLabLabel: "", position: 5, closed: true, color: "success" }
 		],
 		cards: [
 			card(127, "修正報名系統寄信流程", "釐清失敗重送條件，補上整合測試與觀測紀錄。", "todo", 0, "development", [114], "2026-07-17", "2026-07-21"),

@@ -206,12 +206,12 @@ func seedSnapshots(t *testing.T, ctx context.Context, pool *pgxpool.Pool, now ti
 		    ('design', 202, 'gitlab_directory', $1)`,
 		`INSERT INTO board_lists (key, display_name, gitlab_label, position, closed, color, updated_at)
 		VALUES
-		    ('wating', 'Wating', 'Wating', 0, false, '#dc2626', $1),
-		    ('inbox', 'Inbox', 'Inbox', 1, false, '#64748b', $1),
-		    ('todo', 'To Do', 'To Do', 2, false, '#0891b2', $1),
-		    ('doing', 'Doing', 'Doing', 3, false, '#2563eb', $1),
-		    ('review', 'Review', 'Review', 4, false, '#b45309', $1),
-		    ('closed', 'Closed', 'Closed', 5, true, '#15803d', $1)`,
+		    ('wating', 'Wating', 'Status::Waiting', 0, false, '#dc2626', $1),
+		    ('inbox', 'Inbox', 'Status::Inbox', 1, false, '#64748b', $1),
+		    ('todo', 'To Do', 'Status::To Do', 2, false, '#0891b2', $1),
+		    ('doing', 'Doing', 'Status::Doing', 3, false, '#2563eb', $1),
+		    ('review', 'Review', 'Status::Review', 4, false, '#b45309', $1),
+		    ('closed', 'Closed', '', 5, true, '#15803d', $1)`,
 		`INSERT INTO sync_snapshots
 		    (resource, source_revision, last_success_at, last_attempt_at, updated_at)
 		VALUES

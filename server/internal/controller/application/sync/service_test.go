@@ -17,12 +17,12 @@ import (
 func TestDefaultBoardListsMatchGitLabBoard(t *testing.T) {
 	t.Parallel()
 	want := []board.List{
-		{Key: "wating", Name: "Wating", GitLabLabel: "Wating", Position: 0, Color: "#dc2626"},
-		{Key: "inbox", Name: "Inbox", GitLabLabel: "Inbox", Position: 1, Color: "#64748b"},
-		{Key: "todo", Name: "To Do", GitLabLabel: "To Do", Position: 2, Color: "#0891b2"},
-		{Key: "doing", Name: "Doing", GitLabLabel: "Doing", Position: 3, Color: "#2563eb"},
-		{Key: "review", Name: "Review", GitLabLabel: "Review", Position: 4, Color: "#b45309"},
-		{Key: "closed", Name: "Closed", GitLabLabel: "Closed", Position: 5, Closed: true, Color: "#15803d"},
+		{Key: "wating", Name: "Wating", GitLabLabel: "Status::Waiting", Position: 0, Color: "#dc2626"},
+		{Key: "inbox", Name: "Inbox", GitLabLabel: "Status::Inbox", Position: 1, Color: "#64748b"},
+		{Key: "todo", Name: "To Do", GitLabLabel: "Status::To Do", Position: 2, Color: "#0891b2"},
+		{Key: "doing", Name: "Doing", GitLabLabel: "Status::Doing", Position: 3, Color: "#2563eb"},
+		{Key: "review", Name: "Review", GitLabLabel: "Status::Review", Position: 4, Color: "#b45309"},
+		{Key: "closed", Name: "Closed", Position: 5, Closed: true, Color: "#15803d"},
 	}
 	if !reflect.DeepEqual(DefaultBoardLists, want) {
 		t.Fatalf("DefaultBoardLists = %#v", DefaultBoardLists)
@@ -123,15 +123,19 @@ func TestRefreshBoardMapsLabelsAndSkipsUnknownTeams(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.July, 14, 8, 0, 0, 0, time.UTC)
 	gitlab := &gitLabFake{issues: []GitLabIssue{
-		{IssueIID: 1, GitLabIssueID: 10, Title: "[開發組] 修正流程", Labels: []string{"組別::開發", "Doing"}, StartDate: "2026-07-17", State: "opened", UpdatedAt: now},
-		{IssueIID: 2, GitLabIssueID: 20, Title: "無組別", Labels: []string{"Todo"}, State: "opened", UpdatedAt: now},
+		{IssueIID: 1, GitLabIssueID: 10, Title: "[開發組] 修正流程", Labels: []string{"組別::開發", "Inbox", "Todo", "Status::Doing"}, StartDate: "2026-07-17", State: "opened", UpdatedAt: now},
+		{IssueIID: 2, GitLabIssueID: 20, Title: "[開發組] 舊版狀態", Labels: []string{"組別::開發", "Todo"}, State: "opened", UpdatedAt: now},
+		{IssueIID: 3, GitLabIssueID: 30, Title: "[開發組] 等待中", Labels: []string{"組別::開發", "Inbox", "Status::Waiting"}, State: "opened", UpdatedAt: now},
+		{IssueIID: 4, GitLabIssueID: 40, Title: "[開發組] 已關閉", Labels: []string{"組別::開發", "Status::Doing"}, State: "closed", UpdatedAt: now},
+		{IssueIID: 5, GitLabIssueID: 50, Title: "無組別", Labels: []string{"Todo"}, State: "opened", UpdatedAt: now},
 	}}
 	repo := &repoFake{directory: directory.Snapshot{Teams: []directory.Team{{Key: "development", TitlePrefix: "[開發組]", GitLabLabel: "組別::開發", Active: true}}}}
 	service := NewService(gitlab, &directorySourceFake{}, repo, nil, noop.NewTracerProvider().Tracer("test"))
 	if err := service.RefreshBoard(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(repo.cards) != 1 || repo.cards[0].ListKey != "doing" || repo.cards[0].Title != "修正流程" || repo.cards[0].StartDate != "2026-07-17" {
+	if len(repo.cards) != 4 || repo.cards[0].ListKey != "doing" || repo.cards[0].Title != "修正流程" || repo.cards[0].StartDate != "2026-07-17" ||
+		repo.cards[1].ListKey != "todo" || repo.cards[2].ListKey != "wating" || repo.cards[3].ListKey != "closed" {
 		t.Fatalf("cards = %#v", repo.cards)
 	}
 }
@@ -149,7 +153,7 @@ func TestProcessOneBuildsCanonicalIssueMutation(t *testing.T) {
 			Operation: board.Operation{ID: "operation", Kind: board.OperationUpdateTeam},
 			Card: board.Card{
 				IssueIID: 42, Title: "修正流程", Description: "詳細規劃", TeamKey: "development", ListKey: "doing",
-				AssigneeGitLabUserIDs: []int64{1, 2}, StartDate: "2026-07-17", DueDate: "2026-07-21", Labels: []string{"組別::設計", "To Do", "security"},
+				AssigneeGitLabUserIDs: []int64{1, 2}, StartDate: "2026-07-17", DueDate: "2026-07-21", Labels: []string{"組別::設計", "Inbox", "Todo", "Status::Review", "security"},
 			},
 		},
 	}
@@ -160,7 +164,7 @@ func TestProcessOneBuildsCanonicalIssueMutation(t *testing.T) {
 	}
 	if gitlab.applied == nil || gitlab.applied.Title != "[開發組] 修正流程" || gitlab.applied.Description != "詳細規劃" ||
 		gitlab.applied.StartDate != "2026-07-17" || gitlab.applied.DueDate != "2026-07-21" ||
-		!slices.Equal(gitlab.applied.AssigneeGitLabUserIDs, []int64{1, 2}) || !slices.Equal(gitlab.applied.Labels, []string{"security", "組別::開發", "Doing"}) {
+		!slices.Equal(gitlab.applied.AssigneeGitLabUserIDs, []int64{1, 2}) || !slices.Equal(gitlab.applied.Labels, []string{"security", "組別::開發", "Status::Doing"}) {
 		t.Fatalf("mutation = %#v", gitlab.applied)
 	}
 }
