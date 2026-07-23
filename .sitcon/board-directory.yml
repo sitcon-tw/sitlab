@@ -4,76 +4,83 @@ teams:
   - key: administration
     name: 行政組
     title_prefix: "[行政組]"
-    gitlab_label: "組別::行政"
+    gitlab_label: "Team::行政組"
+    active: true
+    members: []
+
+  - key: finance
+    name: 財務組
+    title_prefix: "[財務組]"
+    gitlab_label: "Team::財務組"
     active: true
     members: []
 
   - key: program
     name: 議程組
     title_prefix: "[議程組]"
-    gitlab_label: "組別::議程"
+    gitlab_label: "Team::議程組"
     active: true
     members: []
 
   - key: activity
     name: 活動組
     title_prefix: "[活動組]"
-    gitlab_label: "組別::活動"
+    gitlab_label: "Team::活動組"
     active: true
     members: []
 
   - key: venue
     name: 場務組
     title_prefix: "[場務組]"
-    gitlab_label: "組別::場務"
+    gitlab_label: "Team::場務組"
     active: true
     members: []
 
   - key: design
     name: 設計組
     title_prefix: "[設計組]"
-    gitlab_label: "組別::設計"
+    gitlab_label: "Team::設計組"
     active: true
     members: []
 
   - key: documentation
     name: 紀錄組
     title_prefix: "[紀錄組]"
-    gitlab_label: "組別::紀錄"
+    gitlab_label: "Team::紀錄組"
     active: true
     members: []
 
   - key: production
     name: 製播組
     title_prefix: "[製播組]"
-    gitlab_label: "組別::製播"
+    gitlab_label: "Team::製播組"
     active: true
     members: []
 
   - key: development
     name: 開發組
     title_prefix: "[開發組]"
-    gitlab_label: "組別::開發"
+    gitlab_label: "Team::開發組"
     active: true
     members: []
 
   - key: editorial
     name: 編輯組
     title_prefix: "[編輯組]"
-    gitlab_label: "組別::編輯"
+    gitlab_label: "Team::編輯組"
     active: true
     members: []
 
   - key: marketing
     name: 行銷組
     title_prefix: "[行銷組]"
-    gitlab_label: "組別::行銷"
+    gitlab_label: "Team::行銷組"
     active: true
     members: []
 
   - key: general-coordinator
     name: 總召組
     title_prefix: "[總召組]"
-    gitlab_label: "組別::總召"
+    gitlab_label: "Team::總召組"
     active: true
     members: []

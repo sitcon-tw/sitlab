@@ -36,9 +36,9 @@ model DirectoryMember {
 	key: "development",
 	name: "開發組",
 	titlePrefix: "[開發組]",
-	gitLabLabel: "組別::開發",
+	gitLabLabel: "Team::開發組",
 	active: true,
-	sortOrder: 7,
+	sortOrder: 8,
 	memberGitLabUserIds: #[123456],
 })
 model DirectoryTeam {
