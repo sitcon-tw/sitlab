@@ -155,6 +155,25 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	if err != nil || !processed || gitlab.lastMutation == nil || gitlab.lastMutation.Create {
 		t.Fatalf("process update = %v, %v, mutation=%#v", processed, err, gitlab.lastMutation)
 	}
+
+	if err := store.ReplaceBoard(ctx, appsync.DefaultBoardLists, nil, "board-2", now.Add(2*time.Minute)); err != nil {
+		t.Fatalf("replace board without completed card: %v", err)
+	}
+	var cardCount, attachedOperationCount int
+	if err := pool.QueryRow(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM issue_cache WHERE issue_iid = 42),
+			(SELECT COUNT(*) FROM durable_operations WHERE issue_iid = 42)
+	`).Scan(&cardCount, &attachedOperationCount); err != nil {
+		t.Fatal(err)
+	}
+	if cardCount != 0 || attachedOperationCount != 0 {
+		t.Fatalf("removed card references: cards=%d attached_operations=%d", cardCount, attachedOperationCount)
+	}
+	detached, err := store.ByOperation(ctx, operationID)
+	if err != nil || detached.Operation.IssueIID != nil || detached.Operation.State != "synced" {
+		t.Fatalf("detached completed operation = %#v, err = %v", detached.Operation, err)
+	}
 }
 
 type operationGitLabFake struct {
