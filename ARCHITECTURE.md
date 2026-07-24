@@ -7,18 +7,18 @@ SITCON Board is a focused GitLab-backed workflow for the fixed `sitcon-tw/2027` 
 ## Data Flow
 
 ```text
-Bundled board-directory.yml + GitLab project members + GitLab issues
-                                   |
-                            background sync
-                                   v
-                    PostgreSQL snapshots
-                              |
-                   injected bootstrap JSON
-                              v
-                       React Board
+GitLab signed project/group webhooks -> durable webhook inbox
+                                             |
+Bundled board-directory.yml + GitLab API -> PostgreSQL snapshots + revision
+                                             |
+                              injected bootstrap JSON + REST + SSE
+                                             |
+                                         React Board
 ```
 
 Production traffic is ready only after directory, member, and board snapshots exist. The server injects the complete authenticated bootstrap payload into `index.html`; React renders from that payload before starting background refresh. The development API fallback is `GET /api/v1/bootstrap`.
+
+Project Issue and group Member webhooks are authenticated with GitLab HMAC signing tokens and committed to a durable inbox before acknowledgement. Workers fetch canonical GitLab state instead of trusting webhook payloads. Every visible transaction advances a PostgreSQL bootstrap revision; `LISTEN/NOTIFY` fans the revision out across instances and authenticated SSE tells browsers to refetch. Board and directory polling remain the missed-event fallback.
 
 ## Backend Boundaries
 

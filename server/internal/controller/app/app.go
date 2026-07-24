@@ -35,6 +35,8 @@ type Application struct {
 	DB      *pgxpool.Pool
 	Tracing *observability.Tracing
 	Sync    *appsync.Service
+	Events  *pgsitcon.Repository
+	Metrics *observability.Metrics
 }
 
 func New(ctx context.Context) (*Application, error) {
@@ -108,9 +110,15 @@ func New(ctx context.Context) (*Application, error) {
 	}
 
 	metrics := observability.NewMetrics()
+	syncService.SetWebhookObserver(metrics)
 	router := httpserver.NewRouter(httpserver.Dependencies{
 		Log: log, Auth: oauthService, Bootstrap: bootstrapService,
-		Directory: directoryService, Board: boardService, Sync: syncService,
+		Directory: directoryService, Board: boardService, Sync: syncService, Events: store,
+		Webhooks: httpserver.WebhookConfig{
+			ProjectSigningToken: cfg.GitLab.ProjectWebhookSigningToken,
+			GroupSigningToken:   cfg.GitLab.GroupWebhookSigningToken,
+			ProjectPath:         config.ProjectPath, GroupPath: config.GroupPath,
+		},
 		Cookie:         httpserver.CookieConfig{Name: cfg.Session.CookieName, Secure: cfg.Session.CookieSecure, TTL: cfg.Session.TTL},
 		AllowedOrigins: cfg.HTTP.AllowedOrigins, RequestTimeout: cfg.HTTP.RequestTimeout,
 		Readiness: func(ctx context.Context) error {
@@ -122,7 +130,7 @@ func New(ctx context.Context) (*Application, error) {
 	return &Application{
 		Config: cfg, Log: log,
 		Server: httpserver.NewServer(httpserver.ServerConfig{Addr: cfg.HTTP.Addr}, router),
-		DB:     pool, Tracing: tracing, Sync: syncService,
+		DB:     pool, Tracing: tracing, Sync: syncService, Events: store, Metrics: metrics,
 	}, nil
 }
 
@@ -131,6 +139,9 @@ func (a *Application) Run(ctx context.Context) error {
 	defer cancelWorkers()
 	go a.Sync.Run(workerCtx, a.Config.Sync.DirectoryInterval, a.Config.Sync.BoardInterval)
 	go a.Sync.RunOperations(workerCtx, a.Config.Sync.OperationInterval)
+	go a.Sync.RunWebhooks(workerCtx, a.Config.Sync.OperationInterval)
+	go a.Events.RunRevisionListener(workerCtx)
+	go a.runWebhookMetrics(workerCtx)
 
 	serveErrors := make(chan error, 1)
 	go func() {
@@ -157,6 +168,22 @@ func (a *Application) Run(ctx context.Context) error {
 		a.Log.Debug("logger_sync_failed", zap.Error(syncErr))
 	}
 	return errors.Join(runErr, shutdownErr, traceErr)
+}
+
+func (a *Application) runWebhookMetrics(ctx context.Context) {
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	for {
+		pending, dead, oldestSeconds, err := a.Events.WebhookQueueStats(ctx)
+		if err == nil {
+			a.Metrics.SetWebhookQueue(pending, dead, oldestSeconds)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 func ShutdownContext(timeout time.Duration) (context.Context, context.CancelFunc) {

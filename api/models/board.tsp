@@ -46,6 +46,7 @@ model SyncStatus {
 }
 
 model BootstrapResponse {
+	revision: string;
 	me: CurrentUser;
 
 	@secret

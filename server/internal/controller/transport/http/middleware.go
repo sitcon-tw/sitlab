@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"go.uber.org/zap"
 
 	"example.com/project-template/internal/controller/application/apperror"
@@ -130,6 +131,8 @@ type responseCapture struct {
 	status int
 }
 
+func (w *responseCapture) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
 func (w *responseCapture) WriteHeader(status int) {
 	w.status = status
 	w.ResponseWriter.WriteHeader(status)
@@ -142,4 +145,18 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		next.ServeHTTP(w, r)
 	})
+}
+
+func timeoutExceptEventStream(timeout time.Duration) func(http.Handler) http.Handler {
+	timed := chimiddleware.Timeout(timeout)
+	return func(next http.Handler) http.Handler {
+		timedHandler := timed(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/api/v1/events/bootstrap" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			timedHandler.ServeHTTP(w, r)
+		})
+	}
 }

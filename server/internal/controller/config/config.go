@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 const (
 	prefix             = "SITCON_BOARD_"
 	ProjectPath        = "sitcon-tw/2027"
+	GroupPath          = "sitcon-tw"
 	DirectoryFilePath  = ".sitcon/board-directory.yml"
 	LocalDirectoryPath = "../" + DirectoryFilePath
 	SessionTTL         = 14 * 24 * time.Hour
@@ -50,11 +52,13 @@ type Session struct {
 }
 
 type GitLab struct {
-	BaseURL            string
-	ClientID           string
-	ClientSecret       string
-	OAuthRedirectURL   string
-	ProjectAccessToken string
+	BaseURL                    string
+	ClientID                   string
+	ClientSecret               string
+	OAuthRedirectURL           string
+	ProjectAccessToken         string
+	ProjectWebhookSigningToken string
+	GroupWebhookSigningToken   string
 }
 
 type Directory struct {
@@ -100,8 +104,10 @@ func Load() (Config, error) {
 		GitLab: GitLab{
 			BaseURL:  value("GITLAB_BASE_URL", "https://gitlab.com"),
 			ClientID: value("GITLAB_CLIENT_ID", ""), ClientSecret: value("GITLAB_CLIENT_SECRET", ""),
-			OAuthRedirectURL:   value("GITLAB_OAUTH_REDIRECT_URL", "http://localhost:8080/api/v1/auth/gitlab/callback"),
-			ProjectAccessToken: value("GITLAB_PROJECT_ACCESS_TOKEN", ""),
+			OAuthRedirectURL:           value("GITLAB_OAUTH_REDIRECT_URL", "http://localhost:8080/api/v1/auth/gitlab/callback"),
+			ProjectAccessToken:         value("GITLAB_PROJECT_ACCESS_TOKEN", ""),
+			ProjectWebhookSigningToken: value("GITLAB_PROJECT_WEBHOOK_SIGNING_TOKEN", ""),
+			GroupWebhookSigningToken:   value("GITLAB_GROUP_WEBHOOK_SIGNING_TOKEN", ""),
 		},
 		Directory: Directory{FilePath: value("DIRECTORY_FILE", LocalDirectoryPath)},
 		Sync: Sync{
@@ -166,12 +172,31 @@ func (c Config) Validate() error {
 		if !c.Session.CookieSecure || !strings.HasPrefix(c.Session.CookieName, "__Host-") {
 			return errors.New("production session cookie must be Secure and use the __Host- prefix")
 		}
-		if c.GitLab.ClientID == "" || c.GitLab.ClientSecret == "" || c.GitLab.ProjectAccessToken == "" {
-			return errors.New("GitLab OAuth and project access credentials are required in production")
+		if c.GitLab.ClientID == "" || c.GitLab.ClientSecret == "" || c.GitLab.ProjectAccessToken == "" ||
+			c.GitLab.ProjectWebhookSigningToken == "" || c.GitLab.GroupWebhookSigningToken == "" {
+			return errors.New("GitLab OAuth, project access, and webhook signing credentials are required in production")
 		}
 		if c.Session.HashKey == "local-development-session-hash-key-change-me" || c.Session.CipherKey == "local-development-oauth-cipher-key-change-me" {
 			return errors.New("development security keys must be changed in production")
 		}
+	}
+	for name, token := range map[string]string{
+		"SITCON_BOARD_GITLAB_PROJECT_WEBHOOK_SIGNING_TOKEN": c.GitLab.ProjectWebhookSigningToken,
+		"SITCON_BOARD_GITLAB_GROUP_WEBHOOK_SIGNING_TOKEN":   c.GitLab.GroupWebhookSigningToken,
+	} {
+		if token == "" && c.Env != "production" {
+			continue
+		}
+		if !strings.HasPrefix(token, "whsec_") {
+			return fmt.Errorf("%s must use whsec_ format", name)
+		}
+		decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(token, "whsec_"))
+		if err != nil || len(decoded) != 32 {
+			return fmt.Errorf("%s must encode a 32-byte key", name)
+		}
+	}
+	if c.GitLab.ProjectWebhookSigningToken != "" && c.GitLab.ProjectWebhookSigningToken == c.GitLab.GroupWebhookSigningToken {
+		return errors.New("GitLab project and group webhook signing tokens must be different")
 	}
 	return nil
 }

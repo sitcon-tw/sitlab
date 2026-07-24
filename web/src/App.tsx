@@ -2,8 +2,10 @@ import { LoginPage } from "@/features/auth/LoginPage";
 import { BoardPage } from "@/features/board/BoardPage";
 import { refreshBootstrap } from "@/features/board/bootstrap";
 import type { Bootstrap } from "@/features/board/model";
+import { subscribeBootstrapEvents } from "@/features/board/realtime";
 import { OnboardingPage } from "@/features/onboarding/OnboardingPage";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 
 const bootstrapKey = ["sitcon", "bootstrap"] as const;
 const queryClient = new QueryClient({
@@ -40,6 +42,13 @@ function AuthenticatedApp({ initialBootstrap }: { initialBootstrap: Bootstrap })
 		staleTime: demo ? Infinity : 25_000
 	});
 	const bootstrap = bootstrapQuery.data;
+	useEffect(() => {
+		if (demo) return;
+		return subscribeBootstrapEvents((revision) => {
+			const current = client.getQueryData<Bootstrap>(bootstrapKey);
+			if (revision !== current?.revision) void client.invalidateQueries({ queryKey: bootstrapKey });
+		});
+	}, [client, demo]);
 	const updateBootstrap = (update: (current: Bootstrap) => Bootstrap) => {
 		client.setQueryData<Bootstrap>(bootstrapKey, (current) => update(current ?? bootstrap));
 	};

@@ -17,6 +17,8 @@ order: 10
 
 Create an OAuth application whose redirect URI exactly matches `SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL`. Provide a project access token able to read members, labels and issues in `sitcon-tw/2027`, plus the issue permissions needed by the operation worker.
 
+Production realtime delivery also requires a Project webhook for **Work item events** and a Premium/Ultimate Group webhook for **Member events**. Generate independent Signing tokens in GitLab, leave the legacy Secret token empty, and configure the matching `SITCON_BOARD_GITLAB_PROJECT_WEBHOOK_SIGNING_TOKEN` and `SITCON_BOARD_GITLAB_GROUP_WEBHOOK_SIGNING_TOKEN` values. The complete field-by-field setup is in the Dokploy runbook.
+
 The directory file must exist at `.sitcon/board-directory.yml`. The Docker build copies it into the image; changing it requires a new build and deployment, not a GitHub API token.
 
 ## Run from source
@@ -46,7 +48,7 @@ For isolated browser design checks, run `VITE_SITCON_DEMO=true just web-dev`. Th
 
 ```bash
 cp deployments/docker/example.env deployments/docker/.env
-# Replace every change-me and add GitLab credentials.
+# Replace every change-me and add GitLab OAuth, project access, and webhook credentials.
 docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build
 ```
 

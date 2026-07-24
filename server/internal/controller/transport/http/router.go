@@ -27,6 +27,8 @@ type Dependencies struct {
 	Directory      DirectoryService
 	Board          BoardService
 	Sync           SyncService
+	Webhooks       WebhookConfig
+	Events         RevisionEvents
 	Cookie         CookieConfig
 	AllowedOrigins []string
 	RequestTimeout time.Duration
@@ -55,13 +57,13 @@ func NewRouter(dep Dependencies) http.Handler {
 	}
 	h := handler{
 		auth: dep.Auth, bootstrap: dep.Bootstrap, directory: dep.Directory,
-		board: dep.Board, sync: dep.Sync, cookie: dep.Cookie,
+		board: dep.Board, sync: dep.Sync, cookie: dep.Cookie, webhooks: dep.Webhooks, events: dep.Events, metrics: dep.Metrics,
 	}
 	router := chi.NewRouter()
 	router.Use(chimiddleware.RequestID)
 	router.Use(securityHeaders)
 	router.Use(recoverer(dep.Log))
-	router.Use(chimiddleware.Timeout(dep.RequestTimeout))
+	router.Use(timeoutExceptEventStream(dep.RequestTimeout))
 	router.Use(otelhttp.NewMiddleware("http.server"))
 	router.Use(dep.Metrics.Middleware)
 	router.Use(requestLogger(dep.Log))
@@ -89,6 +91,8 @@ func NewRouter(dep Dependencies) http.Handler {
 		})
 		api.Get("/auth/gitlab", h.startGitLabOAuth)
 		api.Get("/auth/gitlab/callback", h.completeGitLabOAuth)
+		api.Post("/webhooks/gitlab/project", h.receiveProjectWebhook)
+		api.Post("/webhooks/gitlab/group", h.receiveGroupWebhook)
 
 		api.Group(func(protected chi.Router) {
 			protected.Use(requireAuth(dep.Auth, dep.Cookie))
@@ -97,6 +101,7 @@ func NewRouter(dep Dependencies) http.Handler {
 			protected.Get("/auth/me", h.me)
 			protected.Post("/auth/logout", h.logout)
 			protected.Get("/bootstrap", h.bootstrapState)
+			protected.Get("/events/bootstrap", h.bootstrapEvents)
 			protected.Get("/directory", h.directoryState)
 			protected.Put("/me/preferences", h.updatePreferences)
 			protected.Post("/cards", h.createCard)

@@ -7,31 +7,33 @@ order: 40
 
 Configuration uses the `SITCON_BOARD_` prefix and is validated before the HTTP server accepts traffic.
 
-| Variable                                   | Required         | Purpose                                                                     |
-| ------------------------------------------ | ---------------- | --------------------------------------------------------------------------- |
-| `SITCON_BOARD_ENV`                         | No               | `local`, `test`, or `production`; default `local`.                          |
-| `SITCON_BOARD_SERVICE_NAME`                | No               | Telemetry service name.                                                     |
-| `SITCON_BOARD_VERSION`                     | No               | Release identifier for logs, metrics, and traces.                           |
-| `SITCON_BOARD_HTTP_ADDR`                   | No               | Listen address; default `:8080`.                                            |
-| `SITCON_BOARD_WEB_DIR`                     | Production image | Static web assets served by Go.                                             |
-| `SITCON_BOARD_DATABASE_URL`                | Yes              | PostgreSQL connection URL.                                                  |
-| `SITCON_BOARD_LOG_LEVEL`                   | No               | Structured log threshold; default `info`.                                   |
-| `SITCON_BOARD_SESSION_HASH_KEY`            | Production       | At least 32 characters; keyed digest for opaque sessions.                   |
-| `SITCON_BOARD_OAUTH_STATE_CIPHER_KEY`      | Production       | Separate key of at least 32 characters for OAuth state verifier encryption. |
-| `SITCON_BOARD_SESSION_COOKIE_SECURE`       | Production       | Must be `true`; production uses a `__Host-` cookie.                         |
-| `SITCON_BOARD_CSRF_ALLOWED_ORIGINS`        | Production       | Comma-separated browser origins for authenticated mutations.                |
-| `SITCON_BOARD_GITLAB_BASE_URL`             | No               | GitLab origin; default `https://gitlab.com`.                                |
-| `SITCON_BOARD_GITLAB_CLIENT_ID`            | Production       | OAuth application client ID.                                                |
-| `SITCON_BOARD_GITLAB_CLIENT_SECRET`        | Production       | OAuth application client secret.                                            |
-| `SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL`   | Production       | Exact registered callback URL.                                              |
-| `SITCON_BOARD_GITLAB_PROJECT_ACCESS_TOKEN` | Production       | Reads project members and issues; writes reconciled issues.                 |
-| `SITCON_BOARD_DIRECTORY_FILE`              | No               | Directory YAML path; the image sets `/app/board-directory.yml`.             |
-| `SITCON_BOARD_DIRECTORY_SYNC_INTERVAL`     | No               | Member and directory refresh; default `5m`.                                 |
-| `SITCON_BOARD_BOARD_SYNC_INTERVAL`         | No               | Board refresh; default `30s`.                                               |
-| `SITCON_BOARD_OPERATION_POLL_INTERVAL`     | No               | Durable worker poll; default `500ms`.                                       |
-| `SITCON_BOARD_REQUEST_TIMEOUT`             | No               | HTTP request timeout; default `15s`.                                        |
-| `SITCON_BOARD_SHUTDOWN_TIMEOUT`            | No               | Graceful shutdown budget; default `10s`.                                    |
-| `SITCON_BOARD_OTEL_TRACES_ENDPOINT`        | No               | OTLP HTTP endpoint; empty disables export.                                  |
+| Variable                                            | Required         | Purpose                                                                     |
+| --------------------------------------------------- | ---------------- | --------------------------------------------------------------------------- |
+| `SITCON_BOARD_ENV`                                  | No               | `local`, `test`, or `production`; default `local`.                          |
+| `SITCON_BOARD_SERVICE_NAME`                         | No               | Telemetry service name.                                                     |
+| `SITCON_BOARD_VERSION`                              | No               | Release identifier for logs, metrics, and traces.                           |
+| `SITCON_BOARD_HTTP_ADDR`                            | No               | Listen address; default `:8080`.                                            |
+| `SITCON_BOARD_WEB_DIR`                              | Production image | Static web assets served by Go.                                             |
+| `SITCON_BOARD_DATABASE_URL`                         | Yes              | PostgreSQL connection URL.                                                  |
+| `SITCON_BOARD_LOG_LEVEL`                            | No               | Structured log threshold; default `info`.                                   |
+| `SITCON_BOARD_SESSION_HASH_KEY`                     | Production       | At least 32 characters; keyed digest for opaque sessions.                   |
+| `SITCON_BOARD_OAUTH_STATE_CIPHER_KEY`               | Production       | Separate key of at least 32 characters for OAuth state verifier encryption. |
+| `SITCON_BOARD_SESSION_COOKIE_SECURE`                | Production       | Must be `true`; production uses a `__Host-` cookie.                         |
+| `SITCON_BOARD_CSRF_ALLOWED_ORIGINS`                 | Production       | Comma-separated browser origins for authenticated mutations.                |
+| `SITCON_BOARD_GITLAB_BASE_URL`                      | No               | GitLab origin; default `https://gitlab.com`.                                |
+| `SITCON_BOARD_GITLAB_CLIENT_ID`                     | Production       | OAuth application client ID.                                                |
+| `SITCON_BOARD_GITLAB_CLIENT_SECRET`                 | Production       | OAuth application client secret.                                            |
+| `SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL`            | Production       | Exact registered callback URL.                                              |
+| `SITCON_BOARD_GITLAB_PROJECT_ACCESS_TOKEN`          | Production       | Reads project members and issues; writes reconciled issues.                 |
+| `SITCON_BOARD_GITLAB_PROJECT_WEBHOOK_SIGNING_TOKEN` | Production       | GitLab-generated `whsec_...` key for Project Work item events.              |
+| `SITCON_BOARD_GITLAB_GROUP_WEBHOOK_SIGNING_TOKEN`   | Production       | Separate GitLab-generated key for Group Member events.                      |
+| `SITCON_BOARD_DIRECTORY_FILE`                       | No               | Directory YAML path; the image sets `/app/board-directory.yml`.             |
+| `SITCON_BOARD_DIRECTORY_SYNC_INTERVAL`              | No               | Member and directory refresh; default `5m`.                                 |
+| `SITCON_BOARD_BOARD_SYNC_INTERVAL`                  | No               | Board refresh; default `30s`.                                               |
+| `SITCON_BOARD_OPERATION_POLL_INTERVAL`              | No               | Durable worker poll; default `500ms`.                                       |
+| `SITCON_BOARD_REQUEST_TIMEOUT`                      | No               | HTTP request timeout; default `15s`.                                        |
+| `SITCON_BOARD_SHUTDOWN_TIMEOUT`                     | No               | Graceful shutdown budget; default `10s`.                                    |
+| `SITCON_BOARD_OTEL_TRACES_ENDPOINT`                 | No               | OTLP HTTP endpoint; empty disables export.                                  |
 
 The GitLab project is deliberately fixed to `sitcon-tw/2027`. The production directory comes from `.sitcon/board-directory.yml` in this repository and is copied into the image at build time. Neither source is browser input, and the running application does not call GitHub.
 
@@ -39,4 +41,4 @@ The GitLab project is deliberately fixed to `sitcon-tw/2027`. The production dir
 
 Session lifetime is fixed in code at 14 days and is not a runtime setting. Every valid authenticated use updates `last_used_at`, moves `expires_at` to 14 days from now, and returns a renewed HttpOnly cookie. Expired sessions are rejected and deleted.
 
-In production, the controller refuses development keys, missing GitLab credentials, an insecure/non-`__Host-` cookie, malformed URLs, short keys, empty database configuration, or invalid sync intervals.
+In production, the controller refuses development keys, missing GitLab credentials, malformed webhook signing tokens, an insecure/non-`__Host-` cookie, malformed URLs, short keys, empty database configuration, or invalid sync intervals. Signing tokens must use GitLab's `whsec_` format and encode independent 32-byte keys.

@@ -14,6 +14,7 @@ import (
 
 	appoauth "example.com/project-template/internal/controller/application/oauth"
 	appsync "example.com/project-template/internal/controller/application/sync"
+	"example.com/project-template/internal/domain/board"
 	"example.com/project-template/internal/domain/directory"
 	"example.com/project-template/internal/domain/identity"
 )
@@ -83,6 +84,24 @@ func (c *Client) Issues(ctx context.Context) ([]appsync.GitLabIssue, error) {
 		}
 	}
 	return result, nil
+}
+
+func (c *Client) Issue(ctx context.Context, issueIID int64) (appsync.GitLabIssue, error) {
+	requestURL := c.projectEndpoint("/issues/") + strconv.FormatInt(issueIID, 10)
+	response, err := c.do(ctx, http.MethodGet, requestURL, nil, c.config.AccessToken, "")
+	if err != nil {
+		var statusError *httpStatusError
+		if errors.As(err, &statusError) && statusError.status == http.StatusNotFound {
+			return appsync.GitLabIssue{}, board.ErrCardNotFound
+		}
+		return appsync.GitLabIssue{}, err
+	}
+	defer response.Body.Close()
+	var row issueWire
+	if err := decodeJSON(response.Body, &row); err != nil {
+		return appsync.GitLabIssue{}, fmt.Errorf("decode GitLab issue: %w", err)
+	}
+	return mapIssueWire(row), nil
 }
 
 func (c *Client) ApplyIssue(ctx context.Context, mutation appsync.IssueMutation) (appsync.GitLabIssue, error) {

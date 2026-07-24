@@ -93,6 +93,7 @@ function card(
 }
 
 export const demoBootstrap: Bootstrap = {
+	revision: "demo-1",
 	me: {
 		id: "11111111-1111-4111-8111-111111111111",
 		gitLabUserId: 114,

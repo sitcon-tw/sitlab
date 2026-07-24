@@ -3,6 +3,7 @@ package gitlab
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"example.com/project-template/internal/controller/application/sync"
+	"example.com/project-template/internal/domain/board"
 	"example.com/project-template/internal/domain/identity"
 )
 
@@ -32,6 +34,8 @@ func TestSnapshotEndpointsParseMembersAndIssues(t *testing.T) {
 				t.Errorf("issue payload = %#v", payload)
 			}
 			return response(http.StatusCreated, `{"id":20,"iid":2,"title":"[開發組] 新卡","description":"詳細規劃","web_url":"https://gitlab.example/issues/2","labels":["組別::開發","To Do"],"start_date":"2026-07-17","due_date":"2026-07-21","state":"opened","created_at":"2026-07-14T08:00:00Z","updated_at":"2026-07-14T08:01:00Z","assignees":[{"id":101},{"id":202}]}`), nil
+		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/issues/1"):
+			return response(http.StatusOK, `{"id":10,"iid":1,"title":"[開發組] 修正流程","description":"工作拆解","web_url":"https://gitlab.example/issues/1","labels":["組別::開發","To Do"],"start_date":"2026-07-17","due_date":"2026-07-21","state":"opened","created_at":"2026-07-13T08:00:00Z","updated_at":"2026-07-14T08:00:00Z","assignees":[{"id":101},{"id":202}]}`), nil
 		case request.Method == http.MethodGet && strings.Contains(request.URL.Path, "/issues"):
 			return response(http.StatusOK, `[{"id":10,"iid":1,"title":"[開發組] 修正流程","description":"工作拆解","web_url":"https://gitlab.example/issues/1","labels":["組別::開發","To Do"],"start_date":"2026-07-17","due_date":"2026-07-21","state":"opened","created_at":"2026-07-13T08:00:00Z","updated_at":"2026-07-14T08:00:00Z","assignees":[{"id":101},{"id":202}]}]`), nil
 		default:
@@ -53,12 +57,30 @@ func TestSnapshotEndpointsParseMembersAndIssues(t *testing.T) {
 	if err != nil || len(issues) != 1 || len(issues[0].AssigneeGitLabUserIDs) != 2 || issues[0].Description != "工作拆解" || issues[0].StartDate != "2026-07-17" {
 		t.Fatalf("Issues() = %#v, %v", issues, err)
 	}
+	issue, err := client.Issue(context.Background(), 1)
+	if err != nil || issue.IssueIID != 1 || issue.Description != "工作拆解" {
+		t.Fatalf("Issue() = %#v, %v", issue, err)
+	}
 	created, err := client.ApplyIssue(context.Background(), sync.IssueMutation{
 		Create: true, Title: "[開發組] 新卡", Description: "詳細規劃", StartDate: "2026-07-17", DueDate: "2026-07-21",
 		Labels: []string{"組別::開發", "To Do"}, AssigneeGitLabUserIDs: []int64{101, 202},
 	})
 	if err != nil || created.IssueIID != 2 || created.StartDate != "2026-07-17" {
 		t.Fatalf("ApplyIssue() = %#v, %v", created, err)
+	}
+}
+
+func TestMissingIssueMapsToCardNotFound(t *testing.T) {
+	t.Parallel()
+	transport := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return response(http.StatusNotFound, `{}`), nil
+	})
+	client, _ := New(&http.Client{Transport: transport}, Config{
+		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", AccessToken: "project-token",
+	})
+	_, err := client.Issue(context.Background(), 404)
+	if !errors.Is(err, board.ErrCardNotFound) {
+		t.Fatalf("Issue() error = %v", err)
 	}
 }
 

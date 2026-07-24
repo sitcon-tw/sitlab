@@ -29,11 +29,36 @@ Create a project access token in `sitcon-tw/2027`:
 
 Store the token as `SITCON_BOARD_GITLAB_PROJECT_ACCESS_TOKEN`. The application uses it to read project members, labels and issues, and to reconcile issue mutations.
 
+Create a project webhook in `sitcon-tw/2027`:
+
+- Name: `SITLAB Board Realtime`
+- Description: `Sync GitLab issue changes to SITLAB Board`
+- URL: `https://board.example.com/api/v1/webhooks/gitlab/project`
+- Signing token: select **Generate signing token**, then immediately store the complete `whsec_...` value as `SITCON_BOARD_GITLAB_PROJECT_WEBHOOK_SIGNING_TOKEN`
+- Secret token: empty
+- Trigger: **Work item events** only
+- Custom headers and custom webhook template: empty
+- SSL verification: enabled
+
+The Work item trigger still sends Issue payloads with `X-Gitlab-Event: Issue Hook`; the application ignores non-Issue work item types.
+
+Create a group webhook in `sitcon-tw`:
+
+- Name: `SITLAB Member Realtime`
+- Description: `Refresh SITLAB Board members after GitLab group membership changes`
+- URL: `https://board.example.com/api/v1/webhooks/gitlab/group`
+- Signing token: generate a second token and store it as `SITCON_BOARD_GITLAB_GROUP_WEBHOOK_SIGNING_TOKEN`
+- Secret token: empty
+- Trigger: **Member events** only
+- SSL verification: enabled
+
+Group Member events require GitLab Premium or Ultimate and group Owner access. Do not reuse signing tokens. GitLab shows each generated token only for configuration; the receiver validates `webhook-signature`, `webhook-id`, and `webhook-timestamp` and never accepts the legacy plain-text secret as a substitute.
+
 The team directory lives at `.sitcon/board-directory.yml` in this repository. The Docker build copies it into the application image, so no GitHub API token is needed. Push and redeploy after changing the file. The application intentionally stays unready when the directory, member, or board snapshot cannot be initialized.
 
 ## 3. Generate secrets
 
-Generate three independent URL-safe values. Do not reuse a value:
+Generate three independent URL-safe values. Do not reuse a value; webhook signing tokens come from GitLab and are not generated with these commands:
 
 ```bash
 openssl rand -hex 32 # SITCON_BOARD_DATABASE_PASSWORD
@@ -69,7 +94,7 @@ In the Compose service domain settings:
 
 Do not publish PostgreSQL or add a domain to the `postgres` or `migrate` services.
 
-After the certificate is active, confirm that the OAuth application still has the exact callback URI. Then redeploy if any environment variable changed.
+After the certificate is active, confirm that the OAuth application still has the exact callback URI. Then redeploy if any environment variable changed. In each GitLab webhook's **Recent events** menu, send a test and require a `2xx` response before relying on realtime delivery. Finally, edit a real labeled Issue and verify that an already-open board updates without a reload.
 
 ## 6. Verify the deployment
 
@@ -101,5 +126,8 @@ Back up the `sitcon-board-postgres` volume or configure Dokploy database backups
 - `initial source sync` with a directory file error: verify the image was rebuilt from a revision containing `.sitcon/board-directory.yml`.
 - `initial source sync` with a GitLab error: verify the project access token and its role/scope in `sitcon-tw/2027`.
 - OAuth callback error: compare the GitLab Redirect URI and the generated `${SITCON_BOARD_PUBLIC_URL}/api/v1/auth/gitlab/callback` character for character.
+- Webhook `401`: confirm the complete generated `whsec_...` value is stored under the matching project or group environment key, and that GitLab and the app clocks are synchronized.
+- Webhook `400`: confirm the project is exactly `sitcon-tw/2027`, the group is exactly `sitcon-tw`, and no custom webhook template is configured.
+- Webhook succeeds but the board is stale: inspect `gitlab_webhook_deliveries_total`, `gitlab_webhook_processing_duration_seconds`, and GitLab Recent events; the 30-second Board poll remains the issue catch-up fallback.
 - CSRF origin error: `SITCON_BOARD_PUBLIC_URL` must be the browser's exact HTTPS origin and must not include a path.
 - PostgreSQL authentication error after rotating an environment variable: restore the old value or update the persisted PostgreSQL role password before redeploying.

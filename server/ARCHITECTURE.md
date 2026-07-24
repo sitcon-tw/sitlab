@@ -10,6 +10,8 @@ The server is a modular monolith with inward-pointing dependencies:
 
 The directory source is `.sitcon/board-directory.yml` from this repository, bundled into the production image. Members and issues come from the fixed GitLab project `sitcon-tw/2027`; clients never provide either source. Production startup performs an initial directory/member/board sync. Existing snapshots may serve during a source outage, but an instance with no snapshots fails readiness.
 
+GitLab Project Issue and Group Member hooks use independent HMAC-SHA256 signing tokens. Valid deliveries are deduplicated by `webhook-id` and committed to PostgreSQL before a `202` response. The webhook worker retries durable deliveries, fetches canonical issues, preserves cards with local operations, and advances the bootstrap revision. PostgreSQL `LISTEN/NOTIFY` fans revisions to authenticated SSE connections; the periodic full sync remains the recovery path for missed hooks.
+
 Unsafe authenticated requests require `X-CSRF-Token` plus an allowed Origin. Session cookies are opaque, HttpOnly, Secure in production, and renewed for 14 days on every valid use. OAuth PKCE verifiers are encrypted at rest, while session and OAuth state tokens are stored only as keyed hashes.
 
 Optimistic mutations and durable operations commit atomically. Operation IDs are idempotency keys. The operation worker applies full current card intent to GitLab and records technical failure detail for logs and retry while preserving stable client error codes.

@@ -41,6 +41,7 @@ type syncFake struct{}
 func (syncFake) Status(context.Context) (SyncStatus, error) {
 	return SyncStatus{State: "synced", LastSuccessAt: time.Unix(1, 0)}, nil
 }
+func (syncFake) Revision(context.Context) (string, error) { return "7", nil }
 
 func TestGetAggregatesFirstRenderAndIssuesCSRF(t *testing.T) {
 	t.Parallel()
@@ -49,7 +50,7 @@ func TestGetAggregatesFirstRenderAndIssuesCSRF(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
-	if result.CSRFToken != "csrf" || result.Me.GitLabUserID != 123 || len(result.Directory.Teams) != 1 || result.Preferences.DefaultTeamKey == nil || result.Sync.State != "synced" {
+	if result.Revision != "7" || result.CSRFToken != "csrf" || result.Me.GitLabUserID != 123 || len(result.Directory.Teams) != 1 || result.Preferences.DefaultTeamKey == nil || result.Sync.State != "synced" {
 		t.Fatalf("Get() = %#v", result)
 	}
 }

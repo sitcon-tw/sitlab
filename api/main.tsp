@@ -10,6 +10,7 @@ import "./services/system.tsp";
 import "./services/auth.tsp";
 import "./services/directory.tsp";
 import "./services/board.tsp";
+import "./services/realtime.tsp";
 
 using Http;
 using OpenAPI;
@@ -24,4 +25,5 @@ using OpenAPI;
 @tagMetadata("Directory", #{ description: "Normalized SITCON teams and GitLab project members." })
 @tagMetadata("Cards", #{ description: "Optimistic GitLab issue board mutations." })
 @tagMetadata("Sync", #{ description: "Durable operations and background snapshot refresh." })
+@tagMetadata("Realtime", #{ description: "Signed GitLab webhooks and authenticated snapshot events." })
 namespace SitconBoard;

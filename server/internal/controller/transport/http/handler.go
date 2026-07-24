@@ -47,6 +47,19 @@ type BoardService interface {
 
 type SyncService interface {
 	RequestRefresh() time.Time
+	EnqueueWebhook(context.Context, board.WebhookDelivery) (bool, error)
+}
+
+type RevisionEvents interface {
+	Revision(context.Context) (string, error)
+	SubscribeRevisions() (<-chan string, func())
+}
+
+type RealtimeMetrics interface {
+	WebhookDelivery(scope, result string)
+	SSEConnected()
+	SSEDisconnected()
+	SSEEvent()
 }
 
 type handler struct {
@@ -55,7 +68,17 @@ type handler struct {
 	directory DirectoryService
 	board     BoardService
 	sync      SyncService
+	webhooks  WebhookConfig
+	events    RevisionEvents
+	metrics   RealtimeMetrics
 	cookie    CookieConfig
+}
+
+type WebhookConfig struct {
+	ProjectSigningToken string
+	GroupSigningToken   string
+	ProjectPath         string
+	GroupPath           string
 }
 
 type CookieConfig struct {

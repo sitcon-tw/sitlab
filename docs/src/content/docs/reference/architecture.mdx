@@ -8,18 +8,18 @@ order: 30
 ## Data flow
 
 ```text
-Bundled board-directory.yml + GitLab project members + issues
-                                   |
-                            background sync
-                                   v
-                    PostgreSQL snapshots
-                              |
-                   injected bootstrap JSON
-                              v
-                       React Board
+GitLab signed webhooks ------> durable webhook inbox
+                                      |
+Bundled directory + GitLab API ---> PostgreSQL snapshots + revision
+                                      |
+                         injected bootstrap + REST + SSE
+                                      |
+                                  React Board
 ```
 
-Production traffic is ready only after directory, members, and board snapshots exist. Go injects the complete authenticated bootstrap into `index.html`; React pre-fills TanStack Query before the first render. `GET /api/v1/bootstrap` is the development fallback and 30-second background refresh.
+Production traffic is ready only after directory, members, and board snapshots exist. Go injects the complete authenticated bootstrap into `index.html`; React pre-fills TanStack Query before the first render. `GET /api/v1/bootstrap` is the development fallback and 30-second recovery poll.
+
+Signed Project Issue and Group Member deliveries are committed to a durable PostgreSQL inbox before acknowledgement. The worker fetches canonical GitLab state, then advances a monotonic bootstrap revision in the same transaction as visible changes. PostgreSQL `LISTEN/NOTIFY` fans that revision across app instances, and authenticated SSE invalidates TanStack Query in open browsers. Full Board and Directory polling remains the missed-event fallback.
 
 ## Dependency rule
 

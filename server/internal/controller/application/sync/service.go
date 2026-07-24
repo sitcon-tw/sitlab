@@ -43,11 +43,22 @@ type Service struct {
 	now       func() time.Time
 	tracer    trace.Tracer
 	refresh   chan struct{}
+	webhook   chan struct{}
+	observer  WebhookObserver
+}
+
+type WebhookObserver interface {
+	WebhookProcessed(kind, result string, duration time.Duration)
 }
 
 func NewService(gitlab GitLab, directory DirectorySource, repo Repository, log MissingMemberLogger, tracer trace.Tracer) *Service {
-	return &Service{gitlab: gitlab, directory: directory, repo: repo, log: log, now: time.Now, tracer: tracer, refresh: make(chan struct{}, 1)}
+	return &Service{
+		gitlab: gitlab, directory: directory, repo: repo, log: log, now: time.Now, tracer: tracer,
+		refresh: make(chan struct{}, 1), webhook: make(chan struct{}, 1),
+	}
 }
+
+func (s *Service) SetWebhookObserver(observer WebhookObserver) { s.observer = observer }
 
 func (s *Service) RefreshDirectory(ctx context.Context) error {
 	ctx, span := s.tracer.Start(ctx, "sync.directory")
@@ -193,6 +204,119 @@ func (s *Service) RunOperations(ctx context.Context, pollInterval time.Duration)
 		select {
 		case <-ctx.Done():
 			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (s *Service) EnqueueWebhook(ctx context.Context, delivery board.WebhookDelivery) (bool, error) {
+	duplicate, err := s.repo.EnqueueWebhook(ctx, delivery)
+	if err != nil {
+		return false, err
+	}
+	if !duplicate {
+		select {
+		case s.webhook <- struct{}{}:
+		default:
+		}
+	}
+	return duplicate, nil
+}
+
+func (s *Service) ProcessWebhookOne(ctx context.Context) (bool, error) {
+	ctx, span := s.tracer.Start(ctx, "sync.webhook")
+	defer span.End()
+	now := s.now().UTC()
+	delivery, err := s.repo.ClaimWebhook(ctx, now)
+	if errors.Is(err, board.ErrOperationNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, technical(span, "claim GitLab webhook", err)
+	}
+	startedAt := time.Now()
+	metricResult := "failed"
+	defer func() {
+		if s.observer != nil {
+			s.observer.WebhookProcessed(delivery.EventKind, metricResult, time.Since(startedAt))
+		}
+	}()
+	if delivery.EventKind == "member" {
+		err = s.RefreshDirectory(ctx)
+	} else if delivery.EventKind == "issue" && delivery.IssueIID != nil {
+		err = s.reconcileWebhookIssue(ctx, *delivery.IssueIID, now)
+	} else {
+		err = fmt.Errorf("unsupported webhook delivery kind %q", delivery.EventKind)
+	}
+	if err != nil {
+		_ = s.repo.FailWebhook(ctx, delivery, now, err.Error())
+		if delivery.Attempts >= 10 {
+			metricResult = "dead"
+		} else {
+			metricResult = "retry"
+		}
+		return true, technical(span, "process GitLab webhook", err)
+	}
+	if err := s.repo.CompleteWebhook(ctx, delivery.ID, now); err != nil {
+		return true, technical(span, "complete GitLab webhook", err)
+	}
+	metricResult = "completed"
+	return true, nil
+}
+
+func (s *Service) reconcileWebhookIssue(ctx context.Context, issueIID int64, now time.Time) error {
+	issue, err := s.gitlab.Issue(ctx, issueIID)
+	if errors.Is(err, board.ErrCardNotFound) {
+		_, reconcileErr := s.repo.ReconcileIssue(ctx, issueIID, nil, now)
+		return reconcileErr
+	}
+	if err != nil {
+		return err
+	}
+	directorySnapshot, err := s.repo.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	missingAssignee := false
+	for _, assigneeID := range issue.AssigneeGitLabUserIDs {
+		if !directorySnapshot.IsAssignable(assigneeID) {
+			missingAssignee = true
+			break
+		}
+	}
+	if missingAssignee {
+		if err := s.RefreshDirectory(ctx); err != nil {
+			return err
+		}
+		directorySnapshot, err = s.repo.Snapshot(ctx)
+		if err != nil {
+			return err
+		}
+	}
+	card, included := mapIssue(issue, directorySnapshot, DefaultBoardLists, make(map[string]int32))
+	if !included {
+		_, err = s.repo.ReconcileIssue(ctx, issueIID, nil, now)
+		return err
+	}
+	_, err = s.repo.ReconcileIssue(ctx, issueIID, &card, now)
+	return err
+}
+
+func (s *Service) RunWebhooks(ctx context.Context, pollInterval time.Duration) {
+	if pollInterval <= 0 {
+		pollInterval = 500 * time.Millisecond
+	}
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	for {
+		processed, _ := s.ProcessWebhookOne(ctx)
+		if processed {
+			continue
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.webhook:
 		case <-ticker.C:
 		}
 	}

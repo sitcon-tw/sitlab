@@ -23,6 +23,7 @@ import (
 	"example.com/project-template/internal/controller/infrastructure/postgres"
 	pgoauth "example.com/project-template/internal/controller/infrastructure/postgres/oauth"
 	pgsitcon "example.com/project-template/internal/controller/infrastructure/postgres/sitcon"
+	domainboard "example.com/project-template/internal/domain/board"
 	domaindirectory "example.com/project-template/internal/domain/directory"
 	"example.com/project-template/internal/domain/identity"
 )
@@ -53,17 +54,40 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	}
 	defer pool.Close()
 	if _, err := pool.Exec(ctx, `
-		TRUNCATE durable_operations, issue_cache, board_lists, user_preferences,
+		TRUNCATE gitlab_webhook_deliveries, durable_operations, issue_cache, board_lists, user_preferences,
 		         directory_team_memberships, directory_members, directory_teams,
 		         sync_snapshots, oauth_states, auth_sessions, users
 		RESTART IDENTITY CASCADE
 	`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pool.Exec(ctx, `UPDATE realtime_state SET revision = 1, updated_at = now() WHERE topic = 'bootstrap'`); err != nil {
+		t.Fatal(err)
+	}
 
 	now := time.Date(2026, time.July, 14, 8, 0, 0, 0, time.UTC)
 	oauthRepo := pgoauth.New(pool)
 	store := pgsitcon.New(pool)
+	webhookIssueIID := int64(42)
+	delivery := domainboard.WebhookDelivery{
+		ID: "integration-delivery", Scope: "project", EventKind: "issue", EventName: "Issue Hook",
+		IssueIID: &webhookIssueIID, ReceivedAt: now,
+	}
+	duplicate, err := store.EnqueueWebhook(ctx, delivery)
+	if err != nil || duplicate {
+		t.Fatalf("enqueue webhook = duplicate %v, error %v", duplicate, err)
+	}
+	duplicate, err = store.EnqueueWebhook(ctx, delivery)
+	if err != nil || !duplicate {
+		t.Fatalf("duplicate webhook = duplicate %v, error %v", duplicate, err)
+	}
+	claimed, err := store.ClaimWebhook(ctx, now)
+	if err != nil || claimed.ID != delivery.ID || claimed.Attempts != 1 {
+		t.Fatalf("claim webhook = %#v, error %v", claimed, err)
+	}
+	if err := store.CompleteWebhook(ctx, delivery.ID, now); err != nil {
+		t.Fatalf("complete webhook: %v", err)
+	}
 	user, err := oauthRepo.UpsertUser(ctx, identity.User{
 		ID: uuid.NewString(), GitLabUserID: 101, Username: "alice", DisplayName: "Alice",
 		ProfileURL: "https://gitlab.com/alice", AccessLevel: 40, CreatedAt: now,
@@ -72,6 +96,43 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	seedSnapshots(t, ctx, pool, now)
+
+	listenerCtx, stopListener := context.WithCancel(ctx)
+	updates, unsubscribe := store.SubscribeRevisions()
+	go store.RunRevisionListener(listenerCtx)
+	select {
+	case <-updates:
+	case <-time.After(5 * time.Second):
+		t.Fatal("revision listener did not become ready")
+	}
+	externalIssueID := int64(770)
+	external := domainboard.Card{
+		IssueIID: 77, GitLabIssueID: &externalIssueID, Title: "外部更新", Description: "GitLab canonical",
+		WebURL: "https://gitlab.com/sitcon-tw/2027/-/issues/77", ListKey: "doing", TeamKey: "development",
+		AssigneeGitLabUserIDs: []int64{101}, Labels: []string{"組別::開發", "Status::Doing"},
+		SyncState: domainboard.OperationSynced, CreatedAt: now, UpdatedAt: now.Add(time.Minute),
+	}
+	realtimeChanged, err := store.ReconcileIssue(ctx, external.IssueIID, &external, now.Add(time.Minute))
+	if err != nil || !realtimeChanged {
+		t.Fatalf("reconcile external issue = changed %v, error %v", realtimeChanged, err)
+	}
+	select {
+	case revision := <-updates:
+		if revision == "1" {
+			t.Fatalf("revision did not advance: %s", revision)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("reconcile did not publish a revision")
+	}
+	if card, err := store.Card(ctx, external.IssueIID); err != nil || card.Description != "GitLab canonical" || len(card.AssigneeGitLabUserIDs) != 1 {
+		t.Fatalf("external card = %#v, error %v", card, err)
+	}
+	realtimeChanged, err = store.ReconcileIssue(ctx, external.IssueIID, nil, now.Add(2*time.Minute))
+	if err != nil || !realtimeChanged {
+		t.Fatalf("remove external issue = changed %v, error %v", realtimeChanged, err)
+	}
+	unsubscribe()
+	stopListener()
 
 	session, err := oauthRepo.CreateSession(ctx, identity.Session{
 		ID: uuid.NewString(), UserID: user.ID, TokenHash: []byte("session-hash"),
@@ -194,6 +255,9 @@ func (*operationGitLabFake) ProjectMembers(context.Context) ([]domaindirectory.G
 }
 func (*operationGitLabFake) Issues(context.Context) ([]appsync.GitLabIssue, error) {
 	return nil, nil
+}
+func (*operationGitLabFake) Issue(context.Context, int64) (appsync.GitLabIssue, error) {
+	return appsync.GitLabIssue{}, domainboard.ErrCardNotFound
 }
 func (f *operationGitLabFake) ApplyIssue(_ context.Context, mutation appsync.IssueMutation) (appsync.GitLabIssue, error) {
 	f.lastMutation = &mutation

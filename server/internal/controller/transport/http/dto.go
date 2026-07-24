@@ -100,6 +100,7 @@ type syncStatusResponse struct {
 }
 
 type bootstrapResponse struct {
+	Revision    string                    `json:"revision"`
 	Me          userResponse              `json:"me"`
 	CSRFToken   string                    `json:"csrfToken"`
 	Teams       []teamResponse            `json:"teams"`
@@ -190,7 +191,7 @@ func mapBootstrap(item appbootstrap.Result) bootstrapResponse {
 		members = append(members, mapDirectoryMember(member))
 	}
 	return bootstrapResponse{
-		Me: mapUser(item.Me), CSRFToken: item.CSRFToken, Teams: teams, Members: members,
+		Revision: item.Revision, Me: mapUser(item.Me), CSRFToken: item.CSRFToken, Teams: teams, Members: members,
 		Board: mapBoardSnapshot(item.Board), Preferences: mapPreferences(item.Preferences),
 		Sync: syncStatusResponse{
 			State: item.Sync.State, LastSuccessAt: item.Sync.LastSuccessAt,

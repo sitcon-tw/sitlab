@@ -109,6 +109,7 @@ type bootstrapFake struct{}
 func (bootstrapFake) Get(context.Context, identity.SessionClaims) (appbootstrap.Result, error) {
 	key := "development"
 	return appbootstrap.Result{
+		Revision:    "1",
 		Me:          identity.User{ID: httpUserID, GitLabUserID: 101, Username: "alice", DisplayName: "Alice", ProfileURL: "https://gitlab.example/alice", AccessLevel: 40},
 		CSRFToken:   "valid-csrf",
 		Directory:   directory.Snapshot{Teams: []directory.Team{{Key: key, Name: "開發組", Active: true}}},
@@ -127,6 +128,9 @@ func (bootstrapFailureFake) Get(context.Context, identity.SessionClaims) (appboo
 type syncFake struct{}
 
 func (syncFake) RequestRefresh() time.Time { return time.Unix(2, 0) }
+func (syncFake) EnqueueWebhook(context.Context, board.WebhookDelivery) (bool, error) {
+	return false, nil
+}
 
 func testRouter(readiness func(context.Context) error, webDir string) http.Handler {
 	return NewRouter(Dependencies{

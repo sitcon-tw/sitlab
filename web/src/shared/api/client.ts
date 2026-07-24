@@ -24,8 +24,10 @@ export function fieldError(error: unknown, field: string) {
 	return error.errors.find((item) => item.location === field || item.location?.endsWith(`.${field}`))?.message;
 }
 
+export const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "/api/v1").replace(/\/$/, "");
+
 export const api = createClient<paths>({
-	baseUrl: import.meta.env.VITE_API_BASE_URL ?? "/api/v1",
+	baseUrl: apiBaseUrl,
 	credentials: "include",
 	headers: { Accept: "application/json, application/problem+json" }
 });

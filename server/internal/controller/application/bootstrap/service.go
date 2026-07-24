@@ -11,6 +11,7 @@ import (
 )
 
 type Result struct {
+	Revision    string
 	Me          identity.User
 	CSRFToken   string
 	Directory   directory.Snapshot
@@ -35,28 +36,41 @@ func (s *Service) Get(ctx context.Context, claims identity.SessionClaims) (Resul
 	if err != nil {
 		return Result{}, err
 	}
-	directorySnapshot, err := s.directory.Snapshot(ctx)
-	if err != nil {
-		return Result{}, err
-	}
-	boardSnapshot, err := s.board.Board(ctx)
-	if err != nil {
-		return Result{}, err
-	}
-	preferences, err := s.directory.Preferences(ctx, claims.UserID)
-	if err != nil {
-		return Result{}, err
-	}
-	status, err := s.sync.Status(ctx)
-	if err != nil {
-		return Result{}, fmt.Errorf("load sync status: %w", err)
-	}
 	csrfToken, err := s.auth.IssueCSRF(ctx, claims)
 	if err != nil {
 		return Result{}, fmt.Errorf("issue bootstrap csrf token: %w", err)
 	}
-	return Result{
-		Me: me, CSRFToken: csrfToken, Directory: directorySnapshot,
-		Board: boardSnapshot, Preferences: preferences, Sync: status,
-	}, nil
+	for attempt := 0; attempt < 3; attempt++ {
+		before, revisionErr := s.sync.Revision(ctx)
+		if revisionErr != nil {
+			return Result{}, fmt.Errorf("load bootstrap revision: %w", revisionErr)
+		}
+		directorySnapshot, snapshotErr := s.directory.Snapshot(ctx)
+		if snapshotErr != nil {
+			return Result{}, snapshotErr
+		}
+		boardSnapshot, boardErr := s.board.Board(ctx)
+		if boardErr != nil {
+			return Result{}, boardErr
+		}
+		preferences, preferencesErr := s.directory.Preferences(ctx, claims.UserID)
+		if preferencesErr != nil {
+			return Result{}, preferencesErr
+		}
+		status, statusErr := s.sync.Status(ctx)
+		if statusErr != nil {
+			return Result{}, fmt.Errorf("load sync status: %w", statusErr)
+		}
+		after, revisionErr := s.sync.Revision(ctx)
+		if revisionErr != nil {
+			return Result{}, fmt.Errorf("reload bootstrap revision: %w", revisionErr)
+		}
+		if before == after {
+			return Result{
+				Revision: after, Me: me, CSRFToken: csrfToken, Directory: directorySnapshot,
+				Board: boardSnapshot, Preferences: preferences, Sync: status,
+			}, nil
+		}
+	}
+	return Result{}, fmt.Errorf("bootstrap changed while reading")
 }

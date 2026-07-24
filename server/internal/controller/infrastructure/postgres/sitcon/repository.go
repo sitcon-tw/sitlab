@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,10 +20,25 @@ import (
 )
 
 type Repository struct {
-	pool *pgxpool.Pool
+	pool           *pgxpool.Pool
+	subscriberMu   sync.Mutex
+	subscribers    map[uint64]chan string
+	nextSubscriber uint64
 }
 
-func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
+func New(pool *pgxpool.Pool) *Repository {
+	return &Repository{pool: pool, subscribers: make(map[uint64]chan string)}
+}
+
+func (r *Repository) Revision(ctx context.Context) (string, error) {
+	var revision string
+	if err := postgres.Executor(ctx, r.pool).QueryRow(ctx, `
+		SELECT revision::text FROM realtime_state WHERE topic = 'bootstrap'
+	`).Scan(&revision); err != nil {
+		return "", fmt.Errorf("load bootstrap revision: %w", err)
+	}
+	return revision, nil
+}
 
 func (r *Repository) Status(ctx context.Context) (domainboard.SyncStatus, error) {
 	var status domainboard.SyncStatus
@@ -151,7 +167,8 @@ func (r *Repository) ReplaceDirectory(ctx context.Context, snapshot domaindirect
 				return err
 			}
 		}
-		return nil
+		_, err := bumpBootstrapRevision(ctx, tx, snapshot.SyncedAt)
+		return err
 	})
 }
 
@@ -241,6 +258,10 @@ func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List,
 			    last_error = NULL,
 			    updated_at = EXCLUDED.updated_at
 		`, revision, syncedAt)
+		if err != nil {
+			return err
+		}
+		_, err = bumpBootstrapRevision(ctx, tx, syncedAt)
 		return err
 	})
 }
@@ -380,6 +401,10 @@ func (r *Repository) CompleteOperation(ctx context.Context, pending domainboard.
 			SET state = 'synced', last_error_code = NULL, last_error_detail = NULL, updated_at = $2
 			WHERE id = $1
 		`, operationID, completedAt)
+		if err != nil {
+			return err
+		}
+		_, err = bumpBootstrapRevision(ctx, tx, completedAt)
 		return err
 	})
 }
@@ -400,13 +425,19 @@ func (r *Repository) FailOperation(ctx context.Context, pending domainboard.Pend
 				SET sync_state = 'failed', sync_error = $2, pending_operation_id = $3, updated_at = $4
 				WHERE issue_iid = $1
 			`, pending.Card.IssueIID, detail, operationID, failedAt)
-			return err
+			if err != nil {
+				return err
+			}
+		} else {
+			if _, err := tx.Exec(ctx, `
+				UPDATE issue_cache
+				SET sync_state = 'failed', sync_error = $2, updated_at = $3
+				WHERE issue_iid = $1 AND pending_operation_id = $4
+			`, pending.Card.IssueIID, detail, failedAt, operationID); err != nil {
+				return err
+			}
 		}
-		_, err := tx.Exec(ctx, `
-			UPDATE issue_cache
-			SET sync_state = 'failed', sync_error = $2, updated_at = $3
-			WHERE issue_iid = $1 AND pending_operation_id = $4
-		`, pending.Card.IssueIID, detail, failedAt, operationID)
+		_, err := bumpBootstrapRevision(ctx, tx, failedAt)
 		return err
 	})
 }
@@ -574,6 +605,10 @@ func (r *Repository) SetPreferences(ctx context.Context, userID, teamKey string,
 			ON CONFLICT (team_key, gitlab_user_id, source) DO UPDATE
 			SET updated_at = EXCLUDED.updated_at
 		`, teamKey, gitLabUserID, confirmedAt)
+		if err != nil {
+			return err
+		}
+		_, err = bumpBootstrapRevision(ctx, tx, confirmedAt)
 		return err
 	})
 	if err != nil {
@@ -714,7 +749,8 @@ func (r *Repository) CreateCard(ctx context.Context, mutation domainboard.Mutati
 		mutation.Card.IssueIID = issueIID
 		mutation.Operation.IssueIID = &issueIID
 		result = domainboard.Result{Card: mutation.Card, Operation: mutation.Operation}
-		return nil
+		_, err := bumpBootstrapRevision(ctx, tx, mutation.Card.UpdatedAt)
+		return err
 	})
 	if operationConflict(err) {
 		return domainboard.Result{}, domainboard.ErrOperationConflict
@@ -757,7 +793,8 @@ func (r *Repository) UpdateCard(ctx context.Context, mutation domainboard.Mutati
 		if err := replaceCardAssignees(ctx, tx, mutation.Card.IssueIID, mutation.Card.AssigneeGitLabUserIDs); err != nil {
 			return err
 		}
-		return nil
+		_, err = bumpBootstrapRevision(ctx, tx, mutation.Card.UpdatedAt)
+		return err
 	})
 	if operationConflict(err) {
 		return domainboard.Result{}, domainboard.ErrOperationConflict
@@ -805,7 +842,8 @@ func (r *Repository) RetryOperation(ctx context.Context, operationID string) (do
 				return err
 			}
 		}
-		return nil
+		_, err = bumpBootstrapRevision(ctx, tx, operation.UpdatedAt)
+		return err
 	})
 	if err != nil {
 		if errors.Is(err, domainboard.ErrOperationConflict) || errors.Is(err, domainboard.ErrOperationNotFound) {

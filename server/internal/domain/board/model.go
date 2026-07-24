@@ -131,6 +131,20 @@ type SyncStatus struct {
 	Message       string
 }
 
+type WebhookDelivery struct {
+	ID          string
+	Scope       string
+	EventKind   string
+	EventName   string
+	IssueIID    *int64
+	State       string
+	Attempts    int32
+	LastError   string
+	AvailableAt time.Time
+	ReceivedAt  time.Time
+	UpdatedAt   time.Time
+}
+
 type AssignmentDirectory interface {
 	TeamExists(teamKey string) bool
 	IsAssignable(gitLabUserID int64) bool

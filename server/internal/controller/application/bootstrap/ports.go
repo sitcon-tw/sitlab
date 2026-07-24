@@ -28,4 +28,5 @@ type SyncStatus = board.SyncStatus
 
 type Sync interface {
 	Status(context.Context) (SyncStatus, error)
+	Revision(context.Context) (string, error)
 }

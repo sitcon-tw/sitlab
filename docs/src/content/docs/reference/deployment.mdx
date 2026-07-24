@@ -31,11 +31,12 @@ The production Compose definition is `deployments/dokploy/compose.yaml`. It diff
 - `SITCON_BOARD_ENV=production` and Secure cookies are mandatory.
 - The browser origin and OAuth callback are derived from the required `SITCON_BOARD_PUBLIC_URL`.
 - The team directory is copied from `.sitcon/board-directory.yml` into the image at build time.
+- Independent GitLab project/group Signing tokens are mandatory, and the public webhook endpoints validate payload integrity before durable enqueue.
 - Only `app:8080` joins Dokploy's external proxy network; PostgreSQL remains on an isolated internal network.
 - The application filesystem is read-only, Linux capabilities are dropped, and a small `/tmp` tmpfs is provided.
 - PostgreSQL data uses a named volume, and migrations must exit successfully before the app starts.
 
-Follow the complete [Dokploy runbook](https://github.com/sitcon-tw/sitlab/blob/main/deployments/dokploy/README.md) for DNS, GitLab OAuth, project-token permissions, environment variables, domain routing, verification, updates, and backups.
+Follow the complete [Dokploy runbook](https://github.com/sitcon-tw/sitlab/blob/main/deployments/dokploy/README.md) for DNS, GitLab OAuth, project-token permissions, signed project/group webhooks, environment variables, domain routing, verification, updates, and backups.
 
 ## Observability profile
 

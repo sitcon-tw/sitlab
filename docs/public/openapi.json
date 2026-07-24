@@ -7,6 +7,10 @@
 	},
 	"tags": [
 		{
+			"name": "Realtime",
+			"description": "Signed GitLab webhooks and authenticated snapshot events."
+		},
+		{
 			"name": "Sync",
 			"description": "Durable operations and background snapshot refresh."
 		},
@@ -1144,6 +1148,61 @@
 				]
 			}
 		},
+		"/events/bootstrap": {
+			"get": {
+				"operationId": "streamBootstrapEvents",
+				"summary": "Stream authenticated bootstrap revision changes",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "The request has succeeded.",
+						"content": {
+							"text/event-stream": {
+								"schema": {
+									"type": "string"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Realtime"],
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
 		"/health/live": {
 			"get": {
 				"operationId": "getLiveness",
@@ -1423,6 +1482,168 @@
 					}
 				]
 			}
+		},
+		"/webhooks/gitlab/group": {
+			"post": {
+				"operationId": "receiveGitLabGroupWebhook",
+				"summary": "Receive a signed GitLab group webhook",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/GitLabWebhookHeaders.webhookId"
+					},
+					{
+						"$ref": "#/components/parameters/GitLabWebhookHeaders.webhookTimestamp"
+					},
+					{
+						"$ref": "#/components/parameters/GitLabWebhookHeaders.webhookSignature"
+					},
+					{
+						"$ref": "#/components/parameters/GitLabWebhookHeaders.gitLabEvent"
+					}
+				],
+				"responses": {
+					"202": {
+						"description": "The request has been accepted for processing, but processing has not yet completed.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/WebhookAcceptedResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The server could not understand the request due to invalid syntax.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Realtime"],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {}
+						}
+					}
+				}
+			}
+		},
+		"/webhooks/gitlab/project": {
+			"post": {
+				"operationId": "receiveGitLabProjectWebhook",
+				"summary": "Receive a signed GitLab project webhook",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/GitLabWebhookHeaders.webhookId"
+					},
+					{
+						"$ref": "#/components/parameters/GitLabWebhookHeaders.webhookTimestamp"
+					},
+					{
+						"$ref": "#/components/parameters/GitLabWebhookHeaders.webhookSignature"
+					},
+					{
+						"$ref": "#/components/parameters/GitLabWebhookHeaders.gitLabEvent"
+					}
+				],
+				"responses": {
+					"202": {
+						"description": "The request has been accepted for processing, but processing has not yet completed.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/WebhookAcceptedResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The server could not understand the request due to invalid syntax.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Realtime"],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {}
+						}
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -1455,6 +1676,38 @@
 					"minLength": 1
 				},
 				"explode": false
+			},
+			"GitLabWebhookHeaders.gitLabEvent": {
+				"name": "X-Gitlab-Event",
+				"in": "header",
+				"required": true,
+				"schema": {
+					"type": "string"
+				}
+			},
+			"GitLabWebhookHeaders.webhookId": {
+				"name": "webhook-id",
+				"in": "header",
+				"required": true,
+				"schema": {
+					"type": "string"
+				}
+			},
+			"GitLabWebhookHeaders.webhookSignature": {
+				"name": "webhook-signature",
+				"in": "header",
+				"required": true,
+				"schema": {
+					"type": "string"
+				}
+			},
+			"GitLabWebhookHeaders.webhookTimestamp": {
+				"name": "webhook-timestamp",
+				"in": "header",
+				"required": true,
+				"schema": {
+					"type": "string"
+				}
 			},
 			"IssueIidPath": {
 				"name": "issueIid",
@@ -1697,8 +1950,11 @@
 			},
 			"BootstrapResponse": {
 				"type": "object",
-				"required": ["me", "csrfToken", "teams", "members", "board", "preferences", "sync"],
+				"required": ["revision", "me", "csrfToken", "teams", "members", "board", "preferences", "sync"],
 				"properties": {
+					"revision": {
+						"type": "string"
+					},
 					"me": {
 						"$ref": "#/components/schemas/CurrentUser"
 					},
@@ -2124,7 +2380,8 @@
 							"OPERATION_NOT_FOUND",
 							"OPERATION_CONFLICT",
 							"SNAPSHOT_NOT_READY",
-							"GITLAB_UNAVAILABLE"
+							"GITLAB_UNAVAILABLE",
+							"GITLAB_INVALID_WEBHOOK"
 						]
 					},
 					"detail": {
@@ -2376,6 +2633,19 @@
 						"directoryTeamKeys": ["development"]
 					}
 				]
+			},
+			"WebhookAcceptedResponse": {
+				"type": "object",
+				"required": ["accepted", "duplicate"],
+				"properties": {
+					"accepted": {
+						"type": "boolean",
+						"enum": [true]
+					},
+					"duplicate": {
+						"type": "boolean"
+					}
+				}
 			},
 			"uuid": {
 				"type": "string",

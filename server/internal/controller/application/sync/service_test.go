@@ -54,6 +54,14 @@ func (f *gitLabFake) ProjectMembers(context.Context) ([]directory.GitLabMember, 
 	return f.members, nil
 }
 func (f *gitLabFake) Issues(context.Context) ([]GitLabIssue, error) { return f.issues, nil }
+func (f *gitLabFake) Issue(_ context.Context, issueIID int64) (GitLabIssue, error) {
+	for _, issue := range f.issues {
+		if issue.IssueIID == issueIID {
+			return issue, nil
+		}
+	}
+	return GitLabIssue{}, board.ErrCardNotFound
+}
 func (f *gitLabFake) ApplyIssue(_ context.Context, mutation IssueMutation) (GitLabIssue, error) {
 	f.applied = &mutation
 	return GitLabIssue{
@@ -64,11 +72,14 @@ func (f *gitLabFake) ApplyIssue(_ context.Context, mutation IssueMutation) (GitL
 }
 
 type repoFake struct {
-	directory directory.Snapshot
-	board     appboard.Snapshot
-	cards     []board.Card
-	pending   *PendingOperation
-	completed bool
+	directory        directory.Snapshot
+	board            appboard.Snapshot
+	cards            []board.Card
+	pending          *PendingOperation
+	completed        bool
+	webhook          *board.WebhookDelivery
+	webhookCompleted bool
+	reconciled       *board.Card
 }
 
 func (f *repoFake) Snapshot(context.Context) (directory.Snapshot, error) { return f.directory, nil }
@@ -94,6 +105,31 @@ func (f *repoFake) CompleteOperation(context.Context, PendingOperation, GitLabIs
 }
 func (*repoFake) FailOperation(context.Context, PendingOperation, time.Time, string, string) error {
 	return nil
+}
+func (*repoFake) EnqueueWebhook(context.Context, board.WebhookDelivery) (bool, error) {
+	return false, nil
+}
+func (f *repoFake) ClaimWebhook(context.Context, time.Time) (board.WebhookDelivery, error) {
+	if f.webhook == nil {
+		return board.WebhookDelivery{}, board.ErrOperationNotFound
+	}
+	delivery := *f.webhook
+	f.webhook = nil
+	return delivery, nil
+}
+func (f *repoFake) CompleteWebhook(context.Context, string, time.Time) error {
+	f.webhookCompleted = true
+	return nil
+}
+func (*repoFake) FailWebhook(context.Context, board.WebhookDelivery, time.Time, string) error {
+	return nil
+}
+func (f *repoFake) ReconcileIssue(_ context.Context, _ int64, card *board.Card, _ time.Time) (bool, error) {
+	if card != nil {
+		copy := *card
+		f.reconciled = &copy
+	}
+	return true, nil
 }
 
 func TestRefreshDirectoryUsesRevisionAndRefreshesMembers(t *testing.T) {
@@ -166,5 +202,27 @@ func TestProcessOneBuildsCanonicalIssueMutation(t *testing.T) {
 		gitlab.applied.StartDate != "2026-07-17" || gitlab.applied.DueDate != "2026-07-21" ||
 		!slices.Equal(gitlab.applied.AssigneeGitLabUserIDs, []int64{1, 2}) || !slices.Equal(gitlab.applied.Labels, []string{"security", "組別::開發", "Status::Doing"}) {
 		t.Fatalf("mutation = %#v", gitlab.applied)
+	}
+}
+
+func TestProcessWebhookFetchesCanonicalIssueAndReconcilesCard(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.July, 24, 8, 0, 0, 0, time.UTC)
+	iid := int64(42)
+	gitlab := &gitLabFake{issues: []GitLabIssue{{
+		IssueIID: iid, GitLabIssueID: 420, Title: "[開發組] 即時同步", Description: "canonical",
+		Labels: []string{"組別::開發", "Status::Doing"}, State: "opened", CreatedAt: now, UpdatedAt: now,
+	}}}
+	repo := &repoFake{
+		directory: directory.Snapshot{Teams: []directory.Team{{Key: "development", TitlePrefix: "[開發組]", GitLabLabel: "組別::開發", Active: true}}},
+		webhook:   &board.WebhookDelivery{ID: "delivery-42", EventKind: "issue", IssueIID: &iid},
+	}
+	service := NewService(gitlab, &directorySourceFake{}, repo, nil, noop.NewTracerProvider().Tracer("test"))
+	processed, err := service.ProcessWebhookOne(context.Background())
+	if err != nil || !processed || !repo.webhookCompleted || repo.reconciled == nil {
+		t.Fatalf("ProcessWebhookOne() = %v, %v, completed=%v card=%#v", processed, err, repo.webhookCompleted, repo.reconciled)
+	}
+	if repo.reconciled.Title != "即時同步" || repo.reconciled.ListKey != "doing" || repo.reconciled.Description != "canonical" {
+		t.Fatalf("reconciled card = %#v", repo.reconciled)
 	}
 }
