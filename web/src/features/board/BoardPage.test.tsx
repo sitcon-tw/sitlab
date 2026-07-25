@@ -81,6 +81,52 @@ describe("SITCON Board interactions", () => {
 		).toEqual(["Wating", "Inbox", "To Do", "Doing", "Review", "Closed"]);
 	});
 
+	it("filters the board to one team and clears the filter", async () => {
+		const user = userEvent.setup();
+		render(<Harness />);
+
+		await user.selectOptions(screen.getByLabelText("篩選組別"), "design");
+
+		const filters = screen.getByRole("region", { name: "篩選看板" });
+		expect(within(filters).getByRole("status")).toHaveTextContent("1 / 7 張卡片");
+		expect(screen.getByRole("heading", { name: "[設計組] 製作工作人員識別證" })).toBeVisible();
+		expect(screen.queryByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).not.toBeInTheDocument();
+		const doingLane = screen.getByRole("heading", { name: "Doing" }).closest("section");
+		expect(within(doingLane as HTMLElement).getByText("1")).toBeVisible();
+
+		await user.click(within(filters).getByRole("button", { name: "清除篩選" }));
+
+		expect(screen.getByLabelText("篩選組別")).toHaveValue("");
+		expect(within(filters).getByRole("status")).toHaveTextContent("7 / 7 張卡片");
+		expect(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
+	});
+
+	it("filters by any selected person and combines people with the team filter", async () => {
+		const user = userEvent.setup();
+		render(<Harness />);
+
+		await user.click(screen.getByRole("button", { name: "篩選負責人" }));
+		const dialog = screen.getByRole("dialog", { name: "篩選負責人" });
+		const currentUser = within(dialog).getByRole("checkbox", { name: /Yorukot/ });
+		currentUser.focus();
+		await user.keyboard("{Enter}");
+		await user.click(within(dialog).getByRole("checkbox", { name: /林采欣/ }));
+		expect(currentUser).toBeChecked();
+		expect(within(dialog).getByText("已選擇 2 人")).toBeVisible();
+		await user.click(within(dialog).getByRole("button", { name: "完成" }));
+
+		expect(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
+		expect(screen.getByRole("heading", { name: "[行政組] 整理志工行前通知" })).toBeVisible();
+		expect(screen.queryByRole("heading", { name: "[設計組] 製作工作人員識別證" })).not.toBeInTheDocument();
+		expect(screen.getByRole("status")).toHaveTextContent("2 / 7 張卡片");
+
+		await user.selectOptions(screen.getByLabelText("篩選組別"), "development");
+
+		expect(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
+		expect(screen.queryByRole("heading", { name: "[行政組] 整理志工行前通知" })).not.toBeInTheDocument();
+		expect(screen.getByRole("status")).toHaveTextContent("1 / 7 張卡片");
+	});
+
 	it("keeps team and status controls in card details and moves optimistically", async () => {
 		const user = userEvent.setup();
 		vi.mocked(moveCard).mockReturnValue(new Promise(() => undefined));

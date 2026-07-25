@@ -32,6 +32,7 @@ import {
 	updateStartDate,
 	updateTeam
 } from "./boardApi";
+import { BoardFilters } from "./BoardFilters";
 import styles from "./BoardPage.module.css";
 import { MembersDrawer } from "./MembersDrawer";
 import { memberById, preferredAssignees, taipeiDateAfter, teamLeaders, type BoardCard, type Bootstrap } from "./model";
@@ -57,14 +58,22 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 	const [membersOpen, setMembersOpen] = useState(false);
 	const [draggedIid, setDraggedIid] = useState<number | null>(null);
 	const [detailIid, setDetailIid] = useState<number | null>(null);
+	const [filterTeamKey, setFilterTeamKey] = useState("");
+	const [filterMemberIds, setFilterMemberIds] = useState<number[]>([]);
 	const [undo, setUndo] = useState<{ cardIid: number; assigneeIds: number[]; assigneeNames: string[] } | null>(null);
 	const localRetries = useRef(new Map<string, () => void>());
 	const nextTemporaryIid = useRef(-1);
 	const cards = bootstrap.board.cards;
+	const filteredCards = cards.filter(
+		(card) =>
+			(!filterTeamKey || card.teamKey === filterTeamKey) &&
+			(filterMemberIds.length === 0 || card.assigneeGitLabUserIds.some((id) => filterMemberIds.includes(id)))
+	);
 	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
-	const orderedCards = lists.flatMap((list) => cards.filter((card) => card.listKey === list.key).sort((a, b) => a.position - b.position));
+	const orderedCards = lists.flatMap((list) => filteredCards.filter((card) => card.listKey === list.key).sort((a, b) => a.position - b.position));
 	const detailCard = cards.find((card) => card.issueIid === detailIid) ?? null;
 	const detailIndex = detailCard ? orderedCards.findIndex((card) => card.issueIid === detailCard.issueIid) : -1;
+	const filtersActive = Boolean(filterTeamKey || filterMemberIds.length);
 
 	const replaceCard = (issueIid: number, card: BoardCard) => {
 		updateBootstrap((current) => ({
@@ -233,9 +242,22 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 						</button>
 					</div>
 				) : null}
+				<BoardFilters
+					bootstrap={bootstrap}
+					teamKey={filterTeamKey}
+					memberIds={filterMemberIds}
+					visibleCount={filteredCards.length}
+					totalCount={cards.length}
+					onTeamChange={setFilterTeamKey}
+					onMemberIdsChange={setFilterMemberIds}
+					onClear={() => {
+						setFilterTeamKey("");
+						setFilterMemberIds([]);
+					}}
+				/>
 				<section className={styles.board} aria-label="SITCON 2027 工作看板">
 					{lists.map((list) => {
-						const listCards = cards.filter((card) => card.listKey === list.key).sort((a, b) => a.position - b.position);
+						const listCards = filteredCards.filter((card) => card.listKey === list.key).sort((a, b) => a.position - b.position);
 						return (
 							<section
 								className={styles.lane}
@@ -265,7 +287,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 											onRetry={() => handleRetry(card)}
 										/>
 									))}
-									{listCards.length === 0 ? <p className={styles.emptyLane}>目前沒有卡片</p> : null}
+									{listCards.length === 0 ? <p className={styles.emptyLane}>{filtersActive ? "沒有符合篩選的卡片" : "目前沒有卡片"}</p> : null}
 								</div>
 							</section>
 						);

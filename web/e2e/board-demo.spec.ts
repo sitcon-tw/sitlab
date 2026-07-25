@@ -19,12 +19,19 @@ test.describe("SITCON Board demo visual audit", () => {
 
 			const layout = await page.evaluate(() => {
 				const quick = document.querySelector("form");
+				const filters = document.querySelector<HTMLElement>('section[aria-label="篩選看板"]');
 				const controls = quick
 					? [...quick.querySelectorAll<HTMLElement>(":scope > select, :scope > input, :scope > button, :scope > label, :scope > div")].filter(
 							(item) => item.offsetWidth > 2 && item.offsetHeight > 2
 						)
 					: [];
+				const filterControls = filters
+					? [...filters.querySelectorAll<HTMLElement>(":scope > label, :scope > button, :scope > div, :scope > span")].filter(
+							(item) => item.offsetWidth > 2 && item.offsetHeight > 2
+						)
+					: [];
 				const quickRect = quick?.getBoundingClientRect();
+				const filtersRect = filters?.getBoundingClientRect();
 				return {
 					viewport: window.innerWidth,
 					documentWidth: document.documentElement.scrollWidth,
@@ -34,17 +41,46 @@ test.describe("SITCON Board demo visual audit", () => {
 							const rect = item.getBoundingClientRect();
 							return rect.left >= quickRect.left - 1 && rect.right <= quickRect.right + 1;
 						})
+					),
+					filtersContained: Boolean(
+						filtersRect &&
+						filterControls.every((item) => {
+							const rect = item.getBoundingClientRect();
+							return rect.left >= filtersRect.left - 1 && rect.right <= filtersRect.right + 1;
+						})
 					)
 				};
 			});
 			expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewport);
 			expect(layout.quickContained).toBe(true);
+			expect(layout.filtersContained).toBe(true);
 
 			if (viewport.name === "desktop" || viewport.name === "narrow") {
 				await page.screenshot({ path: `../docs/assets/sitcon-board-${viewport.name}.png`, fullPage: true });
 			}
 		});
 	}
+
+	test("team and people filters combine on the board", async ({ page }) => {
+		await page.setViewportSize({ width: 608, height: 800 });
+		await page.goto("/");
+
+		await page.getByLabel("篩選組別").selectOption("design");
+		await expect(page.getByRole("heading", { name: "[設計組] 製作工作人員識別證" })).toBeVisible();
+		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeHidden();
+
+		await page.getByRole("button", { name: "篩選負責人" }).click();
+		const picker = page.getByRole("dialog", { name: "篩選負責人" });
+		await picker.getByRole("checkbox", { name: /Yorukot/ }).press("Enter");
+		await picker.getByRole("checkbox", { name: /林采欣/ }).click();
+		await expect(picker.getByText("已選擇 2 人")).toBeVisible();
+		await picker.getByRole("button", { name: "完成" }).click();
+		await expect(page.getByRole("status")).toHaveText("0 / 7 張卡片");
+
+		await page.getByRole("button", { name: "清除篩選" }).click();
+		await expect(page.getByRole("status")).toHaveText("7 / 7 張卡片");
+		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
+	});
 
 	test("member drawer and assignee dialog are complete", async ({ page }) => {
 		await page.setViewportSize({ width: 390, height: 844 });
