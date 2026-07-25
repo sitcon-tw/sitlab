@@ -29,7 +29,10 @@ var renewedExpiry = time.Date(2026, time.July, 28, 8, 0, 0, 0, time.UTC)
 type authFake struct{}
 
 func (authFake) Start(context.Context) (appoauth.StartResult, error) {
-	return appoauth.StartResult{AuthorizationURL: "https://gitlab.example/oauth/authorize"}, nil
+	return appoauth.StartResult{
+		AuthorizationURL: "https://gitlab.example/oauth/authorize",
+		StateToken:       "browser-bound-state",
+	}, nil
 }
 func (authFake) Complete(context.Context, appoauth.CompleteInput) (appoauth.Authenticated, error) {
 	return appoauth.Authenticated{SessionToken: "new-session", RedirectPath: "/"}, nil
@@ -136,21 +139,45 @@ func testRouter(readiness func(context.Context) error, webDir string) http.Handl
 	return NewRouter(Dependencies{
 		Log: zap.NewNop(), Auth: authFake{}, Bootstrap: bootstrapFake{},
 		Directory: directoryFake{}, Board: boardFake{}, Sync: syncFake{},
-		Cookie:         CookieConfig{Name: "test_session", TTL: 14 * 24 * time.Hour},
+		Cookie: CookieConfig{
+			Name: "test_session", TTL: 14 * 24 * time.Hour, OAuthStateTTL: 10 * time.Minute,
+		},
 		AllowedOrigins: []string{"https://app.example.com"}, Readiness: readiness,
 		APIName: "SITCON Board API", APIVersion: "9.8.7", WebDir: webDir,
 	})
 }
 
 func TestGitLabOAuthIsPublicAndSetsFourteenDaySession(t *testing.T) {
-	start := perform(testRouter(nil, ""), http.MethodGet, "/api/v1/auth/gitlab", "", false)
+	router := testRouter(nil, "")
+	start := perform(router, http.MethodGet, "/api/v1/auth/gitlab", "", false)
 	if start.Code != http.StatusFound || start.Header().Get("Location") != "https://gitlab.example/oauth/authorize" {
 		t.Fatalf("start = %d %s", start.Code, start.Header().Get("Location"))
 	}
-	callback := perform(testRouter(nil, ""), http.MethodGet, "/api/v1/auth/gitlab/callback?code=code&state=state", "", false)
+	stateCookie := cookieByName(start.Result().Cookies(), "test_session_oauth_state")
+	if stateCookie == nil || stateCookie.Value != "browser-bound-state" || !stateCookie.HttpOnly ||
+		stateCookie.SameSite != http.SameSiteLaxMode || stateCookie.MaxAge != 10*60 {
+		t.Fatalf("OAuth state cookie = %#v", stateCookie)
+	}
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		"/api/v1/auth/gitlab/callback?code=code&state=browser-bound-state", nil)
+	request.AddCookie(stateCookie)
+	callback := httptest.NewRecorder()
+	router.ServeHTTP(callback, request)
 	cookies := callback.Result().Cookies()
-	if callback.Code != http.StatusFound || len(cookies) != 1 || cookies[0].MaxAge != 14*24*60*60 || !cookies[0].HttpOnly {
+	sessionCookie := cookieByName(cookies, "test_session")
+	clearedState := cookieByName(cookies, "test_session_oauth_state")
+	if callback.Code != http.StatusFound || sessionCookie == nil || sessionCookie.MaxAge != 14*24*60*60 || !sessionCookie.HttpOnly ||
+		clearedState == nil || clearedState.MaxAge != -1 {
 		t.Fatalf("callback = %d cookies=%#v", callback.Code, cookies)
+	}
+}
+
+func TestGitLabOAuthCallbackRejectsStateFromAnotherBrowser(t *testing.T) {
+	response := perform(testRouter(nil, ""), http.MethodGet,
+		"/api/v1/auth/gitlab/callback?code=code&state=attacker-state", "", false)
+	if response.Code != http.StatusUnauthorized || !strings.Contains(response.Body.String(), `"code":"AUTH_OAUTH_FAILED"`) ||
+		cookieByName(response.Result().Cookies(), "test_session") != nil {
+		t.Fatalf("callback = %d body=%s cookies=%#v", response.Code, response.Body.String(), response.Result().Cookies())
 	}
 }
 
@@ -227,4 +254,13 @@ func perform(handler http.Handler, method, path, body string, authenticated bool
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	return response
+}
+
+func cookieByName(cookies []*http.Cookie, name string) *http.Cookie {
+	for _, cookie := range cookies {
+		if cookie.Name == name {
+			return cookie
+		}
+	}
+	return nil
 }

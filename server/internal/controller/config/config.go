@@ -164,7 +164,8 @@ func (c Config) Validate() error {
 	}
 	for _, raw := range c.HTTP.AllowedOrigins {
 		origin, err := url.Parse(raw)
-		if err != nil || origin.Scheme == "" || origin.Host == "" || origin.Path != "" {
+		if err != nil || origin.Scheme == "" || origin.Host == "" || origin.Path != "" ||
+			origin.User != nil || origin.RawQuery != "" || origin.Fragment != "" {
 			return fmt.Errorf("invalid SITCON_BOARD_CSRF_ALLOWED_ORIGINS entry %q", raw)
 		}
 	}
@@ -178,6 +179,25 @@ func (c Config) Validate() error {
 		}
 		if c.Session.HashKey == "local-development-session-hash-key-change-me" || c.Session.CipherKey == "local-development-oauth-cipher-key-change-me" {
 			return errors.New("development security keys must be changed in production")
+		}
+		gitLabBase, _ := url.Parse(c.GitLab.BaseURL)
+		redirect, _ := url.Parse(c.GitLab.OAuthRedirectURL)
+		if !strings.EqualFold(gitLabBase.Scheme, "https") || !strings.EqualFold(redirect.Scheme, "https") {
+			return errors.New("production GitLab base and OAuth redirect URLs must use HTTPS")
+		}
+		redirectOrigin := strings.ToLower(redirect.Scheme + "://" + redirect.Host)
+		redirectAllowed := false
+		for _, raw := range c.HTTP.AllowedOrigins {
+			origin, _ := url.Parse(raw)
+			if !strings.EqualFold(origin.Scheme, "https") {
+				return errors.New("production CSRF allowed origins must use HTTPS")
+			}
+			if strings.ToLower(origin.Scheme+"://"+origin.Host) == redirectOrigin {
+				redirectAllowed = true
+			}
+		}
+		if !redirectAllowed {
+			return errors.New("production OAuth redirect origin must be a CSRF allowed origin")
 		}
 	}
 	for name, token := range map[string]string{

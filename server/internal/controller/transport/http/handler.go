@@ -82,9 +82,10 @@ type WebhookConfig struct {
 }
 
 type CookieConfig struct {
-	Name   string
-	Secure bool
-	TTL    time.Duration
+	Name          string
+	Secure        bool
+	TTL           time.Duration
+	OAuthStateTTL time.Duration
 }
 
 func actorID(r *http.Request) string { return claimsFromContext(r.Context()).UserID }

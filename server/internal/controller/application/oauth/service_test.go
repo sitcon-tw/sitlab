@@ -158,7 +158,8 @@ func TestStartStoresHashedStateAndPKCEVerifier(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
-	if !strings.HasPrefix(result.AuthorizationURL, "https://gitlab.com/oauth/authorize") || len(repo.state.StateHash) == 0 || !strings.HasPrefix(string(repo.state.VerifierCiphertext), "sealed:") {
+	if !strings.HasPrefix(result.AuthorizationURL, "https://gitlab.com/oauth/authorize") || result.StateToken == "" ||
+		len(repo.state.StateHash) == 0 || !strings.HasPrefix(string(repo.state.VerifierCiphertext), "sealed:") {
 		t.Fatalf("Start() = %#v, state = %#v", result, repo.state)
 	}
 }

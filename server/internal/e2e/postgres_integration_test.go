@@ -5,6 +5,7 @@ package e2e_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -249,6 +250,27 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	detached, err := store.ByOperation(ctx, operationID)
 	if err != nil || detached.Operation.IssueIID != nil || detached.Operation.State != "synced" {
 		t.Fatalf("detached completed operation = %#v, err = %v", detached.Operation, err)
+	}
+
+	revokedDirectory := domaindirectory.Snapshot{
+		Teams: []domaindirectory.Team{{
+			Key: "development", Name: "Development", TitlePrefix: "[Development]", GitLabLabel: "team::development",
+			Active: true, MemberGitLabUserIDs: []int64{202},
+		}},
+		Members: []domaindirectory.Member{{
+			GitLabUserID: 202, Username: "bob", DisplayName: "Bob", ProfileURL: "https://gitlab.com/bob",
+			AccessLevel: 30, State: domaindirectory.MemberActive, TeamKeys: []string{"development"},
+		}},
+		SourceRevision: "member-revocation", SyncedAt: now.Add(3 * time.Minute),
+	}
+	if err := store.ReplaceDirectory(ctx, revokedDirectory); err != nil {
+		t.Fatalf("replace directory after member revocation: %v", err)
+	}
+	if _, err := oauthRepo.GetSessionByTokenHash(ctx, []byte("session-hash")); !errors.Is(err, identity.ErrSessionNotFound) {
+		t.Fatalf("revoked member session error = %v", err)
+	}
+	if _, err := oauthRepo.OAuthCredential(ctx, user.ID); !errors.Is(err, identity.ErrOAuthCredentialNotFound) {
+		t.Fatalf("revoked member OAuth credential error = %v", err)
 	}
 }
 

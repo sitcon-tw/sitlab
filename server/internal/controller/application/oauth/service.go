@@ -60,7 +60,10 @@ func (s *Service) Start(ctx context.Context) (StartResult, error) {
 		return StartResult{}, technical(span, "store oauth state", err)
 	}
 	challenge := sha256.Sum256([]byte(verifier))
-	return StartResult{AuthorizationURL: s.gitlab.AuthorizationURL(state, base64.RawURLEncoding.EncodeToString(challenge[:]))}, nil
+	return StartResult{
+		AuthorizationURL: s.gitlab.AuthorizationURL(state, base64.RawURLEncoding.EncodeToString(challenge[:])),
+		StateToken:       state,
+	}, nil
 }
 
 func (s *Service) Complete(ctx context.Context, input CompleteInput) (Authenticated, error) {

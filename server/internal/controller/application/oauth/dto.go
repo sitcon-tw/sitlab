@@ -8,6 +8,7 @@ import (
 
 type StartResult struct {
 	AuthorizationURL string
+	StateToken       string
 }
 
 type CompleteInput struct {

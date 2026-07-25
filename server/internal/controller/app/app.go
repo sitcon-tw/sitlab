@@ -119,7 +119,10 @@ func New(ctx context.Context) (*Application, error) {
 			GroupSigningToken:   cfg.GitLab.GroupWebhookSigningToken,
 			ProjectPath:         config.ProjectPath, GroupPath: config.GroupPath,
 		},
-		Cookie:         httpserver.CookieConfig{Name: cfg.Session.CookieName, Secure: cfg.Session.CookieSecure, TTL: cfg.Session.TTL},
+		Cookie: httpserver.CookieConfig{
+			Name: cfg.Session.CookieName, Secure: cfg.Session.CookieSecure,
+			TTL: cfg.Session.TTL, OAuthStateTTL: cfg.Session.OAuthStateTTL,
+		},
 		AllowedOrigins: cfg.HTTP.AllowedOrigins, RequestTimeout: cfg.HTTP.RequestTimeout,
 		Readiness: func(ctx context.Context) error {
 			return errors.Join(postgres.Ready(ctx, pool), store.ReadySnapshots(ctx))

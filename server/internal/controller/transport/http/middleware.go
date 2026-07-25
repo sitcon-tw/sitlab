@@ -80,7 +80,8 @@ func validOrigin(r *http.Request, allowed []string) bool {
 		return true
 	}
 	origin, err := url.Parse(raw)
-	if err != nil || origin.Scheme == "" || origin.Host == "" {
+	if err != nil || origin.Scheme == "" || origin.Host == "" || origin.User != nil ||
+		origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" {
 		return false
 	}
 	actual := strings.ToLower(origin.Scheme + "://" + origin.Host)

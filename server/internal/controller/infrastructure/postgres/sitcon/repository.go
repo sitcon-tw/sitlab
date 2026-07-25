@@ -139,6 +139,34 @@ func (r *Repository) ReplaceDirectory(ctx context.Context, snapshot domaindirect
 		`, memberIDs); err != nil {
 			return err
 		}
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM auth_sessions AS session
+			USING users AS account
+			WHERE session.user_id = account.id
+			  AND NOT EXISTS (
+			      SELECT 1
+			      FROM directory_members AS member
+			      WHERE member.gitlab_user_id = account.gitlab_user_id
+			        AND member.state = 'active'
+			        AND member.access_level > 0
+			  )
+		`); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM gitlab_oauth_credentials AS credential
+			USING users AS account
+			WHERE credential.user_id = account.id
+			  AND NOT EXISTS (
+			      SELECT 1
+			      FROM directory_members AS member
+			      WHERE member.gitlab_user_id = account.gitlab_user_id
+			        AND member.state = 'active'
+			        AND member.access_level > 0
+			  )
+		`); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `DELETE FROM directory_team_memberships WHERE source = 'gitlab_directory'`); err != nil {
 			return err
 		}

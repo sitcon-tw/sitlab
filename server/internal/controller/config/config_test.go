@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/base64"
 	"strings"
 	"testing"
@@ -50,4 +51,37 @@ func TestWebhookSigningTokenMustEncodeThirtyTwoBytes(t *testing.T) {
 	if _, err := Load(); err != nil {
 		t.Fatalf("Load() with valid signing token error = %v", err)
 	}
+}
+
+func TestProductionRequiresHTTPSAndMatchingRedirectOrigin(t *testing.T) {
+	t.Setenv("SITCON_BOARD_ENV", "production")
+	t.Setenv("SITCON_BOARD_DATABASE_URL", "postgres://user:password@db.example/sitcon")
+	t.Setenv("SITCON_BOARD_SESSION_HASH_KEY", strings.Repeat("a", 64))
+	t.Setenv("SITCON_BOARD_OAUTH_STATE_CIPHER_KEY", strings.Repeat("b", 64))
+	t.Setenv("SITCON_BOARD_GITLAB_CLIENT_ID", "client")
+	t.Setenv("SITCON_BOARD_GITLAB_CLIENT_SECRET", "secret")
+	t.Setenv("SITCON_BOARD_GITLAB_PROJECT_ACCESS_TOKEN", "project-token")
+	t.Setenv("SITCON_BOARD_GITLAB_PROJECT_WEBHOOK_SIGNING_TOKEN", webhookToken(1))
+	t.Setenv("SITCON_BOARD_GITLAB_GROUP_WEBHOOK_SIGNING_TOKEN", webhookToken(2))
+	t.Setenv("SITCON_BOARD_CSRF_ALLOWED_ORIGINS", "https://board.sitcon.org")
+	t.Setenv("SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL", "https://board.sitcon.org/api/v1/auth/gitlab/callback")
+
+	t.Setenv("SITCON_BOARD_GITLAB_BASE_URL", "http://gitlab.example")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "must use HTTPS") {
+		t.Fatalf("insecure GitLab base error = %v", err)
+	}
+	t.Setenv("SITCON_BOARD_GITLAB_BASE_URL", "https://gitlab.example")
+	t.Setenv("SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL", "https://other.example/api/v1/auth/gitlab/callback")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "must be a CSRF allowed origin") {
+		t.Fatalf("mismatched redirect origin error = %v", err)
+	}
+	t.Setenv("SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL", "https://board.sitcon.org/api/v1/auth/gitlab/callback")
+	t.Setenv("SITCON_BOARD_CSRF_ALLOWED_ORIGINS", "http://board.sitcon.org")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "allowed origins must use HTTPS") {
+		t.Fatalf("insecure CSRF origin error = %v", err)
+	}
+}
+
+func webhookToken(seed byte) string {
+	return "whsec_" + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{seed}, 32))
 }
