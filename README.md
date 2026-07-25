@@ -46,7 +46,7 @@ Backend dependency direction 與 durable operation 細節見 [ARCHITECTURE.md](.
 
 ## 本機開發
 
-需要 Go 1.23.5、Node.js 22.12+、pnpm 11.11.0、PostgreSQL 17 與 `just` 1.40.0。
+需要 Go 1.25.12、Node.js 22.12+、pnpm 11.11.0、PostgreSQL 17 與 `just` 1.40.0。
 
 ```bash
 pnpm install
