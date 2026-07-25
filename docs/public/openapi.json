@@ -2212,7 +2212,7 @@
 			},
 			"DirectoryTeam": {
 				"type": "object",
-				"required": ["key", "name", "titlePrefix", "gitLabLabel", "active", "sortOrder", "memberGitLabUserIds"],
+				"required": ["key", "name", "titlePrefix", "gitLabLabel", "active", "sortOrder", "memberGitLabUserIds", "leaderGitLabUserIds"],
 				"properties": {
 					"key": {
 						"type": "string",
@@ -2247,6 +2247,13 @@
 							"type": "integer",
 							"format": "int64"
 						}
+					},
+					"leaderGitLabUserIds": {
+						"type": "array",
+						"items": {
+							"type": "integer",
+							"format": "int64"
+						}
 					}
 				},
 				"examples": [
@@ -2257,7 +2264,8 @@
 						"gitLabLabel": "Team::開發組",
 						"active": true,
 						"sortOrder": 8,
-						"memberGitLabUserIds": [123456]
+						"memberGitLabUserIds": [123456],
+						"leaderGitLabUserIds": [123456]
 					}
 				]
 			},

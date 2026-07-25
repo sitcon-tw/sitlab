@@ -96,6 +96,9 @@ func (s *Service) Complete(ctx context.Context, input CompleteInput) (Authentica
 	if gitLabIdentity.GitLabUserID <= 0 || strings.TrimSpace(gitLabIdentity.Username) == "" || gitLabIdentity.State != "active" || gitLabIdentity.AccessLevel <= 0 {
 		return Authenticated{}, apperror.Forbidden("FORBIDDEN", "an active SITCON 2027 project membership is required")
 	}
+	if gitLabIdentity.Tokens.AccessToken == "" || gitLabIdentity.Tokens.RefreshToken == "" || gitLabIdentity.Tokens.ExpiresAt.IsZero() {
+		return Authenticated{}, technical(span, "validate GitLab OAuth credential", errors.New("GitLab token response is incomplete"))
+	}
 
 	now := s.now().UTC()
 	user := identity.User{
@@ -112,10 +115,18 @@ func (s *Service) Complete(ctx context.Context, input CompleteInput) (Authentica
 		ID: uuid.NewString(), TokenHash: sessionHash,
 		ExpiresAt: now.Add(s.config.SessionTTL), CreatedAt: now, LastUsedAt: now,
 	}
+	credential, err := s.sealCredential(user.ID, gitLabIdentity.Tokens, now)
+	if err != nil {
+		return Authenticated{}, technical(span, "seal GitLab OAuth credential", err)
+	}
 	err = s.tx.WithinTx(ctx, func(txCtx context.Context) error {
 		var upsertErr error
 		user, upsertErr = s.repo.UpsertUser(txCtx, user)
 		if upsertErr != nil {
+			return upsertErr
+		}
+		credential.UserID = user.ID
+		if upsertErr = s.repo.UpsertOAuthCredential(txCtx, credential); upsertErr != nil {
 			return upsertErr
 		}
 		session.UserID = user.ID
@@ -126,6 +137,52 @@ func (s *Service) Complete(ctx context.Context, input CompleteInput) (Authentica
 		return Authenticated{}, technical(span, "create GitLab session", err)
 	}
 	return Authenticated{User: user, SessionToken: rawSession, RedirectPath: state.ReturnPath}, nil
+}
+
+func (s *Service) AccessToken(ctx context.Context, userID string) (string, error) {
+	credential, err := s.repo.OAuthCredential(ctx, userID)
+	if err != nil {
+		return "", fmt.Errorf("load actor GitLab credential: %w", err)
+	}
+	if s.now().UTC().Add(time.Minute).Before(credential.ExpiresAt) {
+		accessToken, openErr := s.cipher.Open(credential.AccessTokenCiphertext)
+		if openErr != nil {
+			return "", fmt.Errorf("open actor GitLab access token: %w", openErr)
+		}
+		return accessToken, nil
+	}
+	refreshToken, err := s.cipher.Open(credential.RefreshTokenCiphertext)
+	if err != nil {
+		return "", fmt.Errorf("open actor GitLab refresh token: %w", err)
+	}
+	tokens, err := s.gitlab.RefreshToken(ctx, refreshToken)
+	if err != nil {
+		return "", fmt.Errorf("refresh actor GitLab access token: %w", err)
+	}
+	now := s.now().UTC()
+	refreshed, err := s.sealCredential(userID, tokens, now)
+	if err != nil {
+		return "", fmt.Errorf("seal refreshed actor GitLab credential: %w", err)
+	}
+	if err := s.repo.UpsertOAuthCredential(ctx, refreshed); err != nil {
+		return "", fmt.Errorf("store refreshed actor GitLab credential: %w", err)
+	}
+	return tokens.AccessToken, nil
+}
+
+func (s *Service) sealCredential(userID string, tokens OAuthTokens, now time.Time) (identity.OAuthCredential, error) {
+	accessCiphertext, err := s.cipher.Seal(tokens.AccessToken)
+	if err != nil {
+		return identity.OAuthCredential{}, err
+	}
+	refreshCiphertext, err := s.cipher.Seal(tokens.RefreshToken)
+	if err != nil {
+		return identity.OAuthCredential{}, err
+	}
+	return identity.OAuthCredential{
+		UserID: userID, AccessTokenCiphertext: accessCiphertext, RefreshTokenCiphertext: refreshCiphertext,
+		ExpiresAt: tokens.ExpiresAt.UTC(), UpdatedAt: now,
+	}, nil
 }
 
 func (s *Service) VerifySession(ctx context.Context, raw string) (identity.SessionClaims, error) {

@@ -40,6 +40,7 @@ model DirectoryMember {
 	active: true,
 	sortOrder: 8,
 	memberGitLabUserIds: #[123456],
+	leaderGitLabUserIds: #[123456],
 })
 model DirectoryTeam {
 	@minLength(1)
@@ -61,6 +62,7 @@ model DirectoryTeam {
 	active: boolean;
 	sortOrder: int32;
 	memberGitLabUserIds: int64[];
+	leaderGitLabUserIds: int64[];
 }
 
 model DirectorySnapshot {

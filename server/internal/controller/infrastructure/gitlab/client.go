@@ -48,9 +48,12 @@ func (c *Client) ProjectMembers(ctx context.Context) ([]directory.GitLabMember, 
 		}
 		decodeErr := decodeJSON(response.Body, &rows)
 		page = response.Header.Get("X-Next-Page")
-		response.Body.Close()
+		closeErr := response.Body.Close()
 		if decodeErr != nil {
 			return nil, fmt.Errorf("decode GitLab members: %w", decodeErr)
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("close GitLab members response: %w", closeErr)
 		}
 		for _, row := range rows {
 			result = append(result, directory.GitLabMember{
@@ -75,9 +78,12 @@ func (c *Client) Issues(ctx context.Context) ([]appsync.GitLabIssue, error) {
 		var rows []issueWire
 		decodeErr := decodeJSON(response.Body, &rows)
 		page = response.Header.Get("X-Next-Page")
-		response.Body.Close()
+		closeErr := response.Body.Close()
 		if decodeErr != nil {
 			return nil, fmt.Errorf("decode GitLab issues: %w", decodeErr)
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("close GitLab issues response: %w", closeErr)
 		}
 		for _, row := range rows {
 			result = append(result, mapIssueWire(row))
@@ -96,7 +102,7 @@ func (c *Client) Issue(ctx context.Context, issueIID int64) (appsync.GitLabIssue
 		}
 		return appsync.GitLabIssue{}, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	var row issueWire
 	if err := decodeJSON(response.Body, &row); err != nil {
 		return appsync.GitLabIssue{}, fmt.Errorf("decode GitLab issue: %w", err)
@@ -104,7 +110,7 @@ func (c *Client) Issue(ctx context.Context, issueIID int64) (appsync.GitLabIssue
 	return mapIssueWire(row), nil
 }
 
-func (c *Client) ApplyIssue(ctx context.Context, mutation appsync.IssueMutation) (appsync.GitLabIssue, error) {
+func (c *Client) ApplyIssue(ctx context.Context, mutation appsync.IssueMutation, actorAccessToken string) (appsync.GitLabIssue, error) {
 	payload := map[string]any{
 		"title":        mutation.Title,
 		"description":  mutation.Description,
@@ -133,13 +139,13 @@ func (c *Client) ApplyIssue(ctx context.Context, mutation appsync.IssueMutation)
 	if err != nil {
 		return appsync.GitLabIssue{}, fmt.Errorf("create GitLab issue request: %w", err)
 	}
-	request.Header.Set("PRIVATE-TOKEN", c.config.AccessToken)
+	request.Header.Set("Authorization", "Bearer "+actorAccessToken)
 	request.Header.Set("Content-Type", "application/json")
 	response, err := c.http.Do(request)
 	if err != nil {
 		return appsync.GitLabIssue{}, identity.ErrGitLabUnavailable
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode >= 500 {
 		return appsync.GitLabIssue{}, identity.ErrGitLabUnavailable
 	}
@@ -175,7 +181,7 @@ func (c *Client) AuthorizationURL(state, codeChallenge string) string {
 		"client_id":             {c.config.ClientID},
 		"redirect_uri":          {c.config.RedirectURI},
 		"response_type":         {"code"},
-		"scope":                 {"read_api"},
+		"scope":                 {"api"},
 		"state":                 {state},
 		"code_challenge":        {codeChallenge},
 		"code_challenge_method": {"S256"},
@@ -184,17 +190,17 @@ func (c *Client) AuthorizationURL(state, codeChallenge string) string {
 }
 
 func (c *Client) ExchangeIdentity(ctx context.Context, code, verifier string) (appoauth.GitLabIdentity, error) {
-	accessToken, err := c.exchangeToken(ctx, code, verifier)
+	tokens, err := c.exchangeToken(ctx, code, verifier)
 	if err != nil {
 		return appoauth.GitLabIdentity{}, err
 	}
 	var user gitLabUser
-	if err := c.get(ctx, c.endpoint("/api/v4/user"), accessToken, &user); err != nil {
+	if err := c.get(ctx, c.endpoint("/api/v4/user"), tokens.AccessToken, &user); err != nil {
 		return appoauth.GitLabIdentity{}, err
 	}
 	var member gitLabMember
 	memberURL := c.endpoint("/api/v4/projects/") + url.PathEscape(c.config.ProjectPath) + "/members/all/" + strconv.FormatInt(user.ID, 10)
-	if err := c.get(ctx, memberURL, accessToken, &member); err != nil {
+	if err := c.get(ctx, memberURL, tokens.AccessToken, &member); err != nil {
 		var statusError *httpStatusError
 		if errors.As(err, &statusError) && statusError.status == http.StatusNotFound {
 			return appoauth.GitLabIdentity{}, identity.ErrProjectMemberRequired
@@ -207,11 +213,11 @@ func (c *Client) ExchangeIdentity(ctx context.Context, code, verifier string) (a
 	return appoauth.GitLabIdentity{
 		GitLabUserID: user.ID, Username: user.Username, DisplayName: user.Name,
 		AvatarURL: user.AvatarURL, ProfileURL: user.WebURL,
-		AccessLevel: member.AccessLevel, State: member.State,
+		AccessLevel: member.AccessLevel, State: member.State, Tokens: tokens,
 	}, nil
 }
 
-func (c *Client) exchangeToken(ctx context.Context, code, verifier string) (string, error) {
+func (c *Client) exchangeToken(ctx context.Context, code, verifier string) (appoauth.OAuthTokens, error) {
 	values := url.Values{
 		"client_id":     {c.config.ClientID},
 		"client_secret": {c.config.ClientSecret},
@@ -220,32 +226,56 @@ func (c *Client) exchangeToken(ctx context.Context, code, verifier string) (stri
 		"redirect_uri":  {c.config.RedirectURI},
 		"code_verifier": {verifier},
 	}
+	return c.requestOAuthToken(ctx, values)
+}
+
+func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (appoauth.OAuthTokens, error) {
+	return c.requestOAuthToken(ctx, url.Values{
+		"client_id":     {c.config.ClientID},
+		"client_secret": {c.config.ClientSecret},
+		"refresh_token": {refreshToken},
+		"grant_type":    {"refresh_token"},
+		"redirect_uri":  {c.config.RedirectURI},
+	})
+}
+
+func (c *Client) requestOAuthToken(ctx context.Context, values url.Values) (appoauth.OAuthTokens, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint("/oauth/token"), strings.NewReader(values.Encode()))
 	if err != nil {
-		return "", fmt.Errorf("create GitLab token request: %w", err)
+		return appoauth.OAuthTokens{}, fmt.Errorf("create GitLab token request: %w", err)
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response, err := c.http.Do(request)
 	if err != nil {
-		return "", fmt.Errorf("%w: exchange OAuth token", identity.ErrGitLabUnavailable)
+		return appoauth.OAuthTokens{}, fmt.Errorf("%w: exchange OAuth token", identity.ErrGitLabUnavailable)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode >= 500 {
-		return "", identity.ErrGitLabUnavailable
+		return appoauth.OAuthTokens{}, identity.ErrGitLabUnavailable
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return "", &httpStatusError{status: response.StatusCode}
+		return appoauth.OAuthTokens{}, &httpStatusError{status: response.StatusCode}
 	}
 	var token struct {
-		AccessToken string `json:"access_token"`
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int64  `json:"expires_in"`
+		CreatedAt    int64  `json:"created_at"`
 	}
 	if err := decodeJSON(response.Body, &token); err != nil {
-		return "", fmt.Errorf("decode GitLab token: %w", err)
+		return appoauth.OAuthTokens{}, fmt.Errorf("decode GitLab token: %w", err)
 	}
-	if token.AccessToken == "" {
-		return "", fmt.Errorf("GitLab token response omitted access_token")
+	if token.AccessToken == "" || token.RefreshToken == "" || token.ExpiresIn <= 0 {
+		return appoauth.OAuthTokens{}, fmt.Errorf("GitLab token response is incomplete")
 	}
-	return token.AccessToken, nil
+	issuedAt := time.Now().UTC()
+	if token.CreatedAt > 0 {
+		issuedAt = time.Unix(token.CreatedAt, 0).UTC()
+	}
+	return appoauth.OAuthTokens{
+		AccessToken: token.AccessToken, RefreshToken: token.RefreshToken,
+		ExpiresAt: issuedAt.Add(time.Duration(token.ExpiresIn) * time.Second),
+	}, nil
 }
 
 func (c *Client) get(ctx context.Context, requestURL, accessToken string, target any) error {
@@ -253,7 +283,7 @@ func (c *Client) get(ctx context.Context, requestURL, accessToken string, target
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode >= 500 {
 		return identity.ErrGitLabUnavailable
 	}
@@ -282,11 +312,11 @@ func (c *Client) do(ctx context.Context, method, requestURL string, body io.Read
 		return nil, identity.ErrGitLabUnavailable
 	}
 	if response.StatusCode >= 500 {
-		response.Body.Close()
+		_ = response.Body.Close()
 		return nil, identity.ErrGitLabUnavailable
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		response.Body.Close()
+		_ = response.Body.Close()
 		return nil, &httpStatusError{status: response.StatusCode}
 	}
 	return response, nil

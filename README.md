@@ -8,7 +8,7 @@ SITCON 2027 籌備工作的 GitLab-backed 看板。登入、選擇主要組別�
 
 ## 核心行為
 
-- GitLab OAuth Authorization Code + PKCE，只允許 active project members 登入。
+- GitLab OAuth Authorization Code + PKCE 與 `api` scope，只允許 active project members 登入；加密保存的 user token 讓 GitLab 保留實際操作者。
 - 隨機 opaque session token 放在 HttpOnly cookie，PostgreSQL 只保存 keyed digest。
 - Session 固定 14 天 rolling expiry；每次有效使用都會續期資料庫 expiry 與 cookie。
 - Authenticated mutations 同時驗證 session-bound CSRF token 與 Origin。
@@ -16,8 +16,8 @@ SITCON 2027 籌備工作的 GitLab-backed 看板。登入、選擇主要組別�
 - Go 回傳 SPA HTML 時注入完整 bootstrap，React 第一次 render 不等待額外 API。
 - Board 固定依序顯示 `Wating`、`Inbox`、`To Do`、`Doing`、`Review`、`Closed` 六欄。
 - 前五欄分別對應 GitLab scoped labels `Status::Waiting`、`Status::Inbox`、`Status::To Do`、`Status::Doing`、`Status::Review`；`Closed` 對應 issue closed state。
-- 卡片詳細視窗可編輯 title、Markdown description、組別、狀態、多人 Assignee，以及 GitLab issue 的 Start/Due dates；Markdown 提供 GFM 預覽。
-- 開卡、詳細規劃、移動、多人指派、期限與組別調整先寫 PostgreSQL optimistic cache 與 durable operation，再由 worker 同步 GitLab。
+- 卡片右側 drawer 可切換前後卡片並編輯 title、Markdown description、組別、狀態、多人 Assignee 與 Start/Due dates，也提供 typed `/` Quick Actions。
+- 單組與所有組長開卡、詳細規劃、移動、多人指派、期限與組別調整先寫 PostgreSQL optimistic cache 與 durable operation，再由 worker 以實際 actor 身分同步 GitLab；新卡預設在最上方。
 - GitLab signed project/group webhooks 觸發 targeted catch-up；PostgreSQL revision 與 SSE 讓已開啟的看板立即 refetch，既有 polling 負責漏訊恢復。
 - GitLab 暫時離線時仍顯示最後一次成功的 Board，失敗操作可重試。
 - 正常背景刷新與 optimistic pending 不顯示技術狀態；只有離線或操作失敗會出現在 UI。

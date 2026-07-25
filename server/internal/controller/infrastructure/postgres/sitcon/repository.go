@@ -143,11 +143,16 @@ func (r *Repository) ReplaceDirectory(ctx context.Context, snapshot domaindirect
 			return err
 		}
 		for _, team := range snapshot.Teams {
+			leaderIDs := make(map[int64]struct{}, len(team.LeaderGitLabUserIDs))
+			for _, leaderID := range team.LeaderGitLabUserIDs {
+				leaderIDs[leaderID] = struct{}{}
+			}
 			for _, memberID := range team.MemberGitLabUserIDs {
+				_, isLeader := leaderIDs[memberID]
 				if _, err := tx.Exec(ctx, `
-					INSERT INTO directory_team_memberships (team_key, gitlab_user_id, source, updated_at)
-					VALUES ($1, $2, 'gitlab_directory', $3)
-				`, team.Key, memberID, snapshot.SyncedAt); err != nil {
+					INSERT INTO directory_team_memberships (team_key, gitlab_user_id, source, is_leader, updated_at)
+					VALUES ($1, $2, 'gitlab_directory', $3, $4)
+				`, team.Key, memberID, isLeader, snapshot.SyncedAt); err != nil {
 					return err
 				}
 			}
@@ -282,7 +287,7 @@ func (r *Repository) ClaimOperation(ctx context.Context, now time.Time) (domainb
 		var lastError *string
 		err := tx.QueryRow(ctx, `
 			SELECT operation.id, operation.kind, operation.issue_iid, operation.state,
-			       operation.attempts, operation.last_error_detail,
+			       operation.attempts, operation.last_error_detail, operation.requested_by_user_id,
 			       operation.created_at, operation.updated_at
 			FROM durable_operations operation
 			WHERE (
@@ -306,6 +311,7 @@ func (r *Repository) ClaimOperation(ctx context.Context, now time.Time) (domainb
 		`, now).Scan(
 			&pending.Operation.ID, &pending.Operation.Kind, &issueIID,
 			&pending.Operation.State, &pending.Operation.Attempts, &lastError,
+			&pending.RequestedByUserID,
 			&pending.Operation.CreatedAt, &pending.Operation.UpdatedAt,
 		)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -524,7 +530,7 @@ func (r *Repository) Snapshot(ctx context.Context) (domaindirectory.Snapshot, er
 		}
 	}
 	directoryMembershipRows, err := db.Query(ctx, `
-		SELECT membership.team_key, member.username
+		SELECT membership.team_key, member.gitlab_user_id, member.username, membership.is_leader
 		FROM directory_team_memberships membership
 		JOIN directory_members member ON member.gitlab_user_id = membership.gitlab_user_id
 		JOIN directory_teams team ON team.key = membership.team_key
@@ -537,12 +543,18 @@ func (r *Repository) Snapshot(ctx context.Context) (domaindirectory.Snapshot, er
 	defer directoryMembershipRows.Close()
 	for directoryMembershipRows.Next() {
 		var teamKey, username string
-		if err := directoryMembershipRows.Scan(&teamKey, &username); err != nil {
+		var memberID int64
+		var isLeader bool
+		if err := directoryMembershipRows.Scan(&teamKey, &memberID, &username, &isLeader); err != nil {
 			return domaindirectory.Snapshot{}, fmt.Errorf("scan GitLab directory membership: %w", err)
 		}
 		for teamIndex := range teams {
 			if teams[teamIndex].Key == teamKey {
 				teams[teamIndex].DirectoryMemberUsernames = append(teams[teamIndex].DirectoryMemberUsernames, username)
+				if isLeader {
+					teams[teamIndex].LeaderGitLabUserIDs = append(teams[teamIndex].LeaderGitLabUserIDs, memberID)
+					teams[teamIndex].DirectoryLeaderUsernames = append(teams[teamIndex].DirectoryLeaderUsernames, username)
+				}
 				break
 			}
 		}

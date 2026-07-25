@@ -91,7 +91,7 @@ func TestCreateStoresOptimisticCardAndOperation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-	if result.Card.IssueIID != -1 || result.Card.SyncState != domain.OperationPending {
+	if result.Card.IssueIID != -1 || result.Card.SyncState != domain.OperationPending || result.Card.Position != 0 {
 		t.Fatalf("Create() card = %#v", result.Card)
 	}
 	if repo.createMutation == nil || repo.createMutation.Card.Title != "修正 報名流程" || repo.createMutation.Operation.Kind != domain.OperationCreateCard {

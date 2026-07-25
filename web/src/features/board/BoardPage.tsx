@@ -1,8 +1,22 @@
 import { clearCsrfToken, errorMessage } from "@/shared/api/client";
 import { Avatar } from "@/shared/Avatar";
-import { Dialog } from "@project-template/ui";
-import { Check, ChevronDown, CloudOff, ExternalLink, GripVertical, LogOut, Plus, RefreshCw, Save, Users } from "lucide-react";
-import { useRef, useState } from "react";
+import { Drawer } from "@project-template/ui";
+import {
+	Check,
+	ChevronDown,
+	ChevronLeft,
+	ChevronRight,
+	CloudOff,
+	ExternalLink,
+	GripVertical,
+	LogOut,
+	Plus,
+	RefreshCw,
+	Save,
+	SquareTerminal,
+	Users
+} from "lucide-react";
+import { useId, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AssigneePicker } from "./AssigneePicker";
@@ -20,7 +34,8 @@ import {
 } from "./boardApi";
 import styles from "./BoardPage.module.css";
 import { MembersDrawer } from "./MembersDrawer";
-import { memberById, preferredAssignees, taipeiDateAfter, type BoardCard, type Bootstrap } from "./model";
+import { memberById, preferredAssignees, taipeiDateAfter, teamLeaders, type BoardCard, type Bootstrap } from "./model";
+import { parseQuickAction, quickActionCommands, type QuickAction } from "./quickActions";
 
 export interface BoardPageProps {
 	bootstrap: Bootstrap;
@@ -29,6 +44,14 @@ export interface BoardPageProps {
 }
 
 type CardPatch = Partial<Pick<BoardCard, "title" | "description" | "teamKey" | "assigneeGitLabUserIds" | "startDate" | "dueDate" | "listKey" | "position">>;
+type CreateCardInput = {
+	title: string;
+	description: string;
+	teamKey: string;
+	assigneeGitLabUserIds: number[];
+	startDate: string | null;
+	dueDate: string | null;
+};
 
 export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: BoardPageProps) {
 	const [membersOpen, setMembersOpen] = useState(false);
@@ -39,7 +62,9 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 	const nextTemporaryIid = useRef(-1);
 	const cards = bootstrap.board.cards;
 	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
+	const orderedCards = lists.flatMap((list) => cards.filter((card) => card.listKey === list.key).sort((a, b) => a.position - b.position));
 	const detailCard = cards.find((card) => card.issueIid === detailIid) ?? null;
+	const detailIndex = detailCard ? orderedCards.findIndex((card) => card.issueIid === detailCard.issueIid) : -1;
 
 	const replaceCard = (issueIid: number, card: BoardCard) => {
 		updateBootstrap((current) => ({
@@ -89,14 +114,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 		execute();
 	};
 
-	const handleCreate = (input: {
-		title: string;
-		description: string;
-		teamKey: string;
-		assigneeGitLabUserIds: number[];
-		startDate: string | null;
-		dueDate: string | null;
-	}) => {
+	const handleCreate = (input: CreateCardInput) => {
 		const operationId = crypto.randomUUID();
 		const temporaryIid = nextTemporaryIid.current;
 		nextTemporaryIid.current -= 1;
@@ -107,7 +125,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 			description: input.description,
 			webUrl: null,
 			listKey: lists[0]?.key ?? "todo",
-			position: cards.filter((card) => card.listKey === lists[0]?.key).length,
+			position: 0,
 			teamKey: input.teamKey,
 			assigneeGitLabUserIds: input.assigneeGitLabUserIds,
 			startDate: input.startDate,
@@ -260,6 +278,10 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 					card={detailCard}
 					bootstrap={bootstrap}
 					onClose={() => setDetailIid(null)}
+					onPrevious={detailIndex > 0 ? () => setDetailIid(orderedCards[detailIndex - 1]!.issueIid) : undefined}
+					onNext={detailIndex >= 0 && detailIndex < orderedCards.length - 1 ? () => setDetailIid(orderedCards[detailIndex + 1]!.issueIid) : undefined}
+					position={detailIndex + 1}
+					total={orderedCards.length}
 					onDetails={(title, description) => handleDetails(detailCard, title, description)}
 					onTeam={(teamKey) => handleTeam(detailCard, teamKey)}
 					onMove={(listKey) => handleMove(detailCard, listKey)}
@@ -325,27 +347,17 @@ function BoardHeader({ bootstrap, backgroundOffline, onMembers }: { bootstrap: B
 	);
 }
 
-function QuickCreate({
-	bootstrap,
-	onCreate
-}: {
-	bootstrap: Bootstrap;
-	onCreate: (input: {
-		title: string;
-		description: string;
-		teamKey: string;
-		assigneeGitLabUserIds: number[];
-		startDate: string | null;
-		dueDate: string | null;
-	}) => void;
-}) {
+function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: (input: CreateCardInput) => void }) {
 	const defaultTeam = bootstrap.preferences.defaultTeamKey ?? bootstrap.teams.find((team) => team.active)?.key ?? "";
+	const [mode, setMode] = useState<"single" | "leaders">("single");
 	const [title, setTitle] = useState("");
 	const [teamKey, setTeamKey] = useState(defaultTeam);
 	const [assignees, setAssignees] = useState<number[]>(preferredAssignees(bootstrap, defaultTeam));
 	const [dueDate, setDueDate] = useState(taipeiDateAfter(7));
 	const [clearedAssignees, setClearedAssignees] = useState<number[]>([]);
 	const teams = bootstrap.teams.filter((team) => team.active).sort((a, b) => a.sortOrder - b.sortOrder);
+	const leaderTargets = teams.map((team) => ({ team, leaders: teamLeaders(bootstrap, team.key) })).filter((target) => target.leaders.length > 0);
+	const leaderCount = leaderTargets.reduce((count, target) => count + target.leaders.length, 0);
 
 	const changeTeam = (nextTeam: string) => {
 		const compatible = assignees.filter((id) => memberById(bootstrap, id)?.teamKeys.includes(nextTeam));
@@ -357,23 +369,51 @@ function QuickCreate({
 	const submit = (event: React.FormEvent) => {
 		event.preventDefault();
 		const normalized = title.trim();
-		if (!normalized || !teamKey) return;
-		onCreate({ title: normalized, description: "", teamKey, assigneeGitLabUserIds: assignees, startDate: null, dueDate: dueDate || null });
+		if (!normalized) return;
+		if (mode === "leaders") {
+			for (const target of leaderTargets) {
+				onCreate({
+					title: normalized,
+					description: "",
+					teamKey: target.team.key,
+					assigneeGitLabUserIds: target.leaders.map((leader) => leader.gitLabUserId),
+					startDate: null,
+					dueDate: dueDate || null
+				});
+			}
+		} else {
+			if (!teamKey) return;
+			onCreate({ title: normalized, description: "", teamKey, assigneeGitLabUserIds: assignees, startDate: null, dueDate: dueDate || null });
+		}
 		setTitle("");
 	};
 
 	return (
 		<form className={styles.quickCreate} onSubmit={submit}>
-			<label className={styles.srOnly} htmlFor="quick-team">
-				新卡片組別
-			</label>
-			<select id="quick-team" value={teamKey} onChange={(event) => changeTeam(event.target.value)}>
-				{teams.map((team) => (
-					<option key={team.key} value={team.key}>
-						{team.name}
-					</option>
-				))}
-			</select>
+			<div className={styles.createModes} role="group" aria-label="開卡模式">
+				<button type="button" aria-pressed={mode === "single"} onClick={() => setMode("single")}>
+					單一組別
+				</button>
+				<button type="button" aria-pressed={mode === "leaders"} onClick={() => setMode("leaders")}>
+					所有組長
+				</button>
+			</div>
+			{mode === "single" ? (
+				<>
+					<label className={styles.srOnly} htmlFor="quick-team">
+						新卡片組別
+					</label>
+					<select id="quick-team" value={teamKey} onChange={(event) => changeTeam(event.target.value)}>
+						{teams.map((team) => (
+							<option key={team.key} value={team.key}>
+								{team.name}
+							</option>
+						))}
+					</select>
+				</>
+			) : (
+				<span className={styles.bulkTarget}>{leaderTargets.length ? `${leaderTargets.length} 組` : "尚未設定組長"}</span>
+			)}
 			<label className={styles.srOnly} htmlFor="quick-title">
 				卡片標題
 			</label>
@@ -385,15 +425,25 @@ function QuickCreate({
 				placeholder="輸入新卡片標題..."
 				autoComplete="off"
 			/>
-			<AssigneePicker bootstrap={bootstrap} teamKey={teamKey} value={assignees} onChange={setAssignees} label="選擇新卡片 Assignee" />
+			{mode === "single" ? (
+				<AssigneePicker bootstrap={bootstrap} teamKey={teamKey} value={assignees} onChange={setAssignees} label="選擇新卡片 Assignee" />
+			) : (
+				<span className={styles.bulkAssignees}>{leaderCount ? `${leaderCount} 人` : "等待名單"}</span>
+			)}
 			<label className={styles.dateControl} title="新卡片期限">
 				<span className={styles.srOnly}>期限</span>
 				<input type="date" value={dueDate} aria-label="新卡片期限" onChange={(event) => setDueDate(event.target.value)} />
 			</label>
-			<button type="submit" className={styles.createButton} disabled={!title.trim()} aria-label="建立卡片" title="建立卡片">
+			<button
+				type="submit"
+				className={styles.createButton}
+				disabled={!title.trim() || (mode === "leaders" && leaderTargets.length === 0)}
+				aria-label={mode === "leaders" ? "為所有組長建立卡片" : "建立卡片"}
+				title={mode === "leaders" ? "為所有組長建立卡片" : "建立卡片"}
+			>
 				<Plus size="1.125rem" aria-hidden="true" />
 			</button>
-			{clearedAssignees.length ? (
+			{mode === "single" && clearedAssignees.length ? (
 				<p className={styles.quickNotice} role="status">
 					已清除不屬於此組別的 Assignee
 					<button
@@ -477,6 +527,10 @@ function CardDetail({
 	card,
 	bootstrap,
 	onClose,
+	onPrevious,
+	onNext,
+	position,
+	total,
 	onDetails,
 	onTeam,
 	onMove,
@@ -487,6 +541,10 @@ function CardDetail({
 	card: BoardCard;
 	bootstrap: Bootstrap;
 	onClose: () => void;
+	onPrevious: (() => void) | undefined;
+	onNext: (() => void) | undefined;
+	position: number;
+	total: number;
 	onDetails: (title: string, description: string) => void;
 	onTeam: (teamKey: string) => void;
 	onMove: (listKey: string) => void;
@@ -504,17 +562,43 @@ function CardDetail({
 		const normalized = title.trim();
 		if (!normalized) return;
 		onDetails(normalized, description);
-		onClose();
+	};
+	const runQuickAction = (action: QuickAction) => {
+		switch (action.kind) {
+			case "assign":
+				onAssignee(action.memberIds);
+				break;
+			case "due":
+				onDueDate(action.value);
+				break;
+			case "start":
+				onStartDate(action.value);
+				break;
+			case "move":
+				onMove(action.listKey);
+				break;
+		}
 	};
 
 	return (
-		<Dialog
+		<Drawer
 			open
 			onOpenChange={(open) => !open && onClose()}
 			title={card.issueIid > 0 ? `#${card.issueIid} 卡片詳細資料` : "新卡片詳細資料"}
 			description="細節與排程"
 		>
 			<form className={styles.cardDetail} onSubmit={save}>
+				<nav className={styles.detailNavigation} aria-label="切換卡片">
+					<button type="button" aria-label="上一張卡片" title="上一張卡片" disabled={!onPrevious} onClick={onPrevious}>
+						<ChevronLeft size="1rem" aria-hidden="true" />
+					</button>
+					<span>
+						{position} / {total}
+					</span>
+					<button type="button" aria-label="下一張卡片" title="下一張卡片" disabled={!onNext} onClick={onNext}>
+						<ChevronRight size="1rem" aria-hidden="true" />
+					</button>
+				</nav>
 				<label className={styles.detailTitle}>
 					<span>標題</span>
 					<input value={title} maxLength={255} onChange={(event) => setTitle(event.target.value)} />
@@ -596,6 +680,7 @@ function CardDetail({
 						</label>
 					</div>
 				</div>
+				<QuickActionComposer bootstrap={bootstrap} card={card} onAction={runQuickAction} />
 				<footer className={styles.detailActions}>
 					{card.webUrl ? (
 						<a href={card.webUrl} target="_blank" rel="noreferrer">
@@ -609,7 +694,102 @@ function CardDetail({
 					</button>
 				</footer>
 			</form>
-		</Dialog>
+		</Drawer>
+	);
+}
+
+function QuickActionComposer({ bootstrap, card, onAction }: { bootstrap: Bootstrap; card: BoardCard; onAction: (action: QuickAction) => void }) {
+	const [value, setValue] = useState("");
+	const [error, setError] = useState<string | null>(null);
+	const [activeIndex, setActiveIndex] = useState(0);
+	const inputId = useId();
+	const menuId = useId();
+	const commandToken = value.trimStart().split(/\s/, 1)[0]?.toLowerCase() ?? "";
+	const suggestions =
+		value.trimStart().startsWith("/") && !value.trimStart().includes(" ") ? quickActionCommands.filter((item) => item.command.startsWith(commandToken)) : [];
+
+	const choose = (index: number) => {
+		const suggestion = suggestions[index];
+		if (!suggestion) return;
+		const needsArgument = suggestion.usage !== suggestion.command;
+		setValue(suggestion.command + (needsArgument ? " " : ""));
+		setError(null);
+		setActiveIndex(0);
+	};
+	const execute = () => {
+		const result = parseQuickAction(value, bootstrap, card);
+		if ("error" in result) {
+			setError(result.error);
+			return;
+		}
+		onAction(result.action);
+		setValue("");
+		setError(null);
+	};
+
+	return (
+		<section className={styles.quickActions}>
+			<label htmlFor={inputId}>
+				<SquareTerminal size="0.875rem" aria-hidden="true" />
+				<span>Quick action</span>
+			</label>
+			<div className={styles.commandInput}>
+				<input
+					id={inputId}
+					role="combobox"
+					aria-autocomplete="list"
+					aria-expanded={suggestions.length > 0}
+					aria-controls={suggestions.length ? menuId : undefined}
+					aria-activedescendant={suggestions.length ? `${menuId}-${activeIndex}` : undefined}
+					value={value}
+					autoComplete="off"
+					placeholder="/"
+					onChange={(event) => {
+						setValue(event.target.value);
+						setError(null);
+						setActiveIndex(0);
+					}}
+					onKeyDown={(event) => {
+						if (event.key === "ArrowDown" && suggestions.length) {
+							event.preventDefault();
+							setActiveIndex((index) => (index + 1) % suggestions.length);
+						} else if (event.key === "ArrowUp" && suggestions.length) {
+							event.preventDefault();
+							setActiveIndex((index) => (index - 1 + suggestions.length) % suggestions.length);
+						} else if (event.key === "Enter") {
+							event.preventDefault();
+							if (suggestions.length && value.trim() !== suggestions[activeIndex]?.command) choose(activeIndex);
+							else execute();
+						} else if (event.key === "Escape" && suggestions.length) {
+							event.stopPropagation();
+							setValue("");
+						}
+					}}
+				/>
+				<button type="button" disabled={!value.trim()} onClick={execute}>
+					執行
+				</button>
+				{suggestions.length ? (
+					<div id={menuId} className={styles.commandMenu} role="listbox" aria-label="Quick Actions">
+						{suggestions.map((suggestion, index) => (
+							<button
+								type="button"
+								role="option"
+								id={`${menuId}-${index}`}
+								aria-selected={index === activeIndex}
+								key={suggestion.command}
+								onMouseDown={(event) => event.preventDefault()}
+								onClick={() => choose(index)}
+							>
+								<code>{suggestion.usage}</code>
+								<span>{suggestion.label}</span>
+							</button>
+						))}
+					</div>
+				) : null}
+			</div>
+			{error ? <p role="alert">{error}</p> : null}
+		</section>
 	);
 }
 

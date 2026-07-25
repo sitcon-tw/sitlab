@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"example.com/project-template/internal/controller/application/sync"
 	"example.com/project-template/internal/domain/board"
@@ -18,13 +19,16 @@ import (
 func TestSnapshotEndpointsParseMembersAndIssues(t *testing.T) {
 	t.Parallel()
 	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.Header.Get("PRIVATE-TOKEN") != "project-token" {
+		if request.Method == http.MethodGet && request.Header.Get("PRIVATE-TOKEN") != "project-token" {
 			t.Errorf("PRIVATE-TOKEN = %q", request.Header.Get("PRIVATE-TOKEN"))
 		}
 		switch {
 		case strings.Contains(request.URL.Path, "/members/all"):
 			return response(http.StatusOK, `[{"id":101,"username":"alice","name":"Alice","web_url":"https://gitlab.example/alice","access_level":40,"state":"active"}]`), nil
 		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/issues"):
+			if request.Header.Get("Authorization") != "Bearer actor-token" {
+				t.Errorf("Authorization = %q", request.Header.Get("Authorization"))
+			}
 			var payload map[string]any
 			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 				t.Fatal(err)
@@ -64,7 +68,7 @@ func TestSnapshotEndpointsParseMembersAndIssues(t *testing.T) {
 	created, err := client.ApplyIssue(context.Background(), sync.IssueMutation{
 		Create: true, Title: "[開發組] 新卡", Description: "詳細規劃", StartDate: "2026-07-17", DueDate: "2026-07-21",
 		Labels: []string{"組別::開發", "To Do"}, AssigneeGitLabUserIDs: []int64{101, 202},
-	})
+	}, "actor-token")
 	if err != nil || created.IssueIID != 2 || created.StartDate != "2026-07-17" {
 		t.Fatalf("ApplyIssue() = %#v, %v", created, err)
 	}
@@ -95,7 +99,7 @@ func TestOAuthAndProjectMembership(t *testing.T) {
 			if request.FormValue("code_verifier") != "verifier" {
 				t.Errorf("code_verifier = %q", request.FormValue("code_verifier"))
 			}
-			return response(http.StatusOK, `{"access_token":"token"}`), nil
+			return response(http.StatusOK, `{"access_token":"token","refresh_token":"refresh","expires_in":7200,"created_at":10000}`), nil
 		case "/api/v4/user":
 			assertBearer(t, request)
 			return response(http.StatusOK, `{"id":123,"username":"yorukot","name":"Yorukot","avatar_url":"https://img.example/avatar.png","web_url":"https://gitlab.com/yorukot"}`), nil
@@ -127,7 +131,7 @@ func TestOAuthAndProjectMembership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if authorize.Query().Get("state") != "state" || authorize.Query().Get("code_challenge_method") != "S256" {
+	if authorize.Query().Get("state") != "state" || authorize.Query().Get("code_challenge_method") != "S256" || authorize.Query().Get("scope") != "api" {
 		t.Fatalf("AuthorizationURL() = %s", authorize)
 	}
 }
@@ -137,7 +141,7 @@ func TestMissingProjectMemberIsForbidden(t *testing.T) {
 	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		switch {
 		case request.URL.Path == "/oauth/token":
-			return response(http.StatusOK, `{"access_token":"token"}`), nil
+			return response(http.StatusOK, `{"access_token":"token","refresh_token":"refresh","expires_in":7200}`), nil
 		case request.URL.Path == "/api/v4/user":
 			return response(http.StatusOK, `{"id":123,"username":"outside","name":"Outside"}`), nil
 		case strings.Contains(request.URL.Path, "/members/all/"):
@@ -148,8 +152,27 @@ func TestMissingProjectMemberIsForbidden(t *testing.T) {
 	})
 	client, _ := New(&http.Client{Transport: transport}, Config{BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027"})
 	_, err := client.ExchangeIdentity(context.Background(), "code", "verifier")
-	if err != identity.ErrProjectMemberRequired {
+	if !errors.Is(err, identity.ErrProjectMemberRequired) {
 		t.Fatalf("ExchangeIdentity() error = %v", err)
+	}
+}
+
+func TestRefreshTokenRotatesOAuthCredential(t *testing.T) {
+	t.Parallel()
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if err := request.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if request.FormValue("grant_type") != "refresh_token" || request.FormValue("refresh_token") != "old-refresh" {
+			t.Fatalf("refresh form = %#v", request.Form)
+		}
+		return response(http.StatusOK, `{"access_token":"new-access","refresh_token":"new-refresh","expires_in":7200,"created_at":10000}`), nil
+	})
+	client, _ := New(&http.Client{Transport: transport}, Config{BaseURL: "https://gitlab.example", ClientID: "client", ClientSecret: "secret"})
+
+	tokens, err := client.RefreshToken(context.Background(), "old-refresh")
+	if err != nil || tokens.AccessToken != "new-access" || tokens.RefreshToken != "new-refresh" || !tokens.ExpiresAt.Equal(time.Unix(17_200, 0).UTC()) {
+		t.Fatalf("RefreshToken() = %#v, %v", tokens, err)
 	}
 }
 

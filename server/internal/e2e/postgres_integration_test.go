@@ -95,6 +95,17 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	credential := identity.OAuthCredential{
+		UserID: user.ID, AccessTokenCiphertext: []byte("sealed-access"), RefreshTokenCiphertext: []byte("sealed-refresh"),
+		ExpiresAt: now.Add(time.Hour), UpdatedAt: now,
+	}
+	if err := oauthRepo.UpsertOAuthCredential(ctx, credential); err != nil {
+		t.Fatal(err)
+	}
+	storedCredential, err := oauthRepo.OAuthCredential(ctx, user.ID)
+	if err != nil || string(storedCredential.AccessTokenCiphertext) != "sealed-access" {
+		t.Fatalf("OAuth credential = %#v, error %v", storedCredential, err)
+	}
 	seedSnapshots(t, ctx, pool, now)
 
 	listenerCtx, stopListener := context.WithCancel(ctx)
@@ -179,10 +190,14 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 		t.Fatalf("idempotent create = %#v, err = %v", idempotent, err)
 	}
 	gitlab := &operationGitLabFake{now: now.Add(time.Minute)}
-	syncService := appsync.NewService(gitlab, operationDirectoryFake{}, store, nil, noop.NewTracerProvider().Tracer("test"))
+	actorTokens := &operationActorTokensFake{}
+	syncService := appsync.NewService(gitlab, operationDirectoryFake{}, store, actorTokens, nil, noop.NewTracerProvider().Tracer("test"))
 	processed, err := syncService.ProcessOne(ctx)
 	if err != nil || !processed || gitlab.lastMutation == nil || !gitlab.lastMutation.Create {
 		t.Fatalf("process create = %v, %v, mutation=%#v", processed, err, gitlab.lastMutation)
+	}
+	if actorTokens.userID != user.ID {
+		t.Fatalf("operation actor = %q, want %q", actorTokens.userID, user.ID)
 	}
 	canonical, err := store.ByOperation(ctx, operationID)
 	if err != nil || canonical.Card.IssueIID != 42 || canonical.Card.StartDate != startDate {
@@ -244,6 +259,13 @@ type operationGitLabFake struct {
 
 type operationDirectoryFake struct{}
 
+type operationActorTokensFake struct{ userID string }
+
+func (f *operationActorTokensFake) AccessToken(_ context.Context, userID string) (string, error) {
+	f.userID = userID
+	return "actor-token", nil
+}
+
 func (operationDirectoryFake) DirectoryRevision(context.Context) (string, error) {
 	return "revision", nil
 }
@@ -259,7 +281,7 @@ func (*operationGitLabFake) Issues(context.Context) ([]appsync.GitLabIssue, erro
 func (*operationGitLabFake) Issue(context.Context, int64) (appsync.GitLabIssue, error) {
 	return appsync.GitLabIssue{}, domainboard.ErrCardNotFound
 }
-func (f *operationGitLabFake) ApplyIssue(_ context.Context, mutation appsync.IssueMutation) (appsync.GitLabIssue, error) {
+func (f *operationGitLabFake) ApplyIssue(_ context.Context, mutation appsync.IssueMutation, _ string) (appsync.GitLabIssue, error) {
 	f.lastMutation = &mutation
 	return appsync.GitLabIssue{
 		IssueIID: 42, GitLabIssueID: 420, Title: mutation.Title, Description: mutation.Description,

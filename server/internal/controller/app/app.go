@@ -96,7 +96,7 @@ func New(ctx context.Context) (*Application, error) {
 	}, tracer)
 	directoryService := appdirectory.NewService(store, tracer)
 	boardService := appboard.NewService(store, directoryService, tracer)
-	syncService := appsync.NewService(gitLabClient, directoryClient, store, directoryLogger{log: log}, tracer)
+	syncService := appsync.NewService(gitLabClient, directoryClient, store, oauthService, directoryLogger{log: log}, tracer)
 	bootstrapService := appbootstrap.NewService(oauthService, directoryService, boardService, store)
 
 	if syncErr := syncService.InitialSync(ctx); syncErr != nil {

@@ -29,6 +29,7 @@ type teamResponse struct {
 	Active              bool    `json:"active"`
 	SortOrder           int32   `json:"sortOrder"`
 	MemberGitLabUserIDs []int64 `json:"memberGitLabUserIds"`
+	LeaderGitLabUserIDs []int64 `json:"leaderGitLabUserIds"`
 }
 
 type directoryMemberResponse struct {
@@ -120,10 +121,11 @@ func mapUser(item identity.User) userResponse {
 
 func mapTeam(item directory.Team) teamResponse {
 	ids := append([]int64{}, item.MemberGitLabUserIDs...)
+	leaderIDs := append([]int64{}, item.LeaderGitLabUserIDs...)
 	return teamResponse{
 		Key: item.Key, Name: item.Name, TitlePrefix: item.TitlePrefix,
 		GitLabLabel: item.GitLabLabel, Active: item.Active,
-		SortOrder: item.SortOrder, MemberGitLabUserIDs: ids,
+		SortOrder: item.SortOrder, MemberGitLabUserIDs: ids, LeaderGitLabUserIDs: leaderIDs,
 	}
 }
 

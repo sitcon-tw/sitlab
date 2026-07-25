@@ -18,7 +18,7 @@ SITCON Board 是籌備團隊每天重複使用的工作介面。視覺應安靜�
 
 ## Product Layout
 
-Header 高度固定，包含產品識別、成員 Sheet、錯誤時才出現的離線狀態與帳號選單。快速開卡在桌面為單列，手機為 title 加控制列。Board lanes 固定依序為 `Wating`、`Inbox`、`To Do`、`Doing`、`Review`、`Closed`，保持穩定最小寬度；窄螢幕水平捲動，不壓縮到文字與控制重疊。
+Header 高度固定，包含產品識別、成員 Sheet、錯誤時才出現的離線狀態與帳號選單。快速開卡在桌面為單列，手機為 title 加控制列，並以 segmented mode 切換單組或所有組長；新卡固定出現在第一欄最上方。Board 上方的緊湊篩選列提供單一組別與複選成員篩選。Board lanes 固定依序為 `Wating`、`Inbox`、`To Do`、`Doing`、`Review`、`Closed`，保持穩定最小寬度；窄螢幕水平捲動，不壓縮到文字與控制重疊。
 
 完整成員目錄只出現在右側 Drawer；桌面為窄 Sheet、手機可佔全寬。不建立永久 sidebar，也不在主 Board 重複完整名單。
 
@@ -27,8 +27,8 @@ Header 高度固定，包含產品識別、成員 Sheet、錯誤時才出現的�
 - Production initial render 使用 injected bootstrap，不顯示 loading page、skeleton、spinner 或空 Board。
 - 背景刷新不替換成 loading state，不改變 layout；健康、pending 與 processing 狀態不顯示，只有離線或 mutation 失敗才顯示技術狀態。
 - 開卡與卡片 mutation 立即 optimistic update。失敗保留使用者意圖並顯示 Retry。
-- 拖放是滑鼠捷徑；卡片詳細視窗內的狀態 select 提供完整鍵盤操作，卡片表面不重複組別與狀態 controls。
-- 卡片詳細視窗包含 title、支援 GFM 預覽的 Markdown description、組別、狀態、多人 Assignee、GitLab Start/Due dates 與 Issue 連結。
+- 拖放是滑鼠捷徑；卡片右側 detail Drawer 內的狀態 select 提供完整鍵盤操作，卡片表面不重複組別與狀態 controls。
+- 卡片 detail Drawer 包含前後卡片切換、title、支援 GFM 預覽的 Markdown description、組別、狀態、多人 Assignee、GitLab Start/Due dates、typed Quick Actions 與 Issue 連結。
 - Assignee picker 支援複選，順序為目前使用者、目前組別、其他組別、未分組；搜尋涵蓋所有 active project members。
 - Avatar 固定尺寸，initials 立即顯示；成功載入的圖片原地淡入，失敗不顯示破圖。
 - Dialog/Drawer trap focus、Escape 關閉並還原 trigger focus。所有 icon-only controls 有 accessible name 與 tooltip。

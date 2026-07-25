@@ -38,8 +38,8 @@ function AuthenticatedApp({ initialBootstrap }: { initialBootstrap: Bootstrap })
 		queryKey: bootstrapKey,
 		queryFn: refreshBootstrap,
 		initialData: initialBootstrap,
-		refetchInterval: demo ? false : 30_000,
-		staleTime: demo ? Infinity : 25_000
+		refetchInterval: demo ? false : 5_000,
+		staleTime: demo ? Infinity : 4_000
 	});
 	const bootstrap = bootstrapQuery.data;
 	useEffect(() => {

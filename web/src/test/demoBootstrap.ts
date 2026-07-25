@@ -45,7 +45,8 @@ const teams: DirectoryTeam[] = teamDefinitions.map(([key, name, label, memberGit
 	gitLabLabel: `組別::${label}`,
 	active: true,
 	sortOrder: index + 1,
-	memberGitLabUserIds: [...memberGitLabUserIds]
+	memberGitLabUserIds: [...memberGitLabUserIds],
+	leaderGitLabUserIds: memberGitLabUserIds.length ? [memberGitLabUserIds[0]] : []
 }));
 
 const members: DirectoryMember[] = memberDefinitions.map(([gitLabUserId, username, displayName]) => ({

@@ -10,6 +10,8 @@ type Repository interface {
 	StoreOAuthState(context.Context, identity.OAuthState) error
 	ConsumeOAuthState(context.Context, []byte) (identity.OAuthState, error)
 	UpsertUser(context.Context, identity.User) (identity.User, error)
+	UpsertOAuthCredential(context.Context, identity.OAuthCredential) error
+	OAuthCredential(context.Context, string) (identity.OAuthCredential, error)
 	GetUserByID(context.Context, string) (identity.User, error)
 	CreateSession(context.Context, identity.Session) (identity.Session, error)
 	GetSessionByTokenHash(context.Context, []byte) (identity.Session, error)
@@ -37,4 +39,5 @@ type Cipher interface {
 type GitLab interface {
 	AuthorizationURL(state, codeChallenge string) string
 	ExchangeIdentity(context.Context, string, string) (GitLabIdentity, error)
+	RefreshToken(context.Context, string) (OAuthTokens, error)
 }

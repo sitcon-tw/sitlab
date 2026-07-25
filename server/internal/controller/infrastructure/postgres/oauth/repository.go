@@ -71,6 +71,41 @@ func (r *Repository) UpsertUser(ctx context.Context, user identity.User) (identi
 	return result, nil
 }
 
+func (r *Repository) UpsertOAuthCredential(ctx context.Context, credential identity.OAuthCredential) error {
+	_, err := postgres.Executor(ctx, r.pool).Exec(ctx, `
+		INSERT INTO gitlab_oauth_credentials
+		    (user_id, access_token_ciphertext, refresh_token_ciphertext, expires_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (user_id) DO UPDATE
+		SET access_token_ciphertext = EXCLUDED.access_token_ciphertext,
+		    refresh_token_ciphertext = EXCLUDED.refresh_token_ciphertext,
+		    expires_at = EXCLUDED.expires_at,
+		    updated_at = EXCLUDED.updated_at
+	`, uuid.MustParse(credential.UserID), credential.AccessTokenCiphertext,
+		credential.RefreshTokenCiphertext, credential.ExpiresAt, credential.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("upsert GitLab OAuth credential: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) OAuthCredential(ctx context.Context, userID string) (identity.OAuthCredential, error) {
+	var credential identity.OAuthCredential
+	err := postgres.Executor(ctx, r.pool).QueryRow(ctx, `
+		SELECT user_id, access_token_ciphertext, refresh_token_ciphertext, expires_at, updated_at
+		FROM gitlab_oauth_credentials
+		WHERE user_id = $1
+	`, uuid.MustParse(userID)).Scan(&credential.UserID, &credential.AccessTokenCiphertext,
+		&credential.RefreshTokenCiphertext, &credential.ExpiresAt, &credential.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return identity.OAuthCredential{}, identity.ErrOAuthCredentialNotFound
+	}
+	if err != nil {
+		return identity.OAuthCredential{}, fmt.Errorf("get GitLab OAuth credential: %w", err)
+	}
+	return credential, nil
+}
+
 func (r *Repository) GetUserByID(ctx context.Context, userID string) (identity.User, error) {
 	user, err := scanUser(postgres.Executor(ctx, r.pool).QueryRow(ctx, `
 		SELECT id, gitlab_user_id, username, display_name, avatar_url,

@@ -77,6 +77,7 @@ func (c *Client) load(ctx context.Context) (snapshot, error) {
 			GitLabLabel string   `yaml:"gitlab_label"`
 			Active      bool     `yaml:"active"`
 			Members     []string `yaml:"members"`
+			Leaders     []string `yaml:"leaders"`
 		} `yaml:"teams"`
 	}
 	if err := yaml.Unmarshal(content, &source); err != nil {
@@ -86,7 +87,7 @@ func (c *Client) load(ctx context.Context) (snapshot, error) {
 	for _, team := range source.Teams {
 		file.Teams = append(file.Teams, directory.TeamConfig{
 			Key: team.Key, Name: team.Name, TitlePrefix: team.TitlePrefix,
-			GitLabLabel: team.GitLabLabel, Active: team.Active, Members: team.Members,
+			GitLabLabel: team.GitLabLabel, Active: team.Active, Members: team.Members, Leaders: team.Leaders,
 		})
 	}
 	revision := fmt.Sprintf("%x", sha256.Sum256(content))

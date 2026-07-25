@@ -19,7 +19,7 @@ Bundled directory + GitLab API ---> PostgreSQL snapshots + revision
 
 Production traffic is ready only after directory, members, and board snapshots exist. Go injects the complete authenticated bootstrap into `index.html`; React pre-fills TanStack Query before the first render. `GET /api/v1/bootstrap` is the development fallback and 30-second recovery poll.
 
-Signed Project Issue and Group Member deliveries are committed to a durable PostgreSQL inbox before acknowledgement. The worker fetches canonical GitLab state, then advances a monotonic bootstrap revision in the same transaction as visible changes. PostgreSQL `LISTEN/NOTIFY` fans that revision across app instances, and authenticated SSE invalidates TanStack Query in open browsers. Full Board and Directory polling remains the missed-event fallback.
+Signed Project Issue and Group Member deliveries are committed to a durable PostgreSQL inbox before acknowledgement. The worker fetches canonical GitLab state, then advances a monotonic bootstrap revision in the same transaction as visible changes. PostgreSQL `LISTEN/NOTIFY` fans that revision across app instances, and continuously connected authenticated SSE invalidates TanStack Query in open browsers. A full Board poll every five seconds and the slower Directory poll remain the missed-event fallback.
 
 ## Dependency rule
 
@@ -33,12 +33,12 @@ Domain knows no frameworks. Application use cases own narrow consumed ports and 
 
 ## Mutations
 
-Card mutations update optimistic `issue_cache` and insert a `durable_operation` in one transaction. New cards receive a temporary negative IID. The worker sends current canonical title, Markdown description, `start_date`, `due_date`, labels, and the `assignee_ids` array to GitLab, replaces temporary IIDs after creation, and reconciles responses. Open lists use the scoped labels `Status::Waiting`, `Status::Inbox`, `Status::To Do`, `Status::Doing`, and `Status::Review`; Closed uses the issue state. Reads prioritize scoped status labels over legacy plain labels, which the next mutation removes. The join table preserves multiple assignees while deferred foreign keys allow temporary IIDs to become GitLab IIDs. Failed operations keep the optimistic state and can be retried.
+Card mutations update optimistic `issue_cache` and insert a `durable_operation` in one transaction. New cards receive a temporary negative IID at position zero. The worker resolves the requesting user's encrypted OAuth credential, sends current canonical title, Markdown description, `start_date`, `due_date`, labels, and the `assignee_ids` array to GitLab as that user, replaces temporary IIDs after creation, and reconciles responses. Open lists use the scoped labels `Status::Waiting`, `Status::Inbox`, `Status::To Do`, `Status::Doing`, and `Status::Review`; Closed uses the issue state. Reads prioritize scoped status labels over legacy plain labels, which the next mutation removes. The join table preserves multiple assignees while deferred foreign keys allow temporary IIDs to become GitLab IIDs. Failed operations keep the optimistic state and can be retried.
 
 ## Frontend ownership
 
-TanStack Query owns the bootstrap server snapshot. `features/onboarding` owns primary-team confirmation. `features/board` owns transient drafts, the detailed planning dialog, optimistic mutation, multiple-assignee reconciliation, drag/drop and keyboard controls. The Board uses the ordered `Wating`, `Inbox`, `To Do`, `Doing`, `Review`, and `Closed` lists. Team names, prefixes, labels, members, lists, and cards always come from bootstrap.
+TanStack Query owns the bootstrap server snapshot. `features/onboarding` owns primary-team confirmation. `features/board` owns transient drafts, the navigable right-side detail drawer, typed Quick Actions, optimistic mutation, leader bulk-create, multiple-assignee reconciliation, drag/drop and keyboard controls. The Board uses the ordered `Wating`, `Inbox`, `To Do`, `Doing`, `Review`, and `Closed` lists. Team names, leaders, prefixes, labels, members, lists, and cards always come from bootstrap.
 
 ## Security
 
-GitLab OAuth uses Authorization Code with PKCE and single-use encrypted state. Browser sessions are random opaque tokens in HttpOnly cookies; PostgreSQL stores keyed digests. Every valid use renews expiry to 14 days from that use. Authenticated mutations require both the session-bound CSRF token and an allowed Origin.
+GitLab OAuth uses Authorization Code with PKCE, `api` scope, and single-use encrypted state. Access and rotating refresh tokens are encrypted at rest so durable mutations preserve the real GitLab actor. Browser sessions are random opaque tokens in HttpOnly cookies; PostgreSQL stores keyed digests. Every valid use renews expiry to 14 days from that use. Authenticated mutations require both the session-bound CSRF token and an allowed Origin.

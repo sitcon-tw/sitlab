@@ -571,6 +571,9 @@ export interface components {
 		 *       "sortOrder": 8,
 		 *       "memberGitLabUserIds": [
 		 *         123456
+		 *       ],
+		 *       "leaderGitLabUserIds": [
+		 *         123456
 		 *       ]
 		 *     }
 		 */
@@ -583,6 +586,7 @@ export interface components {
 			/** Format: int32 */
 			sortOrder: number;
 			memberGitLabUserIds: number[];
+			leaderGitLabUserIds: number[];
 		};
 		DurableOperation: {
 			id: components["schemas"]["uuid"];

@@ -22,6 +22,14 @@ type OAuthState struct {
 	CreatedAt          time.Time
 }
 
+type OAuthCredential struct {
+	UserID                 string
+	AccessTokenCiphertext  []byte
+	RefreshTokenCiphertext []byte
+	ExpiresAt              time.Time
+	UpdatedAt              time.Time
+}
+
 type Session struct {
 	ID            string
 	UserID        string

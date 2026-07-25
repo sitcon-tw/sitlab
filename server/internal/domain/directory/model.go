@@ -37,6 +37,7 @@ type TeamConfig struct {
 	GitLabLabel string
 	Active      bool
 	Members     []string
+	Leaders     []string
 }
 
 type GitLabMember struct {
@@ -72,7 +73,9 @@ type Team struct {
 	Active                   bool
 	SortOrder                int32
 	MemberGitLabUserIDs      []int64
+	LeaderGitLabUserIDs      []int64
 	DirectoryMemberUsernames []string
+	DirectoryLeaderUsernames []string
 }
 
 type MissingMember struct {
@@ -148,6 +151,27 @@ func Normalize(file File, gitLabMembers []GitLabMember, sourceRevision string, s
 			team.MemberGitLabUserIDs = append(team.MemberGitLabUserIDs, member.GitLabUserID)
 			team.DirectoryMemberUsernames = append(team.DirectoryMemberUsernames, member.Username)
 			memberTeams[member.GitLabUserID] = append(memberTeams[member.GitLabUserID], config.Key)
+		}
+		seenLeader := make(map[int64]struct{}, len(config.Leaders))
+		for _, rawUsername := range config.Leaders {
+			username := strings.TrimSpace(rawUsername)
+			member, exists := membersByUsername[strings.ToLower(username)]
+			if !exists {
+				missing = append(missing, MissingMember{TeamKey: config.Key, Username: username})
+				continue
+			}
+			if _, exists := seenLeader[member.GitLabUserID]; exists {
+				continue
+			}
+			seenLeader[member.GitLabUserID] = struct{}{}
+			team.LeaderGitLabUserIDs = append(team.LeaderGitLabUserIDs, member.GitLabUserID)
+			team.DirectoryLeaderUsernames = append(team.DirectoryLeaderUsernames, member.Username)
+			if _, exists := seenMember[member.GitLabUserID]; !exists {
+				seenMember[member.GitLabUserID] = struct{}{}
+				team.MemberGitLabUserIDs = append(team.MemberGitLabUserIDs, member.GitLabUserID)
+				team.DirectoryMemberUsernames = append(team.DirectoryMemberUsernames, member.Username)
+				memberTeams[member.GitLabUserID] = append(memberTeams[member.GitLabUserID], config.Key)
+			}
 		}
 		teams = append(teams, team)
 	}

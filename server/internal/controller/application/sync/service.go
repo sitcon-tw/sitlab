@@ -39,6 +39,7 @@ type Service struct {
 	gitlab    GitLab
 	directory DirectorySource
 	repo      Repository
+	actors    ActorTokens
 	log       MissingMemberLogger
 	now       func() time.Time
 	tracer    trace.Tracer
@@ -51,9 +52,9 @@ type WebhookObserver interface {
 	WebhookProcessed(kind, result string, duration time.Duration)
 }
 
-func NewService(gitlab GitLab, directory DirectorySource, repo Repository, log MissingMemberLogger, tracer trace.Tracer) *Service {
+func NewService(gitlab GitLab, directory DirectorySource, repo Repository, actors ActorTokens, log MissingMemberLogger, tracer trace.Tracer) *Service {
 	return &Service{
-		gitlab: gitlab, directory: directory, repo: repo, log: log, now: time.Now, tracer: tracer,
+		gitlab: gitlab, directory: directory, repo: repo, actors: actors, log: log, now: time.Now, tracer: tracer,
 		refresh: make(chan struct{}, 1), webhook: make(chan struct{}, 1),
 	}
 }
@@ -179,7 +180,18 @@ func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
 		AssigneeGitLabUserIDs: append([]int64(nil), pending.Card.AssigneeGitLabUserIDs...),
 		StartDate:             pending.Card.StartDate, DueDate: pending.Card.DueDate, Closed: list.Closed,
 	}
-	issue, err := s.gitlab.ApplyIssue(ctx, mutation)
+	if s.actors == nil {
+		err := errors.New("GitLab authorization is unavailable; sign out and sign in again")
+		s.failOperation(ctx, pending, now, "GITLAB_REAUTH_REQUIRED", err)
+		return true, technical(span, "load actor GitLab authorization", err)
+	}
+	actorAccessToken, err := s.actors.AccessToken(ctx, pending.RequestedByUserID)
+	if err != nil {
+		reauthErr := fmt.Errorf("GitLab authorization is unavailable; sign out and sign in again: %w", err)
+		s.failOperation(ctx, pending, now, "GITLAB_REAUTH_REQUIRED", reauthErr)
+		return true, technical(span, "load actor GitLab authorization", reauthErr)
+	}
+	issue, err := s.gitlab.ApplyIssue(ctx, mutation, actorAccessToken)
 	if err != nil {
 		s.failOperation(ctx, pending, now, "GITLAB_SYNC_FAILED", err)
 		return true, technical(span, "apply GitLab issue mutation", err)
@@ -327,7 +339,7 @@ func (s *Service) Run(ctx context.Context, directoryInterval, boardInterval time
 		directoryInterval = 5 * time.Minute
 	}
 	if boardInterval <= 0 {
-		boardInterval = 30 * time.Second
+		boardInterval = 5 * time.Second
 	}
 	directoryTicker := time.NewTicker(directoryInterval)
 	boardTicker := time.NewTicker(boardInterval)
@@ -363,6 +375,7 @@ func directoryFileFromSnapshot(snapshot directory.Snapshot) directory.File {
 			Key: team.Key, Name: team.Name, TitlePrefix: team.TitlePrefix,
 			GitLabLabel: team.GitLabLabel, Active: team.Active,
 			Members: append([]string(nil), team.DirectoryMemberUsernames...),
+			Leaders: append([]string(nil), team.DirectoryLeaderUsernames...),
 		})
 	}
 	return file

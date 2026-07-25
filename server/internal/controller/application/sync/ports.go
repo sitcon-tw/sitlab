@@ -21,7 +21,11 @@ type GitLab interface {
 	ProjectMembers(context.Context) ([]directory.GitLabMember, error)
 	Issues(context.Context) ([]board.CanonicalIssue, error)
 	Issue(context.Context, int64) (board.CanonicalIssue, error)
-	ApplyIssue(context.Context, board.IssueMutation) (board.CanonicalIssue, error)
+	ApplyIssue(context.Context, board.IssueMutation, string) (board.CanonicalIssue, error)
+}
+
+type ActorTokens interface {
+	AccessToken(context.Context, string) (string, error)
 }
 
 type Repository interface {

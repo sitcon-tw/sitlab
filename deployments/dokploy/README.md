@@ -17,7 +17,7 @@ Create a GitLab OAuth application:
 - Name: `SITCON Board`
 - Redirect URI: `https://board.example.com/api/v1/auth/gitlab/callback`
 - Confidential: enabled
-- Scope: `read_api`
+- Scope: `api`
 
 The redirect URI must exactly match the public URL used in Dokploy.
 
@@ -27,7 +27,7 @@ Create a project access token in `sitcon-tw/2027`:
 - Scope: `api`
 - Expiration: set an operationally appropriate expiry and calendar its rotation
 
-Store the token as `SITCON_BOARD_GITLAB_PROJECT_ACCESS_TOKEN`. The application uses it to read project members, labels and issues, and to reconcile issue mutations.
+Store the token as `SITCON_BOARD_GITLAB_PROJECT_ACCESS_TOKEN`. The application uses it to read project members, labels, issues, and canonical webhook state. User-originated mutations use the requesting user's encrypted OAuth token so GitLab records the real actor.
 
 Create a project webhook in `sitcon-tw/2027`:
 
@@ -114,6 +114,8 @@ https://board.example.com/
 
 `health/ready` returns success only after PostgreSQL and all required snapshots are ready. Open the root URL and complete GitLab OAuth to verify the callback, session cookie, and project membership check.
 
+After the actor-attribution migration, existing users must sign out and sign in once so SitLab can store their encrypted access and rotating refresh tokens. Operations created from an older session fail with a reauthentication message instead of being written as the project bot.
+
 ## Updating
 
 Push a commit to `main`, then redeploy the Compose service in Dokploy. Every deployment builds the same Dockerfile and runs idempotent Goose migrations before replacing the app. Set `SITCON_BOARD_VERSION` and `SITCON_BOARD_REVISION` to a release tag or commit SHA when you want image metadata to identify an exact revision.
@@ -128,6 +130,6 @@ Back up the `sitcon-board-postgres` volume or configure Dokploy database backups
 - OAuth callback error: compare the GitLab Redirect URI and the generated `${SITCON_BOARD_PUBLIC_URL}/api/v1/auth/gitlab/callback` character for character.
 - Webhook `401`: confirm the complete generated `whsec_...` value is stored under the matching project or group environment key, and that GitLab and the app clocks are synchronized.
 - Webhook `400`: confirm the project is exactly `sitcon-tw/2027`, the group is exactly `sitcon-tw`, and no custom webhook template is configured.
-- Webhook succeeds but the board is stale: inspect `gitlab_webhook_deliveries_total`, `gitlab_webhook_processing_duration_seconds`, and GitLab Recent events; the 30-second Board poll remains the issue catch-up fallback.
+- Webhook succeeds but the board is stale: inspect `gitlab_webhook_deliveries_total`, `gitlab_webhook_processing_duration_seconds`, and GitLab Recent events; the 5-second Board poll remains the issue catch-up fallback.
 - CSRF origin error: `SITCON_BOARD_PUBLIC_URL` must be the browser's exact HTTPS origin and must not include a path.
 - PostgreSQL authentication error after rotating an environment variable: restore the old value or update the persisted PostgreSQL role password before redeploying.

@@ -121,8 +121,9 @@ type IssueMutation struct {
 }
 
 type PendingOperation struct {
-	Operation Operation
-	Card      Card
+	Operation         Operation
+	Card              Card
+	RequestedByUserID string
 }
 
 type SyncStatus struct {

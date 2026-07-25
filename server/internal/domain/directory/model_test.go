@@ -11,7 +11,7 @@ func TestNormalize(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.July, 14, 8, 0, 0, 0, time.UTC)
 	file := File{Version: 1, Teams: []TeamConfig{
-		{Key: "administration", Name: "行政組", TitlePrefix: "[行政組]", GitLabLabel: "組別::行政", Active: true, Members: []string{"alice", "missing"}},
+		{Key: "administration", Name: "行政組", TitlePrefix: "[行政組]", GitLabLabel: "組別::行政", Active: true, Members: []string{"alice", "missing"}, Leaders: []string{"alice"}},
 		{Key: "development", Name: "開發組", TitlePrefix: "[開發組]", GitLabLabel: "組別::開發", Active: true, Members: []string{"ALICE", "bob"}},
 	}}
 	members := []GitLabMember{
@@ -26,6 +26,9 @@ func TestNormalize(t *testing.T) {
 	}
 	if got, want := snapshot.Teams[0].MemberGitLabUserIDs, []int64{1}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("administration members = %v, want %v", got, want)
+	}
+	if got, want := snapshot.Teams[0].LeaderGitLabUserIDs, []int64{1}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("administration leaders = %v, want %v", got, want)
 	}
 	if got, want := snapshot.Members[0].TeamKeys, []string{"administration", "development"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("alice teams = %v, want %v", got, want)

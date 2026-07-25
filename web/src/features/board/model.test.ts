@@ -1,6 +1,6 @@
 import { demoBootstrap } from "@/test/demoBootstrap";
 import { describe, expect, it } from "vitest";
-import { preferredAssignees, taipeiDateAfter, teamMembers } from "./model";
+import { preferredAssignees, taipeiDateAfter, teamLeaders, teamMembers } from "./model";
 
 describe("board defaults", () => {
 	it("uses the current user only for their primary team", () => {
@@ -15,5 +15,9 @@ describe("board defaults", () => {
 
 	it("keeps assignment members sourced from active directory data", () => {
 		expect(teamMembers(demoBootstrap, "development").map((member) => member.username)).toEqual(["yorukot", "ming", "anita"]);
+	});
+
+	it("uses only explicitly configured active team leaders", () => {
+		expect(teamLeaders(demoBootstrap, "development").map((member) => member.username)).toEqual(["yorukot"]);
 	});
 });

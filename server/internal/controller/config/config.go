@@ -112,7 +112,7 @@ func Load() (Config, error) {
 		Directory: Directory{FilePath: value("DIRECTORY_FILE", LocalDirectoryPath)},
 		Sync: Sync{
 			DirectoryInterval: durationValue("DIRECTORY_SYNC_INTERVAL", 5*time.Minute),
-			BoardInterval:     durationValue("BOARD_SYNC_INTERVAL", 30*time.Second),
+			BoardInterval:     durationValue("BOARD_SYNC_INTERVAL", 5*time.Second),
 			OperationInterval: durationValue("OPERATION_POLL_INTERVAL", 500*time.Millisecond),
 		},
 		Observability: Observability{OTLPTracesEndpoint: value("OTEL_TRACES_ENDPOINT", "")},

@@ -170,12 +170,12 @@
 
 .quickCreate {
 	display: grid;
-	grid-template-columns: 9rem minmax(12rem, 1fr) 11rem 10rem 2.75rem;
+	grid-template-columns: 9rem 9rem minmax(12rem, 1fr) 11rem 10rem 2.75rem;
 	grid-template-areas:
-		"team title assignee date create"
-		"notice notice notice notice notice";
+		"mode team title assignee date create"
+		"notice notice notice notice notice notice";
 	gap: 0.5rem;
-	width: min(100%, 70rem);
+	width: min(100%, 80rem);
 	margin: 0 auto 1rem;
 	padding: 0.625rem;
 	background: var(--sb-surface);
@@ -184,8 +184,61 @@
 	box-shadow: var(--sb-shadow-card);
 }
 
+.createModes {
+	grid-area: mode;
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	padding: 0.125rem;
+	background: var(--sb-surface-subtle);
+	border: 1px solid var(--sb-border);
+	border-radius: 0.25rem;
+}
+
+.createModes button {
+	min-width: 0;
+	padding: 0 0.375rem;
+	color: var(--sb-text-muted);
+	background: transparent;
+	border: 0;
+	border-radius: 0.1875rem;
+	font-size: 0.6875rem;
+	font-weight: 750;
+}
+
+.createModes button[aria-pressed="true"] {
+	color: var(--sb-text);
+	background: var(--sb-surface);
+	box-shadow: var(--sb-shadow-card);
+}
+
 .quickCreate > select {
 	grid-area: team;
+}
+
+.bulkTarget,
+.bulkAssignees {
+	display: flex;
+	min-width: 0;
+	height: 2.5rem;
+	align-items: center;
+	padding: 0 0.625rem;
+	overflow: hidden;
+	color: var(--sb-text-muted);
+	background: var(--sb-control);
+	border: 1px solid var(--sb-border);
+	border-radius: 0.25rem;
+	font-size: 0.75rem;
+	font-weight: 700;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bulkTarget {
+	grid-area: team;
+}
+
+.bulkAssignees {
+	grid-area: assignee;
 }
 
 .quickCreate > input {
@@ -692,13 +745,42 @@
 	font-weight: 750;
 }
 
-:global(.pt-dialog):has(.cardDetail) {
-	width: min(calc(100vw - 2rem), 46rem);
+:global(.pt-drawer):has(.cardDetail) {
+	width: min(calc(100vw - 3rem), 46rem);
 }
 
 .cardDetail {
 	display: grid;
 	gap: 1rem;
+}
+
+.detailNavigation {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.375rem;
+}
+
+.detailNavigation button {
+	display: grid;
+	width: 2rem;
+	height: 2rem;
+	place-items: center;
+	color: var(--sb-text-muted);
+	background: var(--sb-control);
+	border: 1px solid var(--sb-border);
+	border-radius: 0.25rem;
+}
+
+.detailNavigation button:disabled {
+	opacity: 0.4;
+}
+
+.detailNavigation span {
+	min-width: 3.5rem;
+	color: var(--sb-text-subtle);
+	font-size: 0.75rem;
+	text-align: center;
 }
 
 .cardDetail label,
@@ -922,6 +1004,102 @@
 	text-decoration: none;
 }
 
+.quickActions {
+	display: grid;
+	gap: 0.375rem;
+	padding-top: 1rem;
+	border-top: 1px solid var(--sb-border);
+}
+
+.quickActions > label {
+	display: flex;
+	align-items: center;
+	gap: 0.375rem;
+	color: var(--sb-text-subtle);
+	font-size: 0.6875rem;
+	font-weight: 750;
+	text-transform: uppercase;
+}
+
+.quickActions > p {
+	margin: 0;
+	color: var(--sb-critical);
+	font-size: 0.75rem;
+}
+
+.commandInput {
+	position: relative;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.commandInput input {
+	border-radius: 0.25rem 0 0 0.25rem !important;
+}
+
+.commandInput > button {
+	min-width: 4rem;
+	color: var(--sb-on-brand);
+	background: var(--sb-brand);
+	border: 0;
+	border-radius: 0 0.25rem 0.25rem 0;
+	font-size: 0.75rem;
+	font-weight: 750;
+}
+
+.commandInput > button:disabled {
+	opacity: 0.45;
+}
+
+.commandMenu {
+	position: absolute;
+	right: 0;
+	bottom: calc(100% + 0.25rem);
+	left: 0;
+	z-index: 2;
+	display: grid;
+	max-height: 16rem;
+	padding: 0.25rem;
+	overflow-y: auto;
+	background: var(--sb-surface-raised);
+	border: 1px solid var(--sb-border);
+	border-radius: 0.25rem;
+	box-shadow: var(--sb-shadow-overlay);
+}
+
+.commandMenu button {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 0.75rem;
+	align-items: center;
+	min-height: 2.5rem;
+	padding: 0.375rem 0.5rem;
+	color: var(--sb-text);
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 0.1875rem;
+	text-align: left;
+}
+
+.commandMenu button[aria-selected="true"],
+.commandMenu button:hover {
+	background: var(--sb-surface-subtle);
+	border-color: var(--sb-border);
+}
+
+.commandMenu code {
+	overflow: hidden;
+	font-family: var(--pt-font-mono);
+	font-size: 0.75rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.commandMenu span {
+	color: var(--sb-text-subtle);
+	font-size: 0.6875rem;
+}
+
 .memberOption strong,
 .memberOption small {
 	overflow: hidden;
@@ -1024,6 +1202,7 @@
 
 .quickCreate select:focus-visible,
 .quickCreate input:focus-visible,
+.createModes button:focus-visible,
 .assigneeControl:focus-visible,
 .assigneeCompact:focus-visible,
 .createButton:focus-visible,
@@ -1042,6 +1221,9 @@
 }
 
 .cardTitle:focus-visible,
+.detailNavigation button:focus-visible,
+.commandInput > button:focus-visible,
+.commandMenu button:focus-visible,
 .descriptionModes button:focus-visible,
 .markdownPreview a:focus-visible,
 .pickerFooter button:focus-visible,
@@ -1075,6 +1257,7 @@
 	.quickCreate {
 		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 8.5rem 2.75rem;
 		grid-template-areas:
+			"mode mode mode mode"
 			"title title title title"
 			"team assignee date create"
 			"notice notice notice notice";
@@ -1113,6 +1296,10 @@
 }
 
 @media (max-width: 30rem) {
+	:global(.pt-drawer):has(.cardDetail) {
+		width: 100vw;
+	}
+
 	.product > span:last-child {
 		display: none;
 	}
@@ -1155,6 +1342,12 @@
 		display: none;
 	}
 
+	.bulkAssignees {
+		justify-content: center;
+		padding: 0 0.25rem;
+		font-size: 0.6875rem;
+	}
+
 	.dateControl {
 		padding-left: 0.25rem;
 	}
@@ -1165,10 +1358,6 @@
 
 	.undo {
 		align-items: flex-start;
-	}
-
-	:global(.pt-dialog):has(.cardDetail) {
-		width: calc(100vw - 1rem);
 	}
 
 	.detailDates {

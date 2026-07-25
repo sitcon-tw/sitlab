@@ -64,6 +64,8 @@ describe("SITCON Board interactions", () => {
 		await user.click(screen.getByRole("button", { name: "建立卡片" }));
 
 		expect(screen.getByRole("heading", { name: "[開發組] 新增值班表" })).toBeVisible();
+		const waitingLane = screen.getByRole("heading", { name: "Wating" }).closest("section");
+		expect(within(waitingLane as HTMLElement).getAllByRole("heading", { level: 3 })[0]).toHaveTextContent("[開發組] 新增值班表");
 		expect(screen.queryByText("同步中")).not.toBeInTheDocument();
 		expect(createCard).toHaveBeenCalledOnce();
 	});
@@ -90,7 +92,7 @@ describe("SITCON Board interactions", () => {
 		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
 		expect(within(dialog).getByLabelText("組別")).toHaveValue("development");
 		await user.selectOptions(within(dialog).getByLabelText("狀態"), "doing");
-		await user.click(within(dialog).getByRole("button", { name: "Close dialog" }));
+		await user.click(within(dialog).getByRole("button", { name: "Close drawer" }));
 
 		const doingLane = screen.getByRole("heading", { name: "Doing" }).closest("section");
 		expect(doingLane).not.toBeNull();
@@ -98,7 +100,7 @@ describe("SITCON Board interactions", () => {
 		expect(moveCard).toHaveBeenCalledOnce();
 	});
 
-	it("edits GitLab Start date, previews Markdown, and closes details before the API responds", async () => {
+	it("edits GitLab Start date, previews Markdown, and keeps the detail drawer open while saving", async () => {
 		const user = userEvent.setup();
 		vi.mocked(updateDetails).mockReturnValue(new Promise(() => undefined));
 		vi.mocked(updateStartDate).mockReturnValue(new Promise(() => undefined));
@@ -126,8 +128,65 @@ describe("SITCON Board interactions", () => {
 			"完成寄信失敗重送",
 			"## 驗收條件\n\n- [ ] 補齊測試\n\n[規格](https://example.com/spec)"
 		);
-		expect(screen.queryByRole("dialog", { name: /127 卡片詳細資料/ })).not.toBeInTheDocument();
-		expect(screen.getByRole("heading", { name: "[開發組] 完成寄信失敗重送" })).toBeVisible();
+		expect(screen.getByRole("dialog", { name: /127 卡片詳細資料/ })).toBeVisible();
+		expect(within(dialog).getByLabelText("標題")).toHaveValue("完成寄信失敗重送");
+	});
+
+	it("switches cards inside the right detail drawer", async () => {
+		const user = userEvent.setup();
+		render(<Harness />);
+
+		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+		const first = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		await user.clear(within(first).getByLabelText("標題"));
+		await user.type(within(first).getByLabelText("標題"), "尚未儲存的標題");
+		await user.type(within(first).getByLabelText("Quick action"), "/due");
+		await user.click(within(first).getByRole("button", { name: "下一張卡片" }));
+
+		expect(screen.getByRole("dialog", { name: /130 卡片詳細資料/ })).toBeVisible();
+		expect(screen.getByLabelText("標題")).toHaveValue("製作工作人員識別證");
+		expect(screen.getByLabelText("Quick action")).toHaveValue("");
+	});
+
+	it("creates the same top-position card for every configured team leader", async () => {
+		const user = userEvent.setup();
+		vi.mocked(createCard).mockReturnValue(new Promise(() => undefined));
+		render(<Harness />);
+
+		await user.click(screen.getByRole("button", { name: "所有組長" }));
+		await user.type(screen.getByLabelText("卡片標題"), "回報本週進度");
+		await user.click(screen.getByRole("button", { name: "為所有組長建立卡片" }));
+
+		expect(createCard).toHaveBeenCalledTimes(11);
+		expect(createCard).toHaveBeenCalledWith(expect.objectContaining({ title: "回報本週進度", teamKey: "development", assigneeGitLabUserIds: [114] }));
+	});
+
+	it("executes supported slash commands through typed card mutations", async () => {
+		const user = userEvent.setup();
+		vi.mocked(updateDueDate).mockReturnValue(new Promise(() => undefined));
+		render(<Harness />);
+
+		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		await user.type(within(dialog).getByLabelText("Quick action"), "/due 2026-07-31");
+		await user.click(within(dialog).getByRole("button", { name: "執行" }));
+
+		expect(updateDueDate).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), "2026-07-31");
+	});
+
+	it("chooses and executes a quick action from the keyboard", async () => {
+		const user = userEvent.setup();
+		vi.mocked(moveCard).mockReturnValue(new Promise(() => undefined));
+		render(<Harness />);
+
+		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		const input = within(dialog).getByLabelText("Quick action");
+		await user.type(input, "/cl{Enter}");
+		expect(input).toHaveValue("/close");
+		await user.keyboard("{Enter}");
+
+		expect(moveCard).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), "closed", expect.any(Number));
 	});
 
 	it("selects more than one assignee", async () => {

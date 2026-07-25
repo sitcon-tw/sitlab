@@ -20,7 +20,7 @@ func (f *revisionEventsFake) SubscribeRevisions() (<-chan string, func()) {
 
 func TestBootstrapEventsSendsCurrentAndChangedRevision(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/events/bootstrap", nil).WithContext(ctx)
+	request := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/events/bootstrap", nil)
 	recorder := httptest.NewRecorder()
 	events := &revisionEventsFake{updates: make(chan string, 1)}
 	done := make(chan struct{})

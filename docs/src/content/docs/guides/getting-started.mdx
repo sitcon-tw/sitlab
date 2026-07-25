@@ -15,11 +15,11 @@ order: 10
 
 ## GitLab setup
 
-Create an OAuth application whose redirect URI exactly matches `SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL`. Provide a project access token able to read members, labels and issues in `sitcon-tw/2027`, plus the issue permissions needed by the operation worker.
+Create an OAuth application whose redirect URI exactly matches `SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL` and enable its `api` scope. User OAuth tokens execute card mutations so GitLab records the real actor. Provide a project access token able to read members, labels, and issues in `sitcon-tw/2027` for snapshots and webhook reconciliation.
 
 Production realtime delivery also requires a Project webhook for **Work item events** and a Premium/Ultimate Group webhook for **Member events**. Generate independent Signing tokens in GitLab, leave the legacy Secret token empty, and configure the matching `SITCON_BOARD_GITLAB_PROJECT_WEBHOOK_SIGNING_TOKEN` and `SITCON_BOARD_GITLAB_GROUP_WEBHOOK_SIGNING_TOKEN` values. The complete field-by-field setup is in the Dokploy runbook.
 
-The directory file must exist at `.sitcon/board-directory.yml`. The Docker build copies it into the image; changing it requires a new build and deployment, not a GitHub API token.
+The directory file must exist at `.sitcon/board-directory.yml`. Each team can list GitLab usernames under `leaders`; the bulk-create mode creates one matching card per configured team and assigns all of that team's leaders. The Docker build copies the file into the image, so changing it requires a new build and deployment, not a GitHub API token.
 
 ## Run from source
 

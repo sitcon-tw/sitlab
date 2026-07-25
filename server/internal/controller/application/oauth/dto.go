@@ -1,6 +1,10 @@
 package oauth
 
-import "example.com/project-template/internal/domain/identity"
+import (
+	"time"
+
+	"example.com/project-template/internal/domain/identity"
+)
 
 type StartResult struct {
 	AuthorizationURL string
@@ -25,4 +29,11 @@ type GitLabIdentity struct {
 	ProfileURL   string
 	AccessLevel  int32
 	State        string
+	Tokens       OAuthTokens
+}
+
+type OAuthTokens struct {
+	AccessToken  string
+	RefreshToken string
+	ExpiresAt    time.Time
 }

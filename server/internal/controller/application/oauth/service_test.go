@@ -26,6 +26,7 @@ type repoFake struct {
 	state             identity.OAuthState
 	stateConsumed     bool
 	user              identity.User
+	credential        identity.OAuthCredential
 	session           identity.Session
 	upsertInTx        bool
 	createSessionInTx bool
@@ -51,6 +52,16 @@ func (f *repoFake) UpsertUser(ctx context.Context, user identity.User) (identity
 	}
 	f.user = user
 	return user, nil
+}
+func (f *repoFake) UpsertOAuthCredential(_ context.Context, credential identity.OAuthCredential) error {
+	f.credential = credential
+	return nil
+}
+func (f *repoFake) OAuthCredential(context.Context, string) (identity.OAuthCredential, error) {
+	if f.credential.UserID == "" {
+		return identity.OAuthCredential{}, identity.ErrOAuthCredentialNotFound
+	}
+	return f.credential, nil
 }
 func (f *repoFake) GetUserByID(context.Context, string) (identity.User, error) { return f.user, nil }
 func (f *repoFake) CreateSession(ctx context.Context, session identity.Session) (identity.Session, error) {
@@ -109,6 +120,9 @@ func (f *gitLabFake) ExchangeIdentity(_ context.Context, _, verifier string) (Gi
 	f.verifier = verifier
 	return f.identity, f.err
 }
+func (f *gitLabFake) RefreshToken(context.Context, string) (OAuthTokens, error) {
+	return OAuthTokens{AccessToken: "refreshed-access", RefreshToken: "refreshed-refresh", ExpiresAt: time.Unix(30_000, 0)}, f.err
+}
 
 func newService(repo *repoFake, tx *txFake, tokens *tokensFake, gitlab *gitLabFake) *Service {
 	service := NewService(repo, tx, tokens, cipherFake{}, gitlab, Config{
@@ -155,6 +169,7 @@ func TestCompleteConsumesStateAndCreatesSessionTransaction(t *testing.T) {
 	gitlab := &gitLabFake{identity: GitLabIdentity{
 		GitLabUserID: 123, Username: "yorukot", DisplayName: "Yorukot",
 		ProfileURL: "https://gitlab.com/yorukot", AccessLevel: 40, State: "active",
+		Tokens: OAuthTokens{AccessToken: "access", RefreshToken: "refresh", ExpiresAt: time.Unix(20_000, 0)},
 	}}
 	service := newService(repo, tx, tokens, gitlab)
 	if _, err := service.Start(context.Background()); err != nil {
@@ -170,8 +185,33 @@ func TestCompleteConsumesStateAndCreatesSessionTransaction(t *testing.T) {
 	if gitlab.verifier == "" {
 		t.Fatal("PKCE verifier was not used")
 	}
+	if string(repo.credential.AccessTokenCiphertext) != "sealed:access" || repo.credential.UserID != result.User.ID {
+		t.Fatalf("credential = %#v", repo.credential)
+	}
+	accessToken, err := service.AccessToken(context.Background(), result.User.ID)
+	if err != nil || accessToken != "access" {
+		t.Fatalf("AccessToken() = %q, %v", accessToken, err)
+	}
 	_, err = service.Complete(context.Background(), CompleteInput{Code: "code", State: "state"})
 	assertAppError(t, err, apperror.KindUnauthorized, "AUTH_OAUTH_FAILED")
+}
+
+func TestAccessTokenRefreshesAndRotatesEncryptedCredential(t *testing.T) {
+	t.Parallel()
+	repo := &repoFake{credential: identity.OAuthCredential{
+		UserID:                "10000000-0000-0000-0000-000000000001",
+		AccessTokenCiphertext: []byte("sealed:expired-access"), RefreshTokenCiphertext: []byte("sealed:old-refresh"),
+		ExpiresAt: time.Unix(10_000, 0), UpdatedAt: time.Unix(9_000, 0),
+	}}
+	service := newService(repo, &txFake{}, &tokensFake{}, &gitLabFake{})
+
+	accessToken, err := service.AccessToken(context.Background(), repo.credential.UserID)
+	if err != nil || accessToken != "refreshed-access" {
+		t.Fatalf("AccessToken() = %q, %v", accessToken, err)
+	}
+	if string(repo.credential.RefreshTokenCiphertext) != "sealed:refreshed-refresh" || !repo.credential.ExpiresAt.Equal(time.Unix(30_000, 0)) {
+		t.Fatalf("refreshed credential = %#v", repo.credential)
+	}
 }
 
 func TestCompleteRejectsNonProjectMember(t *testing.T) {

@@ -37,3 +37,9 @@ export function teamMembers(bootstrap: Bootstrap, teamKey: string) {
 export function preferredAssignees(bootstrap: Bootstrap, teamKey: string) {
 	return bootstrap.preferences.defaultTeamKey === teamKey ? [bootstrap.me.gitLabUserId] : [];
 }
+
+export function teamLeaders(bootstrap: Bootstrap, teamKey: string) {
+	const team = bootstrap.teams.find((item) => item.key === teamKey && item.active);
+	if (!team) return [];
+	return bootstrap.members.filter((member) => member.state === "active" && team.leaderGitLabUserIds.includes(member.gitLabUserId));
+}

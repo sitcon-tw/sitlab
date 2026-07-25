@@ -33,6 +33,13 @@ type gitLabFake struct {
 	members []directory.GitLabMember
 	issues  []GitLabIssue
 	applied *IssueMutation
+	token   string
+}
+
+type actorTokensFake struct{}
+
+func (actorTokensFake) AccessToken(context.Context, string) (string, error) {
+	return "actor-token", nil
 }
 
 type directorySourceFake struct {
@@ -62,8 +69,9 @@ func (f *gitLabFake) Issue(_ context.Context, issueIID int64) (GitLabIssue, erro
 	}
 	return GitLabIssue{}, board.ErrCardNotFound
 }
-func (f *gitLabFake) ApplyIssue(_ context.Context, mutation IssueMutation) (GitLabIssue, error) {
+func (f *gitLabFake) ApplyIssue(_ context.Context, mutation IssueMutation, token string) (GitLabIssue, error) {
 	f.applied = &mutation
+	f.token = token
 	return GitLabIssue{
 		IssueIID: 42, GitLabIssueID: 420, Title: mutation.Title, Description: mutation.Description,
 		Labels: mutation.Labels, AssigneeGitLabUserIDs: mutation.AssigneeGitLabUserIDs,
@@ -139,7 +147,7 @@ func TestRefreshDirectoryUsesRevisionAndRefreshesMembers(t *testing.T) {
 	}
 	directorySource := &directorySourceFake{revision: "revision-1"}
 	repo := &repoFake{}
-	service := NewService(gitlab, directorySource, repo, nil, noop.NewTracerProvider().Tracer("test"))
+	service := NewService(gitlab, directorySource, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
 	if err := service.RefreshDirectory(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +174,7 @@ func TestRefreshBoardMapsLabelsAndSkipsUnknownTeams(t *testing.T) {
 		{IssueIID: 5, GitLabIssueID: 50, Title: "無組別", Labels: []string{"Todo"}, State: "opened", UpdatedAt: now},
 	}}
 	repo := &repoFake{directory: directory.Snapshot{Teams: []directory.Team{{Key: "development", TitlePrefix: "[開發組]", GitLabLabel: "組別::開發", Active: true}}}}
-	service := NewService(gitlab, &directorySourceFake{}, repo, nil, noop.NewTracerProvider().Tracer("test"))
+	service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
 	if err := service.RefreshBoard(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +201,7 @@ func TestProcessOneBuildsCanonicalIssueMutation(t *testing.T) {
 			},
 		},
 	}
-	service := NewService(gitlab, &directorySourceFake{}, repo, nil, noop.NewTracerProvider().Tracer("test"))
+	service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
 	processed, err := service.ProcessOne(context.Background())
 	if err != nil || !processed || !repo.completed {
 		t.Fatalf("ProcessOne() = %v, %v, completed=%v", processed, err, repo.completed)
@@ -202,6 +210,9 @@ func TestProcessOneBuildsCanonicalIssueMutation(t *testing.T) {
 		gitlab.applied.StartDate != "2026-07-17" || gitlab.applied.DueDate != "2026-07-21" ||
 		!slices.Equal(gitlab.applied.AssigneeGitLabUserIDs, []int64{1, 2}) || !slices.Equal(gitlab.applied.Labels, []string{"security", "組別::開發", "Status::Doing"}) {
 		t.Fatalf("mutation = %#v", gitlab.applied)
+	}
+	if gitlab.token != "actor-token" {
+		t.Fatalf("actor token = %q", gitlab.token)
 	}
 }
 
@@ -217,7 +228,7 @@ func TestProcessWebhookFetchesCanonicalIssueAndReconcilesCard(t *testing.T) {
 		directory: directory.Snapshot{Teams: []directory.Team{{Key: "development", TitlePrefix: "[開發組]", GitLabLabel: "組別::開發", Active: true}}},
 		webhook:   &board.WebhookDelivery{ID: "delivery-42", EventKind: "issue", IssueIID: &iid},
 	}
-	service := NewService(gitlab, &directorySourceFake{}, repo, nil, noop.NewTracerProvider().Tracer("test"))
+	service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
 	processed, err := service.ProcessWebhookOne(context.Background())
 	if err != nil || !processed || !repo.webhookCompleted || repo.reconciled == nil {
 		t.Fatalf("ProcessWebhookOne() = %v, %v, completed=%v card=%#v", processed, err, repo.webhookCompleted, repo.reconciled)
