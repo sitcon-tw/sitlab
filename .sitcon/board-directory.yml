@@ -7,7 +7,7 @@ teams:
     gitlab_label: "Team::行政組"
     active: true
     members: []
-    leaders: []
+    leaders: [yuan_tw]
 
   - key: finance
     name: 財務組
@@ -23,7 +23,7 @@ teams:
     gitlab_label: "Team::議程組"
     active: true
     members: []
-    leaders: []
+    leaders: [xiung]
 
   - key: activity
     name: 活動組
@@ -31,7 +31,7 @@ teams:
     gitlab_label: "Team::活動組"
     active: true
     members: []
-    leaders: []
+    leaders: [osga24]
 
   - key: venue
     name: 場務組
@@ -39,7 +39,7 @@ teams:
     gitlab_label: "Team::場務組"
     active: true
     members: []
-    leaders: []
+    leaders: [iach526526]
 
   - key: design
     name: 設計組
@@ -47,7 +47,7 @@ teams:
     gitlab_label: "Team::設計組"
     active: true
     members: []
-    leaders: []
+    leaders: [tiffanylaii]
 
   - key: documentation
     name: 紀錄組
@@ -55,7 +55,7 @@ teams:
     gitlab_label: "Team::紀錄組"
     active: true
     members: []
-    leaders: []
+    leaders: [seadog007]
 
   - key: production
     name: 製播組
@@ -63,7 +63,7 @@ teams:
     gitlab_label: "Team::製播組"
     active: true
     members: []
-    leaders: []
+    leaders: [jasonwu0504]
 
   - key: development
     name: 開發組
@@ -71,7 +71,7 @@ teams:
     gitlab_label: "Team::開發組"
     active: true
     members: []
-    leaders: []
+    leaders: [Nat1an]
 
   - key: editorial
     name: 編輯組
@@ -79,7 +79,7 @@ teams:
     gitlab_label: "Team::編輯組"
     active: true
     members: []
-    leaders: []
+    leaders: [mina.mj.chen]
 
   - key: marketing
     name: 行銷組
@@ -87,7 +87,7 @@ teams:
     gitlab_label: "Team::行銷組"
     active: true
     members: []
-    leaders: []
+    leaders: [qiqii77]
 
   - key: general-coordinator
     name: 總召組
