@@ -2014,7 +2014,7 @@
 			},
 			"CreateCardRequest": {
 				"type": "object",
-				"required": ["operationId", "title", "teamKey", "description", "assigneeGitLabUserIds", "startDate", "dueDate"],
+				"required": ["operationId", "title", "teamKey", "listKey", "description", "assigneeGitLabUserIds", "startDate", "dueDate"],
 				"properties": {
 					"operationId": {
 						"$ref": "#/components/schemas/uuid"
@@ -2025,6 +2025,10 @@
 						"maxLength": 255
 					},
 					"teamKey": {
+						"type": "string",
+						"minLength": 1
+					},
+					"listKey": {
 						"type": "string",
 						"minLength": 1
 					},

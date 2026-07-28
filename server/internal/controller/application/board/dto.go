@@ -6,6 +6,7 @@ type CreateInput struct {
 	Title                 string
 	Description           string
 	TeamKey               string
+	ListKey               string
 	AssigneeGitLabUserIDs []int64
 	StartDate             *string
 	DueDate               *string

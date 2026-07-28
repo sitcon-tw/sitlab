@@ -18,7 +18,7 @@ SITCON Board 是籌備團隊每天重複使用的工作介面。視覺應安靜�
 
 ## Product Layout
 
-Header 高度固定，包含產品識別、成員 Sheet、錯誤時才出現的離線狀態與帳號選單。快速開卡在桌面為單列，手機為 title 加控制列，並以 segmented mode 切換單組或所有組長；新卡固定出現在第一欄最上方。Board 上方的緊湊控制列先提供欄內日期排序，再提供單一組別與依組別複選的成員篩選。Board lanes 固定依序為 `Wating`、`Inbox`、`To Do`、`Doing`、`Review`、`Closed`，保持穩定最小寬度；窄螢幕水平捲動，不壓縮到文字與控制重疊。
+Header 高度固定，包含產品識別、成員 Sheet、錯誤時才出現的離線狀態與帳號選單。快速開卡在桌面為單列，手機為 title 加控制列，並以 segmented mode 切換單組或所有組長；使用者可選擇新卡欄位，預設為 `Inbox`，新卡固定出現在目標欄位最上方。Board 上方的緊湊控制列先提供欄內日期排序，再提供單一組別與依組別複選的成員篩選。Board lanes 固定依序為 `Wating`、`Inbox`、`To Do`、`Doing`、`Review`、`Closed`，保持穩定最小寬度；窄螢幕水平捲動，不壓縮到文字與控制重疊。
 
 完整成員目錄只出現在右側 Drawer；桌面為窄 Sheet、手機可佔全寬。不建立永久 sidebar，也不在主 Board 重複完整名單。
 

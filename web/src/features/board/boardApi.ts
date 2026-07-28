@@ -6,6 +6,7 @@ export async function createCard(input: {
 	title: string;
 	description: string;
 	teamKey: string;
+	listKey: string;
 	assigneeGitLabUserIds: number[];
 	startDate: string | null;
 	dueDate: string | null;

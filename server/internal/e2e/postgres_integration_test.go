@@ -178,12 +178,12 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	dueDate := "2026-07-21"
 	created, err := boardService.Create(ctx, appboard.CreateInput{
 		OperationID: operationID, ActorUserID: user.ID, Title: "修正報名流程",
-		Description: "詳細規劃", TeamKey: "development", AssigneeGitLabUserIDs: []int64{101}, StartDate: &startDate, DueDate: &dueDate,
+		Description: "詳細規劃", TeamKey: "development", ListKey: "inbox", AssigneeGitLabUserIDs: []int64{101}, StartDate: &startDate, DueDate: &dueDate,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.Card.IssueIID >= 0 || created.Card.PendingOperationID != operationID {
+	if created.Card.IssueIID >= 0 || created.Card.PendingOperationID != operationID || created.Card.ListKey != "inbox" {
 		t.Fatalf("optimistic card = %#v", created.Card)
 	}
 	idempotent, err := boardService.Create(ctx, appboard.CreateInput{OperationID: operationID})

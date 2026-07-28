@@ -99,6 +99,20 @@ test.describe("SITCON Board demo visual audit", () => {
 		await expect(page.getByRole("heading", { name: "[行政組] 整理志工行前通知" })).toBeVisible();
 	});
 
+	test("quick create defaults to Inbox and can target another lane", async ({ page }) => {
+		await page.setViewportSize({ width: 928, height: 800 });
+		await page.goto("/");
+
+		const target = page.getByLabel("新卡片欄位");
+		await expect(target).toHaveValue("inbox");
+		await target.selectOption("doing");
+		await page.getByLabel("卡片標題").fill("新增值班表");
+		await page.getByRole("button", { name: "建立卡片" }).click();
+
+		const doing = page.getByRole("heading", { name: "Doing" }).locator("..").locator("..");
+		await expect(doing.getByRole("heading", { level: 3 }).first()).toHaveText("[開發組] 新增值班表");
+	});
+
 	test("member drawer and assignee dialog are complete", async ({ page }) => {
 		await page.setViewportSize({ width: 390, height: 844 });
 		await page.goto("/");

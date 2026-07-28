@@ -493,6 +493,7 @@ export interface components {
 			operationId: components["schemas"]["uuid"];
 			title: string;
 			teamKey: string;
+			listKey: string;
 			description: string;
 			assigneeGitLabUserIds: number[];
 			startDate: string | null;

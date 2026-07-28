@@ -41,6 +41,7 @@ describe("SITCON Board interactions", () => {
 		render(<Harness />);
 
 		expect(screen.getByLabelText("新卡片組別")).toHaveValue("development");
+		expect(screen.getByLabelText("新卡片欄位")).toHaveValue("inbox");
 		expect(screen.getByRole("button", { name: "選擇新卡片 Assignee" })).toHaveTextContent("Yorukot");
 		expect((screen.getByLabelText("新卡片期限") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 	});
@@ -60,14 +61,15 @@ describe("SITCON Board interactions", () => {
 		vi.mocked(createCard).mockReturnValue(new Promise(() => undefined));
 		render(<Harness />);
 
+		await user.selectOptions(screen.getByLabelText("新卡片欄位"), "doing");
 		await user.type(screen.getByLabelText("卡片標題"), "新增值班表");
 		await user.click(screen.getByRole("button", { name: "建立卡片" }));
 
 		expect(screen.getByRole("heading", { name: "[開發組] 新增值班表" })).toBeVisible();
-		const waitingLane = screen.getByRole("heading", { name: "Wating" }).closest("section");
-		expect(within(waitingLane as HTMLElement).getAllByRole("heading", { level: 3 })[0]).toHaveTextContent("[開發組] 新增值班表");
+		const doingLane = screen.getByRole("heading", { name: "Doing" }).closest("section");
+		expect(within(doingLane as HTMLElement).getAllByRole("heading", { level: 3 })[0]).toHaveTextContent("[開發組] 新增值班表");
 		expect(screen.queryByText("同步中")).not.toBeInTheDocument();
-		expect(createCard).toHaveBeenCalledOnce();
+		expect(createCard).toHaveBeenCalledWith(expect.objectContaining({ listKey: "doing" }));
 	});
 
 	it("renders the configured board columns in order", () => {
@@ -255,11 +257,14 @@ describe("SITCON Board interactions", () => {
 		render(<Harness />);
 
 		await user.click(screen.getByRole("button", { name: "所有組長" }));
+		await user.selectOptions(screen.getByLabelText("新卡片欄位"), "review");
 		await user.type(screen.getByLabelText("卡片標題"), "回報本週進度");
 		await user.click(screen.getByRole("button", { name: "為所有組長建立卡片" }));
 
 		expect(createCard).toHaveBeenCalledTimes(11);
-		expect(createCard).toHaveBeenCalledWith(expect.objectContaining({ title: "回報本週進度", teamKey: "development", assigneeGitLabUserIds: [114] }));
+		expect(createCard).toHaveBeenCalledWith(
+			expect.objectContaining({ title: "回報本週進度", teamKey: "development", listKey: "review", assigneeGitLabUserIds: [114] })
+		);
 	});
 
 	it("executes supported slash commands through typed card mutations", async () => {

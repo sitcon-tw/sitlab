@@ -49,6 +49,7 @@ type CreateCardInput = {
 	title: string;
 	description: string;
 	teamKey: string;
+	listKey: string;
 	assigneeGitLabUserIds: number[];
 	startDate: string | null;
 	dueDate: string | null;
@@ -134,7 +135,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 			title: input.title,
 			description: input.description,
 			webUrl: null,
-			listKey: lists[0]?.key ?? "todo",
+			listKey: input.listKey,
 			position: 0,
 			teamKey: input.teamKey,
 			assigneeGitLabUserIds: input.assigneeGitLabUserIds,
@@ -374,9 +375,12 @@ function BoardHeader({ bootstrap, backgroundOffline, onMembers }: { bootstrap: B
 
 function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: (input: CreateCardInput) => void }) {
 	const defaultTeam = bootstrap.preferences.defaultTeamKey ?? bootstrap.teams.find((team) => team.active)?.key ?? "";
+	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
+	const defaultList = lists.find((list) => list.key === "inbox")?.key ?? lists[0]?.key ?? "";
 	const [mode, setMode] = useState<"single" | "leaders">("single");
 	const [title, setTitle] = useState("");
 	const [teamKey, setTeamKey] = useState(defaultTeam);
+	const [listKey, setListKey] = useState(defaultList);
 	const [assignees, setAssignees] = useState<number[]>(preferredAssignees(bootstrap, defaultTeam));
 	const [dueDate, setDueDate] = useState(taipeiDateAfter(7));
 	const [clearedAssignees, setClearedAssignees] = useState<number[]>([]);
@@ -401,6 +405,7 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 					title: normalized,
 					description: "",
 					teamKey: target.team.key,
+					listKey,
 					assigneeGitLabUserIds: target.leaders.map((leader) => leader.gitLabUserId),
 					startDate: null,
 					dueDate: dueDate || null
@@ -408,7 +413,7 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 			}
 		} else {
 			if (!teamKey) return;
-			onCreate({ title: normalized, description: "", teamKey, assigneeGitLabUserIds: assignees, startDate: null, dueDate: dueDate || null });
+			onCreate({ title: normalized, description: "", teamKey, listKey, assigneeGitLabUserIds: assignees, startDate: null, dueDate: dueDate || null });
 		}
 		setTitle("");
 	};
@@ -428,7 +433,7 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 					<label className={styles.srOnly} htmlFor="quick-team">
 						新卡片組別
 					</label>
-					<select id="quick-team" value={teamKey} onChange={(event) => changeTeam(event.target.value)}>
+					<select id="quick-team" className={styles.quickTeam} value={teamKey} onChange={(event) => changeTeam(event.target.value)}>
 						{teams.map((team) => (
 							<option key={team.key} value={team.key}>
 								{team.name}
@@ -439,6 +444,16 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 			) : (
 				<span className={styles.bulkTarget}>{leaderTargets.length ? `${leaderTargets.length} 組` : "尚未設定組長"}</span>
 			)}
+			<label className={styles.srOnly} htmlFor="quick-list">
+				新卡片欄位
+			</label>
+			<select id="quick-list" className={styles.quickList} value={listKey} onChange={(event) => setListKey(event.target.value)}>
+				{lists.map((list) => (
+					<option key={list.key} value={list.key}>
+						{list.name}
+					</option>
+				))}
+			</select>
 			<label className={styles.srOnly} htmlFor="quick-title">
 				卡片標題
 			</label>
@@ -462,7 +477,7 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 			<button
 				type="submit"
 				className={styles.createButton}
-				disabled={!title.trim() || (mode === "leaders" && leaderTargets.length === 0)}
+				disabled={!title.trim() || !listKey || (mode === "leaders" && leaderTargets.length === 0)}
 				aria-label={mode === "leaders" ? "為所有組長建立卡片" : "建立卡片"}
 				title={mode === "leaders" ? "為所有組長建立卡片" : "建立卡片"}
 			>

@@ -80,17 +80,20 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Result, error)
 	if len(boardSnapshot.Lists) == 0 {
 		return Result{}, apperror.Unavailable("board snapshot is not ready")
 	}
+	if !boardListExists(boardSnapshot.Lists, input.ListKey) {
+		return Result{}, invalidField("listKey", "INVALID_VALUE", "must identify an active board list")
+	}
 
 	now := s.now().UTC()
 	operation := newOperation(input.OperationID, domain.OperationCreateCard, now)
 	card := domain.Card{
-		Title: title, Description: input.Description, ListKey: boardSnapshot.Lists[0].Key, TeamKey: input.TeamKey,
+		Title: title, Description: input.Description, ListKey: input.ListKey, TeamKey: input.TeamKey,
 		AssigneeGitLabUserIDs: append([]int64(nil), assigneeIDs...), StartDate: startDate, DueDate: dueDate,
 		SyncState: domain.OperationPending, PendingOperationID: input.OperationID, CreatedAt: now, UpdatedAt: now,
 	}
 	result, err := s.repo.CreateCard(ctx, Mutation{
 		Card: card, Operation: operation, RequestedByUserID: input.ActorUserID,
-		Payload: map[string]any{"title": title, "description": input.Description, "teamKey": input.TeamKey, "assigneeGitLabUserIds": assigneeIDs, "startDate": nullableDate(startDate), "dueDate": nullableDate(dueDate)},
+		Payload: map[string]any{"title": title, "description": input.Description, "teamKey": input.TeamKey, "listKey": input.ListKey, "assigneeGitLabUserIds": assigneeIDs, "startDate": nullableDate(startDate), "dueDate": nullableDate(dueDate)},
 	})
 	if errors.Is(err, domain.ErrOperationConflict) {
 		return Result{}, operationConflict()
@@ -166,19 +169,21 @@ func (s *Service) Move(ctx context.Context, input MoveInput) (Result, error) {
 		if input.Position < 0 {
 			return nil, invalidField("position", "INVALID_VALUE", "must be zero or greater")
 		}
-		found := false
-		for _, list := range boardSnapshot.Lists {
-			if list.Key == input.ListKey {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !boardListExists(boardSnapshot.Lists, input.ListKey) {
 			return nil, invalidField("listKey", "INVALID_VALUE", "must identify an active board list")
 		}
 		card.ListKey, card.Position = input.ListKey, input.Position
 		return map[string]any{"listKey": input.ListKey, "position": input.Position}, nil
 	})
+}
+
+func boardListExists(lists []domain.List, listKey string) bool {
+	for _, list := range lists {
+		if list.Key == listKey {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) Retry(ctx context.Context, operationID string) (domain.Operation, error) {

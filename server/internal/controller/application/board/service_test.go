@@ -78,7 +78,7 @@ func newTestService(repo *repositoryFake) *Service {
 
 func TestCreateStoresOptimisticCardAndOperation(t *testing.T) {
 	t.Parallel()
-	repo := &repositoryFake{board: Snapshot{Lists: []domain.List{{Key: "todo"}}}}
+	repo := &repositoryFake{board: Snapshot{Lists: []domain.List{{Key: "wating"}, {Key: "todo"}}}}
 	service := newTestService(repo)
 	assignees := []int64{1, 1}
 	startDate := "2026-07-17"
@@ -86,12 +86,12 @@ func TestCreateStoresOptimisticCardAndOperation(t *testing.T) {
 
 	result, err := service.Create(context.Background(), CreateInput{
 		OperationID: testOperationID, ActorUserID: testActorID, Title: "修正  報名流程",
-		Description: "詳細規劃", TeamKey: "development", AssigneeGitLabUserIDs: assignees, StartDate: &startDate, DueDate: &dueDate,
+		Description: "詳細規劃", TeamKey: "development", ListKey: "todo", AssigneeGitLabUserIDs: assignees, StartDate: &startDate, DueDate: &dueDate,
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-	if result.Card.IssueIID != -1 || result.Card.SyncState != domain.OperationPending || result.Card.Position != 0 {
+	if result.Card.IssueIID != -1 || result.Card.SyncState != domain.OperationPending || result.Card.Position != 0 || result.Card.ListKey != "todo" {
 		t.Fatalf("Create() card = %#v", result.Card)
 	}
 	if repo.createMutation == nil || repo.createMutation.Card.Title != "修正 報名流程" || repo.createMutation.Operation.Kind != domain.OperationCreateCard {
@@ -100,8 +100,24 @@ func TestCreateStoresOptimisticCardAndOperation(t *testing.T) {
 	if got := repo.createMutation.Payload["assigneeGitLabUserIds"]; !reflect.DeepEqual(got, []int64{1}) {
 		t.Fatalf("assignee payload = %#v", got)
 	}
+	if got := repo.createMutation.Payload["listKey"]; got != "todo" {
+		t.Fatalf("list payload = %#v", got)
+	}
 	if result.Card.Description != "詳細規劃" || len(result.Card.AssigneeGitLabUserIDs) != 1 || result.Card.StartDate != startDate {
 		t.Fatalf("Create() card details = %#v", result.Card)
+	}
+}
+
+func TestCreateRejectsUnknownListBeforePersistence(t *testing.T) {
+	t.Parallel()
+	repo := &repositoryFake{board: Snapshot{Lists: []domain.List{{Key: "inbox"}}}}
+	service := newTestService(repo)
+	_, err := service.Create(context.Background(), CreateInput{
+		OperationID: testOperationID, ActorUserID: testActorID, Title: "修正流程", TeamKey: "development", ListKey: "unknown",
+	})
+	assertAppError(t, err, apperror.KindInvalid, "VALIDATION_FAILED")
+	if repo.createMutation != nil {
+		t.Fatal("card with an unknown list was persisted")
 	}
 }
 

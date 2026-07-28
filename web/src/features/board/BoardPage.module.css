@@ -170,10 +170,10 @@
 
 .quickCreate {
 	display: grid;
-	grid-template-columns: minmax(7.5rem, 9rem) minmax(7.5rem, 9rem) minmax(12rem, 1fr) minmax(8rem, 11rem) minmax(8rem, 10rem) 2.75rem;
+	grid-template-columns: minmax(7.5rem, 9rem) minmax(7.5rem, 9rem) minmax(6.5rem, 8rem) minmax(12rem, 1fr) minmax(8rem, 11rem) minmax(8rem, 10rem) 2.75rem;
 	grid-template-areas:
-		"mode team title assignee date create"
-		"notice notice notice notice notice notice";
+		"mode team list title assignee date create"
+		"notice notice notice notice notice notice notice";
 	gap: 0.5rem;
 	width: min(100%, 80rem);
 	margin: 0 auto 1rem;
@@ -211,8 +211,12 @@
 	box-shadow: var(--sb-shadow-card);
 }
 
-.quickCreate > select {
+.quickTeam {
 	grid-area: team;
+}
+
+.quickList {
+	grid-area: list;
 }
 
 .bulkTarget,
@@ -1378,6 +1382,18 @@
 	outline-offset: 2px;
 }
 
+@media (max-width: 60rem) {
+	.quickCreate {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 8.5rem 2.75rem;
+		grid-template-areas:
+			"mode mode mode mode"
+			"title title title title"
+			"team team list list"
+			"assignee assignee date create"
+			"notice notice notice notice";
+	}
+}
+
 @media (max-width: 48rem) {
 	.topbar {
 		padding: 0 0.75rem;
@@ -1424,15 +1440,6 @@
 
 	.sortControl select {
 		width: min(13rem, 65vw);
-	}
-
-	.quickCreate {
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 8.5rem 2.75rem;
-		grid-template-areas:
-			"mode mode mode mode"
-			"title title title title"
-			"team assignee date create"
-			"notice notice notice notice";
 	}
 
 	.conflict {
@@ -1505,7 +1512,7 @@
 	}
 
 	.assigneeControl {
-		width: 2.5rem;
+		width: 100%;
 		justify-content: center;
 		padding: 0;
 	}

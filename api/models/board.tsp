@@ -84,6 +84,9 @@ model CreateCardRequest {
 	@minLength(1)
 	teamKey: string;
 
+	@minLength(1)
+	listKey: string;
+
 	description: string;
 	assigneeGitLabUserIds: int64[];
 	startDate: plainDate | null;
