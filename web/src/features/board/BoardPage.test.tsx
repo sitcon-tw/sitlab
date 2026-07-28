@@ -20,8 +20,8 @@ vi.mock("./boardApi", () => ({
 	updateTeam: vi.fn()
 }));
 
-function Harness() {
-	const [bootstrap, setBootstrap] = useState<Bootstrap>(() => structuredClone(demoBootstrap));
+function Harness({ initial = demoBootstrap }: { initial?: Bootstrap }) {
+	const [bootstrap, setBootstrap] = useState<Bootstrap>(() => structuredClone(initial));
 	return <BoardPage bootstrap={bootstrap} updateBootstrap={(update) => setBootstrap((current) => update(current))} backgroundOffline={false} />;
 }
 
@@ -125,6 +125,61 @@ describe("SITCON Board interactions", () => {
 		expect(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 		expect(screen.queryByRole("heading", { name: "[行政組] 整理志工行前通知" })).not.toBeInTheDocument();
 		expect(screen.getByRole("status")).toHaveTextContent("1 / 7 張卡片");
+	});
+
+	it("selects an entire team in the member filter", async () => {
+		const user = userEvent.setup();
+		render(<Harness />);
+
+		await user.click(screen.getByRole("button", { name: "篩選負責人" }));
+		const dialog = screen.getByRole("dialog", { name: "篩選負責人" });
+		const teamSelectAll = within(dialog).getByRole("checkbox", { name: "全選行政組" });
+		expect(teamSelectAll).not.toBeChecked();
+		await user.click(teamSelectAll);
+
+		expect(teamSelectAll).toBeChecked();
+		expect(within(dialog).getByText("已選擇 2 人")).toBeVisible();
+		await user.click(within(dialog).getByRole("button", { name: "完成" }));
+		expect(screen.getByRole("status")).toHaveTextContent("1 / 7 張卡片");
+		expect(screen.getByRole("heading", { name: "[行政組] 整理志工行前通知" })).toBeVisible();
+	});
+
+	it("keeps a member selection synchronized across every team they belong to", async () => {
+		const initial = structuredClone(demoBootstrap);
+		const currentUser = initial.members.find((member) => member.gitLabUserId === initial.me.gitLabUserId);
+		if (!currentUser) throw new Error("demo current user is missing");
+		currentUser.teamKeys.push("design");
+		const user = userEvent.setup();
+		render(<Harness initial={initial} />);
+
+		await user.click(screen.getByRole("button", { name: "篩選負責人" }));
+		const dialog = screen.getByRole("dialog", { name: "篩選負責人" });
+		const development = within(dialog).getByRole("region", { name: "開發組" });
+		const design = within(dialog).getByRole("region", { name: "設計組" });
+		await user.click(within(development).getByRole("checkbox", { name: /Yorukot/ }));
+
+		expect(within(design).getByRole("checkbox", { name: /Yorukot/ })).toBeChecked();
+		expect(within(design).getByRole("checkbox", { name: "全選設計組" })).toBePartiallyChecked();
+	});
+
+	it("sorts cards inside each lane and preserves sorting when filters are cleared", async () => {
+		const user = userEvent.setup();
+		render(<Harness />);
+		const doingLane = screen.getByRole("heading", { name: "Doing" }).closest("section");
+		if (!doingLane) throw new Error("Doing lane is missing");
+		const titles = () =>
+			within(doingLane)
+				.getAllByRole("heading", { level: 3 })
+				.map((heading) => heading.textContent);
+
+		expect(titles()).toEqual(["[設計組] 製作工作人員識別證", "[場務組] 盤點會場網路設備"]);
+		await user.selectOptions(screen.getByLabelText("排序方式"), "due-desc");
+		expect(titles()).toEqual(["[場務組] 盤點會場網路設備", "[設計組] 製作工作人員識別證"]);
+
+		await user.selectOptions(screen.getByLabelText("篩選組別"), "design");
+		await user.click(screen.getByRole("button", { name: "清除篩選" }));
+		expect(screen.getByLabelText("排序方式")).toHaveValue("due-desc");
+		expect(titles()).toEqual(["[場務組] 盤點會場網路設備", "[設計組] 製作工作人員識別證"]);
 	});
 
 	it("keeps team and status controls in card details and moves optimistically", async () => {
@@ -244,7 +299,9 @@ describe("SITCON Board interactions", () => {
 		await user.click(screen.getByRole("button", { name: `變更 ${title} 的 Assignee` }));
 		const dialog = screen.getByRole("dialog", { name: "選擇 Assignee" });
 		expect(within(dialog).getByRole("checkbox", { name: /Yorukot/ })).toBeChecked();
-		await user.click(within(dialog).getByRole("checkbox", { name: /沈明軒/ }));
+		expect(within(dialog).getByRole("checkbox", { name: "全選開發組" })).toBePartiallyChecked();
+		await user.type(within(dialog).getByRole("searchbox", { name: "搜尋成員" }), "沈");
+		await user.click(within(dialog).getByRole("checkbox", { name: "全選開發組" }));
 
 		expect(updateAssignee).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), [114, 115]);
 		expect(within(dialog).getByText("已選擇 2 人")).toBeVisible();

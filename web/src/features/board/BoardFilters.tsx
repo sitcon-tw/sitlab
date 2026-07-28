@@ -1,27 +1,55 @@
-import { Avatar } from "@/shared/Avatar";
 import { Dialog } from "@project-template/ui";
-import { Check, ChevronDown, Filter, Search, UsersRound, X } from "lucide-react";
+import { ArrowUpDown, Check, ChevronDown, Filter, Search, UsersRound, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import styles from "./BoardPage.module.css";
-import { activeMembers, type Bootstrap, type DirectoryMember } from "./model";
+import { GroupedMemberList } from "./GroupedMemberList";
+import { activeMembers, filterDirectoryMembers, type BoardSortMode, type Bootstrap, type DirectoryMember } from "./model";
 
 export interface BoardFiltersProps {
 	bootstrap: Bootstrap;
 	teamKey: string;
 	memberIds: number[];
+	sortMode: BoardSortMode;
 	visibleCount: number;
 	totalCount: number;
 	onTeamChange: (teamKey: string) => void;
 	onMemberIdsChange: (memberIds: number[]) => void;
+	onSortModeChange: (sortMode: BoardSortMode) => void;
 	onClear: () => void;
 }
 
-export function BoardFilters({ bootstrap, teamKey, memberIds, visibleCount, totalCount, onTeamChange, onMemberIdsChange, onClear }: BoardFiltersProps) {
+export function BoardFilters({
+	bootstrap,
+	teamKey,
+	memberIds,
+	sortMode,
+	visibleCount,
+	totalCount,
+	onTeamChange,
+	onMemberIdsChange,
+	onSortModeChange,
+	onClear
+}: BoardFiltersProps) {
 	const teams = bootstrap.teams.filter((team) => team.active).sort((a, b) => a.sortOrder - b.sortOrder);
 	const active = Boolean(teamKey || memberIds.length);
 
 	return (
 		<section className={styles.filters} aria-label="篩選看板">
+			<label className={styles.sortControl}>
+				<span>
+					<ArrowUpDown size="0.9375rem" aria-hidden="true" />
+					<strong>Sort by</strong>
+				</span>
+				<select aria-label="排序方式" value={sortMode} onChange={(event) => onSortModeChange(event.target.value as BoardSortMode)}>
+					<option value="manual">手動順序</option>
+					<option value="due-asc">Due date：近到遠</option>
+					<option value="due-desc">Due date：遠到近</option>
+					<option value="start-asc">Start date：近到遠</option>
+					<option value="start-desc">Start date：遠到近</option>
+					<option value="updated-desc">Updated time：新到舊</option>
+					<option value="updated-asc">Updated time：舊到新</option>
+				</select>
+			</label>
 			<div className={styles.filterHeading}>
 				<Filter size="0.9375rem" aria-hidden="true" />
 				<strong>篩選</strong>
@@ -64,16 +92,12 @@ function MemberFilter({ bootstrap, value, onChange }: { bootstrap: Bootstrap; va
 		const member = bootstrap.members.find((candidate) => candidate.gitLabUserId === id);
 		return member ? [member] : [];
 	});
-	const members = useMemo(() => filterMembers(activeMembers(bootstrap), bootstrap.me.gitLabUserId, query), [bootstrap, query]);
+	const members = useMemo(() => filterDirectoryMembers(activeMembers(bootstrap), query), [bootstrap, query]);
 
 	const changeOpen = (next: boolean) => {
 		setOpen(next);
 		if (!next) setQuery("");
 	};
-	const toggle = (gitLabUserId: number) => {
-		onChange(value.includes(gitLabUserId) ? value.filter((id) => id !== gitLabUserId) : [...value, gitLabUserId]);
-	};
-
 	return (
 		<>
 			<button
@@ -115,33 +139,7 @@ function MemberFilter({ bootstrap, value, onChange }: { bootstrap: Bootstrap; va
 						</span>
 						{value.length === 0 ? <Check size="1rem" aria-hidden="true" /> : null}
 					</button>
-					<section className={styles.memberGroup} aria-label="專案成員">
-						<h3>專案成員</h3>
-						{members.map((member) => {
-							const selectedMember = value.includes(member.gitLabUserId);
-							return (
-								<button
-									type="button"
-									role="checkbox"
-									aria-checked={selectedMember}
-									className={styles.memberOption}
-									data-selected={selectedMember}
-									key={member.gitLabUserId}
-									onClick={() => toggle(member.gitLabUserId)}
-								>
-									<Avatar name={member.displayName} src={member.avatarUrl} />
-									<span>
-										<strong>{member.displayName}</strong>
-										<small>
-											@{member.username}
-											{member.gitLabUserId === bootstrap.me.gitLabUserId ? " · 你" : ""}
-										</small>
-									</span>
-									{selectedMember ? <Check size="1rem" aria-hidden="true" /> : null}
-								</button>
-							);
-						})}
-					</section>
+					<GroupedMemberList teams={bootstrap.teams} members={members} value={value} currentUserId={bootstrap.me.gitLabUserId} onChange={onChange} />
 					{members.length === 0 ? <p className={styles.noResults}>找不到符合的成員</p> : null}
 				</div>
 				<div className={styles.pickerFooter}>
@@ -159,15 +157,4 @@ function memberFilterLabel(members: DirectoryMember[]) {
 	if (!members.length) return "所有人";
 	if (members.length <= 2) return members.map((member) => member.displayName).join("、");
 	return `${members[0]?.displayName ?? "成員"}等 ${members.length} 人`;
-}
-
-function filterMembers(members: DirectoryMember[], currentUserId: number, query: string) {
-	const normalized = query.trim().toLocaleLowerCase("zh-Hant");
-	return members
-		.filter((member) => !normalized || `${member.displayName} ${member.username}`.toLocaleLowerCase("zh-Hant").includes(normalized))
-		.sort((a, b) => {
-			if (a.gitLabUserId === currentUserId) return -1;
-			if (b.gitLabUserId === currentUserId) return 1;
-			return a.displayName.localeCompare(b.displayName, "zh-Hant");
-		});
 }

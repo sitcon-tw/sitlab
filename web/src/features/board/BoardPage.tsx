@@ -35,7 +35,7 @@ import {
 import { BoardFilters } from "./BoardFilters";
 import styles from "./BoardPage.module.css";
 import { MembersDrawer } from "./MembersDrawer";
-import { memberById, preferredAssignees, taipeiDateAfter, teamLeaders, type BoardCard, type Bootstrap } from "./model";
+import { compareBoardCards, memberById, preferredAssignees, taipeiDateAfter, teamLeaders, type BoardCard, type BoardSortMode, type Bootstrap } from "./model";
 import { parseQuickAction, quickActionCommands, type QuickAction } from "./quickActions";
 
 export interface BoardPageProps {
@@ -60,6 +60,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 	const [detailIid, setDetailIid] = useState<number | null>(null);
 	const [filterTeamKey, setFilterTeamKey] = useState("");
 	const [filterMemberIds, setFilterMemberIds] = useState<number[]>([]);
+	const [sortMode, setSortMode] = useState<BoardSortMode>("manual");
 	const [undo, setUndo] = useState<{ cardIid: number; assigneeIds: number[]; assigneeNames: string[] } | null>(null);
 	const localRetries = useRef(new Map<string, () => void>());
 	const nextTemporaryIid = useRef(-1);
@@ -70,7 +71,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 			(filterMemberIds.length === 0 || card.assigneeGitLabUserIds.some((id) => filterMemberIds.includes(id)))
 	);
 	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
-	const orderedCards = lists.flatMap((list) => filteredCards.filter((card) => card.listKey === list.key).sort((a, b) => a.position - b.position));
+	const orderedCards = lists.flatMap((list) => filteredCards.filter((card) => card.listKey === list.key).sort((a, b) => compareBoardCards(a, b, sortMode)));
 	const detailCard = cards.find((card) => card.issueIid === detailIid) ?? null;
 	const detailIndex = detailCard ? orderedCards.findIndex((card) => card.issueIid === detailCard.issueIid) : -1;
 	const filtersActive = Boolean(filterTeamKey || filterMemberIds.length);
@@ -246,10 +247,12 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 					bootstrap={bootstrap}
 					teamKey={filterTeamKey}
 					memberIds={filterMemberIds}
+					sortMode={sortMode}
 					visibleCount={filteredCards.length}
 					totalCount={cards.length}
 					onTeamChange={setFilterTeamKey}
 					onMemberIdsChange={setFilterMemberIds}
+					onSortModeChange={setSortMode}
 					onClear={() => {
 						setFilterTeamKey("");
 						setFilterMemberIds([]);
@@ -257,7 +260,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 				/>
 				<section className={styles.board} aria-label="SITCON 2027 工作看板">
 					{lists.map((list) => {
-						const listCards = filteredCards.filter((card) => card.listKey === list.key).sort((a, b) => a.position - b.position);
+						const listCards = filteredCards.filter((card) => card.listKey === list.key).sort((a, b) => compareBoardCards(a, b, sortMode));
 						return (
 							<section
 								className={styles.lane}

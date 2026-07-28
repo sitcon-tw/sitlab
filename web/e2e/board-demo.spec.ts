@@ -82,6 +82,23 @@ test.describe("SITCON Board demo visual audit", () => {
 		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 	});
 
+	test("team select all and due date sorting update the board", async ({ page }) => {
+		await page.setViewportSize({ width: 928, height: 800 });
+		await page.goto("/");
+
+		const doing = page.getByRole("heading", { name: "Doing" }).locator("..").locator("..");
+		await page.getByLabel("排序方式").selectOption("due-desc");
+		await expect(doing.getByRole("heading", { level: 3 }).first()).toHaveText("[場務組] 盤點會場網路設備");
+
+		await page.getByRole("button", { name: "篩選負責人" }).click();
+		const picker = page.getByRole("dialog", { name: "篩選負責人" });
+		await picker.getByRole("checkbox", { name: "全選行政組" }).click();
+		await expect(picker.getByText("已選擇 2 人")).toBeVisible();
+		await picker.getByRole("button", { name: "完成" }).click();
+		await expect(page.getByRole("status")).toHaveText("1 / 7 張卡片");
+		await expect(page.getByRole("heading", { name: "[行政組] 整理志工行前通知" })).toBeVisible();
+	});
+
 	test("member drawer and assignee dialog are complete", async ({ page }) => {
 		await page.setViewportSize({ width: 390, height: 844 });
 		await page.goto("/");

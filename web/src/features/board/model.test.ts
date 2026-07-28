@@ -1,6 +1,6 @@
 import { demoBootstrap } from "@/test/demoBootstrap";
 import { describe, expect, it } from "vitest";
-import { preferredAssignees, taipeiDateAfter, teamLeaders, teamMembers } from "./model";
+import { compareBoardCards, preferredAssignees, taipeiDateAfter, teamLeaders, teamMembers, type BoardCard, type BoardSortMode } from "./model";
 
 describe("board defaults", () => {
 	it("uses the current user only for their primary team", () => {
@@ -19,5 +19,24 @@ describe("board defaults", () => {
 
 	it("uses only explicitly configured active team leaders", () => {
 		expect(teamLeaders(demoBootstrap, "development").map((member) => member.username)).toEqual(["yorukot"]);
+	});
+
+	it.each<[BoardSortMode, number[]]>([
+		["manual", [3, 2, 1]],
+		["due-asc", [1, 2, 3]],
+		["due-desc", [2, 1, 3]],
+		["start-asc", [1, 2, 3]],
+		["start-desc", [2, 1, 3]],
+		["updated-desc", [2, 3, 1]],
+		["updated-asc", [1, 3, 2]]
+	])("sorts cards by %s with missing dates last", (sortMode, expected) => {
+		const template = demoBootstrap.board.cards[0]!;
+		const cards: BoardCard[] = [
+			{ ...template, issueIid: 1, position: 2, dueDate: "2026-07-20", startDate: "2026-07-10", updatedAt: "2026-07-14T01:00:00Z" },
+			{ ...template, issueIid: 2, position: 1, dueDate: "2026-07-22", startDate: "2026-07-12", updatedAt: "2026-07-14T03:00:00Z" },
+			{ ...template, issueIid: 3, position: 0, dueDate: null, startDate: null, updatedAt: "2026-07-14T02:00:00Z" }
+		];
+
+		expect(cards.sort((a, b) => compareBoardCards(a, b, sortMode)).map((card) => card.issueIid)).toEqual(expected);
 	});
 });
