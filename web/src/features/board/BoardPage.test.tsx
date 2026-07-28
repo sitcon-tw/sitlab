@@ -37,13 +37,55 @@ describe("SITCON Board interactions", () => {
 		vi.mocked(updateTeam).mockReset();
 	});
 
-	it("defaults quick create to the primary team and current user", () => {
+	it("defaults quick create to the primary team and keeps Inbox in more options", async () => {
+		const user = userEvent.setup();
 		render(<Harness />);
 
 		expect(screen.getByLabelText("新卡片組別")).toHaveValue("development");
-		expect(screen.getByLabelText("新卡片欄位")).toHaveValue("inbox");
 		expect(screen.getByRole("button", { name: "選擇新卡片 Assignee" })).toHaveTextContent("Yorukot");
 		expect((screen.getByLabelText("新卡片期限") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+		expect(screen.queryByLabelText("新卡片 Status")).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "更多建卡選項" }));
+		const dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
+		expect(within(dialog).getByLabelText("新卡片 Status")).toHaveValue("inbox");
+		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
+	});
+
+	it("discards unapplied more options and restores focus", async () => {
+		const user = userEvent.setup();
+		render(<Harness />);
+		const moreButton = screen.getByRole("button", { name: "更多建卡選項" });
+
+		await user.click(moreButton);
+		let dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
+		await user.selectOptions(within(dialog).getByLabelText("新卡片 Status"), "review");
+		await user.type(within(dialog).getByLabelText("新卡片 Description"), "尚未套用");
+		await user.keyboard("{Escape}");
+
+		expect(dialog).not.toBeInTheDocument();
+		expect(moreButton).toHaveFocus();
+		await user.click(moreButton);
+		dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
+		expect(within(dialog).getByLabelText("新卡片 Status")).toHaveValue("inbox");
+		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
+		await user.selectOptions(within(dialog).getByLabelText("新卡片 Status"), "doing");
+		await user.type(within(dialog).getByLabelText("新卡片 Description"), "按取消");
+		await user.click(within(dialog).getByRole("button", { name: "取消" }));
+		expect(moreButton).toHaveFocus();
+
+		await user.click(moreButton);
+		dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
+		expect(within(dialog).getByLabelText("新卡片 Status")).toHaveValue("inbox");
+		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
+		await user.selectOptions(within(dialog).getByLabelText("新卡片 Status"), "closed");
+		await user.type(within(dialog).getByLabelText("新卡片 Description"), "按關閉");
+		await user.click(within(dialog).getByRole("button", { name: "Close dialog" }));
+		expect(moreButton).toHaveFocus();
+
+		await user.click(moreButton);
+		dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
+		expect(within(dialog).getByLabelText("新卡片 Status")).toHaveValue("inbox");
+		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
 	});
 
 	it("clears the default assignee when quick create switches to another team", async () => {
@@ -61,15 +103,25 @@ describe("SITCON Board interactions", () => {
 		vi.mocked(createCard).mockReturnValue(new Promise(() => undefined));
 		render(<Harness />);
 
-		await user.selectOptions(screen.getByLabelText("新卡片欄位"), "doing");
+		await user.click(screen.getByRole("button", { name: "更多建卡選項" }));
+		let dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
+		await user.selectOptions(within(dialog).getByLabelText("新卡片 Status"), "doing");
+		await user.type(within(dialog).getByLabelText("新卡片 Description"), "確認交接與值班時段");
+		await user.click(within(dialog).getByRole("button", { name: "套用" }));
 		await user.type(screen.getByLabelText("卡片標題"), "新增值班表");
 		await user.click(screen.getByRole("button", { name: "建立卡片" }));
 
 		expect(screen.getByRole("heading", { name: "[開發組] 新增值班表" })).toBeVisible();
 		const doingLane = screen.getByRole("heading", { name: "Doing" }).closest("section");
 		expect(within(doingLane as HTMLElement).getAllByRole("heading", { level: 3 })[0]).toHaveTextContent("[開發組] 新增值班表");
+		expect(within(doingLane as HTMLElement).getByText("確認交接與值班時段")).toBeVisible();
 		expect(screen.queryByText("同步中")).not.toBeInTheDocument();
-		expect(createCard).toHaveBeenCalledWith(expect.objectContaining({ listKey: "doing" }));
+		expect(createCard).toHaveBeenCalledWith(expect.objectContaining({ listKey: "doing", description: "確認交接與值班時段" }));
+
+		await user.click(screen.getByRole("button", { name: "更多建卡選項" }));
+		dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
+		expect(within(dialog).getByLabelText("新卡片 Status")).toHaveValue("doing");
+		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
 	});
 
 	it("renders the configured board columns in order", () => {
@@ -257,13 +309,23 @@ describe("SITCON Board interactions", () => {
 		render(<Harness />);
 
 		await user.click(screen.getByRole("button", { name: "所有組長" }));
-		await user.selectOptions(screen.getByLabelText("新卡片欄位"), "review");
+		await user.click(screen.getByRole("button", { name: "更多建卡選項" }));
+		const dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
+		await user.selectOptions(within(dialog).getByLabelText("新卡片 Status"), "review");
+		await user.type(within(dialog).getByLabelText("新卡片 Description"), "每週例行回報");
+		await user.click(within(dialog).getByRole("button", { name: "套用" }));
 		await user.type(screen.getByLabelText("卡片標題"), "回報本週進度");
 		await user.click(screen.getByRole("button", { name: "為所有組長建立卡片" }));
 
 		expect(createCard).toHaveBeenCalledTimes(11);
 		expect(createCard).toHaveBeenCalledWith(
-			expect.objectContaining({ title: "回報本週進度", teamKey: "development", listKey: "review", assigneeGitLabUserIds: [114] })
+			expect.objectContaining({
+				title: "回報本週進度",
+				description: "每週例行回報",
+				teamKey: "development",
+				listKey: "review",
+				assigneeGitLabUserIds: [114]
+			})
 		);
 	});
 

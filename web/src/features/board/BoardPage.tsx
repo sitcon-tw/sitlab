@@ -1,12 +1,13 @@
 import { clearCsrfToken, errorMessage } from "@/shared/api/client";
 import { Avatar } from "@/shared/Avatar";
-import { Drawer } from "@project-template/ui";
+import { Dialog, Drawer } from "@project-template/ui";
 import {
 	Check,
 	ChevronDown,
 	ChevronLeft,
 	ChevronRight,
 	CloudOff,
+	Ellipsis,
 	ExternalLink,
 	GripVertical,
 	LogOut,
@@ -381,18 +382,36 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 	const [title, setTitle] = useState("");
 	const [teamKey, setTeamKey] = useState(defaultTeam);
 	const [listKey, setListKey] = useState(defaultList);
+	const [description, setDescription] = useState("");
+	const [moreOpen, setMoreOpen] = useState(false);
+	const [draftListKey, setDraftListKey] = useState(defaultList);
+	const [draftDescription, setDraftDescription] = useState("");
 	const [assignees, setAssignees] = useState<number[]>(preferredAssignees(bootstrap, defaultTeam));
 	const [dueDate, setDueDate] = useState(taipeiDateAfter(7));
 	const [clearedAssignees, setClearedAssignees] = useState<number[]>([]);
 	const teams = bootstrap.teams.filter((team) => team.active).sort((a, b) => a.sortOrder - b.sortOrder);
 	const leaderTargets = teams.map((team) => ({ team, leaders: teamLeaders(bootstrap, team.key) })).filter((target) => target.leaders.length > 0);
 	const leaderCount = leaderTargets.reduce((count, target) => count + target.leaders.length, 0);
+	const selectedListName = lists.find((list) => list.key === listKey)?.name ?? "Inbox";
+	const moreActive = listKey !== defaultList || Boolean(description.trim());
 
 	const changeTeam = (nextTeam: string) => {
 		const compatible = assignees.filter((id) => memberById(bootstrap, id)?.teamKeys.includes(nextTeam));
 		setClearedAssignees(assignees.filter((id) => !compatible.includes(id)));
 		setAssignees(compatible);
 		setTeamKey(nextTeam);
+	};
+	const changeMoreOpen = (next: boolean) => {
+		if (next) {
+			setDraftListKey(listKey);
+			setDraftDescription(description);
+		}
+		setMoreOpen(next);
+	};
+	const applyMoreOptions = () => {
+		setListKey(draftListKey);
+		setDescription(draftDescription);
+		setMoreOpen(false);
 	};
 
 	const submit = (event: React.FormEvent) => {
@@ -403,7 +422,7 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 			for (const target of leaderTargets) {
 				onCreate({
 					title: normalized,
-					description: "",
+					description,
 					teamKey: target.team.key,
 					listKey,
 					assigneeGitLabUserIds: target.leaders.map((leader) => leader.gitLabUserId),
@@ -413,9 +432,12 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 			}
 		} else {
 			if (!teamKey) return;
-			onCreate({ title: normalized, description: "", teamKey, listKey, assigneeGitLabUserIds: assignees, startDate: null, dueDate: dueDate || null });
+			onCreate({ title: normalized, description, teamKey, listKey, assigneeGitLabUserIds: assignees, startDate: null, dueDate: dueDate || null });
 		}
 		setTitle("");
+		setDescription("");
+		setDraftDescription("");
+		setMoreOpen(false);
 	};
 
 	return (
@@ -444,16 +466,6 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 			) : (
 				<span className={styles.bulkTarget}>{leaderTargets.length ? `${leaderTargets.length} 組` : "尚未設定組長"}</span>
 			)}
-			<label className={styles.srOnly} htmlFor="quick-list">
-				新卡片欄位
-			</label>
-			<select id="quick-list" className={styles.quickList} value={listKey} onChange={(event) => setListKey(event.target.value)}>
-				{lists.map((list) => (
-					<option key={list.key} value={list.key}>
-						{list.name}
-					</option>
-				))}
-			</select>
 			<label className={styles.srOnly} htmlFor="quick-title">
 				卡片標題
 			</label>
@@ -474,6 +486,54 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 				<span className={styles.srOnly}>期限</span>
 				<input type="date" value={dueDate} aria-label="新卡片期限" onChange={(event) => setDueDate(event.target.value)} />
 			</label>
+			<Dialog
+				open={moreOpen}
+				onOpenChange={changeMoreOpen}
+				title="更多建卡選項"
+				trigger={
+					<button
+						type="button"
+						className={styles.quickMoreButton}
+						data-active={moreActive}
+						aria-label="更多建卡選項"
+						title={`更多建卡選項：${selectedListName}${description.trim() ? "，已填寫 Description" : ""}`}
+					>
+						<Ellipsis size="1.125rem" aria-hidden="true" />
+					</button>
+				}
+				footer={
+					<>
+						<button type="button" className={styles.quickMoreCancel} onClick={() => setMoreOpen(false)}>
+							取消
+						</button>
+						<button type="button" className={styles.quickMoreApply} onClick={applyMoreOptions}>
+							套用
+						</button>
+					</>
+				}
+			>
+				<div className={styles.quickMoreFields}>
+					<label>
+						<span>Status</span>
+						<select aria-label="新卡片 Status" value={draftListKey} onChange={(event) => setDraftListKey(event.target.value)}>
+							{lists.map((list) => (
+								<option key={list.key} value={list.key}>
+									{list.name}
+								</option>
+							))}
+						</select>
+					</label>
+					<label>
+						<span>Description</span>
+						<textarea
+							aria-label="新卡片 Description"
+							value={draftDescription}
+							onChange={(event) => setDraftDescription(event.target.value)}
+							placeholder="輸入卡片描述..."
+						/>
+					</label>
+				</div>
+			</Dialog>
 			<button
 				type="submit"
 				className={styles.createButton}
