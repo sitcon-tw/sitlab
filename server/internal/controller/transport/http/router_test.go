@@ -14,6 +14,7 @@ import (
 	"example.com/project-template/internal/controller/application/apperror"
 	appboard "example.com/project-template/internal/controller/application/board"
 	appbootstrap "example.com/project-template/internal/controller/application/bootstrap"
+	appactivity "example.com/project-template/internal/controller/application/cardactivity"
 	appdirectory "example.com/project-template/internal/controller/application/directory"
 	appoauth "example.com/project-template/internal/controller/application/oauth"
 	"example.com/project-template/internal/domain/board"
@@ -100,6 +101,9 @@ func (boardFake) UpdateStartDate(context.Context, appboard.UpdateStartDateInput)
 func (boardFake) UpdateDueDate(context.Context, appboard.UpdateDueDateInput) (appboard.Result, error) {
 	return mutationResult(board.OperationUpdateDueDate), nil
 }
+func (boardFake) UpdateLabels(context.Context, appboard.UpdateLabelsInput) (appboard.Result, error) {
+	return mutationResult(board.OperationUpdateLabels), nil
+}
 func (boardFake) Move(context.Context, appboard.MoveInput) (appboard.Result, error) {
 	return mutationResult(board.OperationMoveCard), nil
 }
@@ -135,10 +139,31 @@ func (syncFake) EnqueueWebhook(context.Context, board.WebhookDelivery) (bool, er
 	return false, nil
 }
 
+type cardActivityFake struct{}
+
+func (cardActivityFake) Labels(context.Context) ([]appactivity.ProjectLabel, error) {
+	description := "Server work"
+	return []appactivity.ProjectLabel{{Name: "Backend", Color: "#1D76DB", TextColor: "#FFFFFF", Description: &description}}, nil
+}
+func (cardActivityFake) Comments(context.Context, string, int64) ([]appactivity.Comment, error) {
+	return []appactivity.Comment{{
+		ID: 7, Body: "changed status", System: true,
+		Author:    appactivity.CommentAuthor{GitLabUserID: 101, Username: "alice", DisplayName: "Alice", ProfileURL: "https://gitlab.example/alice"},
+		CreatedAt: time.Date(2026, 7, 29, 8, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2026, 7, 29, 8, 0, 0, 0, time.UTC),
+	}}, nil
+}
+func (cardActivityFake) CreateComment(_ context.Context, input appactivity.CreateCommentInput) (appactivity.Comment, error) {
+	return appactivity.Comment{
+		ID: 8, Body: input.Body,
+		Author:    appactivity.CommentAuthor{GitLabUserID: 101, Username: "alice", DisplayName: "Alice", ProfileURL: "https://gitlab.example/alice"},
+		CreatedAt: time.Date(2026, 7, 29, 9, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2026, 7, 29, 9, 0, 0, 0, time.UTC),
+	}, nil
+}
+
 func testRouter(readiness func(context.Context) error, webDir string) http.Handler {
 	return NewRouter(Dependencies{
 		Log: zap.NewNop(), Auth: authFake{}, Bootstrap: bootstrapFake{},
-		Directory: directoryFake{}, Board: boardFake{}, Sync: syncFake{},
+		Directory: directoryFake{}, Board: boardFake{}, CardActivity: cardActivityFake{}, Sync: syncFake{},
 		Cookie: CookieConfig{
 			Name: "test_session", TTL: 14 * 24 * time.Hour, OAuthStateTTL: 10 * time.Minute,
 		},
@@ -207,6 +232,25 @@ func TestUpdateCardStartDateUsesAcceptedContract(t *testing.T) {
 	response := perform(testRouter(nil, ""), http.MethodPut, "/api/v1/cards/127/start-date", `{"operationId":"10000000-0000-0000-0000-000000000001","startDate":"2026-07-18"}`, true)
 	if response.Code != http.StatusAccepted || !strings.Contains(response.Body.String(), `"kind":"update_start_date"`) {
 		t.Fatalf("response = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestCardLabelsAndCommentsMatchContract(t *testing.T) {
+	labels := perform(testRouter(nil, ""), http.MethodGet, "/api/v1/cards/labels", "", true)
+	if labels.Code != http.StatusOK || !strings.Contains(labels.Body.String(), `"name":"Backend"`) || !strings.Contains(labels.Body.String(), `"textColor":"#FFFFFF"`) {
+		t.Fatalf("labels = %d %s", labels.Code, labels.Body.String())
+	}
+	updated := perform(testRouter(nil, ""), http.MethodPut, "/api/v1/cards/127/labels", `{"operationId":"10000000-0000-0000-0000-000000000001","labels":["Backend"]}`, true)
+	if updated.Code != http.StatusAccepted || !strings.Contains(updated.Body.String(), `"kind":"update_labels"`) {
+		t.Fatalf("update labels = %d %s", updated.Code, updated.Body.String())
+	}
+	comments := perform(testRouter(nil, ""), http.MethodGet, "/api/v1/cards/127/comments", "", true)
+	if comments.Code != http.StatusOK || !strings.Contains(comments.Body.String(), `"system":true`) {
+		t.Fatalf("comments = %d %s", comments.Code, comments.Body.String())
+	}
+	created := perform(testRouter(nil, ""), http.MethodPost, "/api/v1/cards/127/comments", `{"body":"please review"}`, true)
+	if created.Code != http.StatusCreated || !strings.Contains(created.Body.String(), `"body":"please review"`) {
+		t.Fatalf("create comment = %d %s", created.Code, created.Body.String())
 	}
 }
 

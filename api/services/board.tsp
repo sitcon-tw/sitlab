@@ -20,6 +20,12 @@ interface BootstrapService {
 @useAuth(SessionCookieAuth)
 @route("/cards")
 interface CardService {
+	@operationId("listProjectLabels")
+	@summary("List labels available in the GitLab project")
+	@get
+	@route("/labels")
+	listProjectLabels(): OkJson<ProjectLabelsResponse> | UnauthorizedProblem | ServiceUnavailableProblem | InternalServerProblem;
+
 	@operationId("createCard")
 	@summary("Optimistically create a card")
 	@post
@@ -96,6 +102,45 @@ interface CardService {
 		| NotFoundProblem
 		| ConflictProblem
 		| UnprocessableEntityProblem
+		| InternalServerProblem;
+
+	@operationId("updateCardLabels")
+	@summary("Optimistically update card labels")
+	@put
+	@route("/{issueIid}/labels")
+	updateCardLabels(...IssueIidPath, ...CSRFHeader, @body body: UpdateCardLabelsRequest):
+		| AcceptedJson<CardMutationResponse>
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| ConflictProblem
+		| UnprocessableEntityProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
+
+	@operationId("listCardComments")
+	@summary("List GitLab comments and system notes for a card")
+	@get
+	@route("/{issueIid}/comments")
+	listCardComments(...IssueIidPath):
+		| OkJson<CardCommentsResponse>
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
+
+	@operationId("createCardComment")
+	@summary("Add a GitLab comment as the current user")
+	@post
+	@route("/{issueIid}/comments")
+	createCardComment(...IssueIidPath, ...CSRFHeader, @body body: CreateCardCommentRequest):
+		| CreatedJson<CardComment>
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| UnprocessableEntityProblem
+		| ServiceUnavailableProblem
 		| InternalServerProblem;
 
 	@operationId("moveCard")

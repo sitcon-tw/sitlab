@@ -26,6 +26,7 @@ type Dependencies struct {
 	Bootstrap      BootstrapService
 	Directory      DirectoryService
 	Board          BoardService
+	CardActivity   CardActivityService
 	Sync           SyncService
 	Webhooks       WebhookConfig
 	Events         RevisionEvents
@@ -57,7 +58,7 @@ func NewRouter(dep Dependencies) http.Handler {
 	}
 	h := handler{
 		auth: dep.Auth, bootstrap: dep.Bootstrap, directory: dep.Directory,
-		board: dep.Board, sync: dep.Sync, cookie: dep.Cookie, webhooks: dep.Webhooks, events: dep.Events, metrics: dep.Metrics,
+		board: dep.Board, activity: dep.CardActivity, sync: dep.Sync, cookie: dep.Cookie, webhooks: dep.Webhooks, events: dep.Events, metrics: dep.Metrics,
 	}
 	router := chi.NewRouter()
 	router.Use(chimiddleware.RequestID)
@@ -105,11 +106,15 @@ func NewRouter(dep Dependencies) http.Handler {
 			protected.Get("/directory", h.directoryState)
 			protected.Put("/me/preferences", h.updatePreferences)
 			protected.Post("/cards", h.createCard)
+			protected.Get("/cards/labels", h.listProjectLabels)
 			protected.Put("/cards/{issueIid}/details", h.updateCardDetails)
 			protected.Put("/cards/{issueIid}/team", h.updateCardTeam)
 			protected.Put("/cards/{issueIid}/assignee", h.updateCardAssignee)
 			protected.Put("/cards/{issueIid}/start-date", h.updateCardStartDate)
 			protected.Put("/cards/{issueIid}/due-date", h.updateCardDueDate)
+			protected.Put("/cards/{issueIid}/labels", h.updateCardLabels)
+			protected.Get("/cards/{issueIid}/comments", h.listCardComments)
+			protected.Post("/cards/{issueIid}/comments", h.createCardComment)
 			protected.Put("/cards/{issueIid}/position", h.moveCard)
 			protected.Post("/operations/{operationId}/retry", h.retryOperation)
 			protected.Post("/sync/refresh", h.refreshSnapshots)

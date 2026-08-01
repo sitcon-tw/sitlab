@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -60,8 +61,8 @@ func (f *repositoryFake) RetryOperation(context.Context, string) (domain.Operati
 func testDirectory() directory.Snapshot {
 	return directory.Snapshot{
 		Teams: []directory.Team{
-			{Key: "development", Active: true},
-			{Key: "design", Active: true},
+			{Key: "development", GitLabLabel: "組別::開發", Active: true},
+			{Key: "design", GitLabLabel: "組別::設計", Active: true},
 		},
 		Members: []directory.Member{
 			{GitLabUserID: 1, State: directory.MemberActive, TeamKeys: []string{"development"}},
@@ -159,8 +160,8 @@ func TestCreateRejectsInactiveAssigneeBeforePersistence(t *testing.T) {
 func TestChangingTeamClearsIncompatibleAssignee(t *testing.T) {
 	t.Parallel()
 	repo := &repositoryFake{
-		board: Snapshot{Lists: []domain.List{{Key: "todo"}}},
-		card:  domain.Card{IssueIID: 42, TeamKey: "development", AssigneeGitLabUserIDs: []int64{1}},
+		board: Snapshot{Lists: []domain.List{{Key: "todo", GitLabLabel: "Status::To Do"}}},
+		card:  domain.Card{IssueIID: 42, TeamKey: "development", ListKey: "todo", AssigneeGitLabUserIDs: []int64{1}},
 	}
 	service := newTestService(repo)
 	result, err := service.UpdateTeam(context.Background(), UpdateTeamInput{
@@ -169,7 +170,8 @@ func TestChangingTeamClearsIncompatibleAssignee(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdateTeam() error = %v", err)
 	}
-	if len(result.Card.AssigneeGitLabUserIDs) != 0 || result.Card.TeamKey != "design" {
+	if len(result.Card.AssigneeGitLabUserIDs) != 0 || result.Card.TeamKey != "design" ||
+		!slices.Equal(result.Card.Labels, []string{"組別::設計", "Status::To Do"}) {
 		t.Fatalf("UpdateTeam() card = %#v", result.Card)
 	}
 }
@@ -190,6 +192,82 @@ func TestUpdateDetailsNormalizesTitle(t *testing.T) {
 	}
 	if result.Card.Title != "新 標題" || result.Card.Description != "工作拆解" {
 		t.Fatalf("UpdateDetails() = %#v", result.Card)
+	}
+}
+
+func TestUpdateLabelsNormalizesScopedLabels(t *testing.T) {
+	t.Parallel()
+	directorySnapshot := directory.Snapshot{
+		Teams: []directory.Team{
+			{Key: "development", GitLabLabel: "組別::開發", Active: true},
+			{Key: "design", GitLabLabel: "組別::設計", Active: true},
+		},
+		Members: []directory.Member{
+			{GitLabUserID: 1, State: directory.MemberActive, TeamKeys: []string{"development"}},
+			{GitLabUserID: 2, State: directory.MemberActive, TeamKeys: []string{"design"}},
+		},
+	}
+	lists := []domain.List{
+		{Key: "inbox", GitLabLabel: "Status::Inbox"},
+		{Key: "todo", GitLabLabel: "Status::To Do"},
+		{Key: "closed", Closed: true},
+	}
+	tests := []struct {
+		name               string
+		card               domain.Card
+		labels             []string
+		wantTeam, wantList string
+		wantLabels         []string
+		wantAssignees      []int64
+		wantInvalid        bool
+	}{
+		{
+			name:   "removing open status moves to Inbox",
+			card:   domain.Card{IssueIID: 42, TeamKey: "development", ListKey: "todo", Labels: []string{"組別::開發", "Status::To Do", "Backend"}, AssigneeGitLabUserIDs: []int64{1}},
+			labels: []string{"組別::開發", "Backend"}, wantTeam: "development", wantList: "inbox",
+			wantLabels: []string{"Backend", "組別::開發", "Status::Inbox"}, wantAssignees: []int64{1},
+		},
+		{
+			name:   "new scopes replace team and close card",
+			card:   domain.Card{IssueIID: 42, TeamKey: "development", ListKey: "todo", AssigneeGitLabUserIDs: []int64{1}},
+			labels: []string{"組別::設計", "Closed", "Backend"}, wantTeam: "design", wantList: "closed",
+			wantLabels: []string{"Backend", "組別::設計"}, wantAssignees: []int64{},
+		},
+		{
+			name:   "closed card stays closed without a status label",
+			card:   domain.Card{IssueIID: 42, TeamKey: "development", ListKey: "closed"},
+			labels: []string{"組別::開發", "Backend"}, wantTeam: "development", wantList: "closed",
+			wantLabels: []string{"Backend", "組別::開發"}, wantAssignees: []int64{},
+		},
+		{
+			name: "team cannot be empty", card: domain.Card{IssueIID: 42, TeamKey: "development", ListKey: "todo"},
+			labels: []string{"Backend"}, wantInvalid: true,
+		},
+		{
+			name: "team scope cannot contain multiple labels", card: domain.Card{IssueIID: 42, TeamKey: "development", ListKey: "todo"},
+			labels: []string{"組別::開發", "組別::設計", "Status::To Do"}, wantInvalid: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &repositoryFake{board: Snapshot{Lists: lists, Cards: []domain.Card{tt.card}}, card: tt.card}
+			service := NewService(repo, directoryFake{snapshot: directorySnapshot}, noop.NewTracerProvider().Tracer("test"))
+			result, err := service.UpdateLabels(context.Background(), UpdateLabelsInput{
+				OperationID: testOperationID, ActorUserID: testActorID, IssueIID: 42, Labels: tt.labels,
+			})
+			if tt.wantInvalid {
+				assertAppError(t, err, apperror.KindInvalid, "VALIDATION_FAILED")
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Card.TeamKey != tt.wantTeam || result.Card.ListKey != tt.wantList ||
+				!reflect.DeepEqual(result.Card.Labels, tt.wantLabels) || !slices.Equal(result.Card.AssigneeGitLabUserIDs, tt.wantAssignees) ||
+				result.Operation.Kind != domain.OperationUpdateLabels {
+				t.Fatalf("UpdateLabels() card = %#v operation = %#v", result.Card, result.Operation)
+			}
+		})
 	}
 }
 

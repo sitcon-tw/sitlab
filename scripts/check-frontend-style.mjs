@@ -13,6 +13,8 @@ const ignoredParts = new Set(["node_modules", "dist", ".astro", "storybook-stati
 const rawColorAllowlist = new Map([
 	["docs/src/layouts/BaseLayout.astro", "browser theme-color metadata requires a concrete color"],
 	["docs/src/styles/global.css", "documentation shell owns its fallback token values"],
+	["web/src/features/board/boardApi.ts", "GitLab label demo payloads require concrete API color metadata"],
+	["web/src/features/board/BoardPage.test.tsx", "GitLab label response fixtures require concrete API color metadata"],
 	["packages/ui/src/styles/tokens.css", "the token source of truth must contain concrete values"]
 ]);
 

@@ -5,6 +5,7 @@ import (
 
 	appboard "example.com/project-template/internal/controller/application/board"
 	appbootstrap "example.com/project-template/internal/controller/application/bootstrap"
+	appactivity "example.com/project-template/internal/controller/application/cardactivity"
 	appdirectory "example.com/project-template/internal/controller/application/directory"
 	"example.com/project-template/internal/domain/board"
 	"example.com/project-template/internal/domain/directory"
@@ -100,6 +101,30 @@ type syncStatusResponse struct {
 	Message       *string   `json:"message"`
 }
 
+type projectLabelResponse struct {
+	Name        string  `json:"name"`
+	Color       string  `json:"color"`
+	TextColor   string  `json:"textColor"`
+	Description *string `json:"description"`
+}
+
+type commentAuthorResponse struct {
+	GitLabUserID int64   `json:"gitLabUserId"`
+	Username     string  `json:"username"`
+	DisplayName  string  `json:"displayName"`
+	AvatarURL    *string `json:"avatarUrl"`
+	ProfileURL   string  `json:"profileUrl"`
+}
+
+type cardCommentResponse struct {
+	ID        int64                 `json:"id"`
+	Body      string                `json:"body"`
+	Author    commentAuthorResponse `json:"author"`
+	System    bool                  `json:"system"`
+	CreatedAt time.Time             `json:"createdAt"`
+	UpdatedAt time.Time             `json:"updatedAt"`
+}
+
 type bootstrapResponse struct {
 	Revision    string                    `json:"revision"`
 	Me          userResponse              `json:"me"`
@@ -168,6 +193,22 @@ func mapOperation(item board.Operation) operationResponse {
 	return operationResponse{
 		ID: item.ID, Kind: item.Kind, State: item.State, Attempts: item.Attempts,
 		LastError: optionalString(item.LastError), CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
+	}
+}
+
+func mapProjectLabel(item appactivity.ProjectLabel) projectLabelResponse {
+	return projectLabelResponse{
+		Name: item.Name, Color: item.Color, TextColor: item.TextColor, Description: item.Description,
+	}
+}
+
+func mapCardComment(item appactivity.Comment) cardCommentResponse {
+	return cardCommentResponse{
+		ID: item.ID, Body: item.Body, System: item.System, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
+		Author: commentAuthorResponse{
+			GitLabUserID: item.Author.GitLabUserID, Username: item.Author.Username,
+			DisplayName: item.Author.DisplayName, AvatarURL: optionalString(item.Author.AvatarURL), ProfileURL: item.Author.ProfileURL,
+		},
 	}
 }
 

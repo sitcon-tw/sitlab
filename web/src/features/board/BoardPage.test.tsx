@@ -1,14 +1,31 @@
 import { demoBootstrap } from "@/test/demoBootstrap";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createCard, moveCard, retryOperation, updateAssignee, updateDetails, updateDueDate, updateStartDate, updateTeam } from "./boardApi";
+import {
+	createCard,
+	createComment,
+	listComments,
+	listProjectLabels,
+	moveCard,
+	retryOperation,
+	updateAssignee,
+	updateDetails,
+	updateDueDate,
+	updateLabels,
+	updateStartDate,
+	updateTeam
+} from "./boardApi";
 import { BoardPage } from "./BoardPage";
 import type { Bootstrap } from "./model";
 
 vi.mock("./boardApi", () => ({
 	createCard: vi.fn(),
+	createComment: vi.fn(),
+	listComments: vi.fn(),
+	listProjectLabels: vi.fn(),
 	logout: vi.fn(),
 	moveCard: vi.fn(),
 	retryOperation: vi.fn(),
@@ -16,25 +33,43 @@ vi.mock("./boardApi", () => ({
 	updateAssignee: vi.fn(),
 	updateDetails: vi.fn(),
 	updateDueDate: vi.fn(),
+	updateLabels: vi.fn(),
 	updateStartDate: vi.fn(),
 	updateTeam: vi.fn()
 }));
 
 function Harness({ initial = demoBootstrap }: { initial?: Bootstrap }) {
 	const [bootstrap, setBootstrap] = useState<Bootstrap>(() => structuredClone(initial));
-	return <BoardPage bootstrap={bootstrap} updateBootstrap={(update) => setBootstrap((current) => update(current))} backgroundOffline={false} />;
+	const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }));
+	return (
+		<QueryClientProvider client={client}>
+			<BoardPage bootstrap={bootstrap} updateBootstrap={(update) => setBootstrap((current) => update(current))} backgroundOffline={false} />
+		</QueryClientProvider>
+	);
 }
 
 describe("SITCON Board interactions", () => {
 	beforeEach(() => {
 		vi.mocked(createCard).mockReset();
+		vi.mocked(createComment).mockReset();
+		vi.mocked(listComments).mockReset();
+		vi.mocked(listProjectLabels).mockReset();
 		vi.mocked(moveCard).mockReset();
 		vi.mocked(retryOperation).mockReset();
 		vi.mocked(updateAssignee).mockReset();
 		vi.mocked(updateDetails).mockReset();
 		vi.mocked(updateDueDate).mockReset();
+		vi.mocked(updateLabels).mockReset();
 		vi.mocked(updateStartDate).mockReset();
 		vi.mocked(updateTeam).mockReset();
+		vi.mocked(listProjectLabels).mockResolvedValue([
+			{ name: "組別::開發", color: "#0E8A16", textColor: "#FFFFFF", description: "開發組" },
+			{ name: "組別::設計", color: "#B60205", textColor: "#FFFFFF", description: "設計組" },
+			{ name: "Status::Inbox", color: "#64748B", textColor: "#FFFFFF", description: null },
+			{ name: "Status::To Do", color: "#0891B2", textColor: "#FFFFFF", description: null },
+			{ name: "Backend", color: "#1D76DB", textColor: "#FFFFFF", description: null }
+		]);
+		vi.mocked(listComments).mockResolvedValue([]);
 	});
 
 	it("defaults quick create to the primary team and keeps Inbox in more options", async () => {
@@ -285,6 +320,75 @@ describe("SITCON Board interactions", () => {
 		);
 		expect(screen.getByRole("dialog", { name: /127 卡片詳細資料/ })).toBeVisible();
 		expect(within(dialog).getByLabelText("標題")).toHaveValue("完成寄信失敗重送");
+	});
+
+	it("shows every GitLab Tag and normalizes scoped Tag changes", async () => {
+		const user = userEvent.setup();
+		vi.mocked(updateLabels).mockReturnValue(new Promise(() => undefined));
+		render(<Harness />);
+
+		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		const tags = within(dialog).getByRole("heading", { name: "Tag" }).closest("section");
+		expect(tags).not.toBeNull();
+		expect(within(tags as HTMLElement).getByText("組別::開發")).toBeVisible();
+		expect(within(tags as HTMLElement).getByText("Status::To Do")).toBeVisible();
+		expect(within(tags as HTMLElement).getByText("Priority::High")).toBeVisible();
+		expect(within(tags as HTMLElement).getByRole("button", { name: "移除 Tag 組別::開發" })).toBeDisabled();
+
+		await user.click(within(tags as HTMLElement).getByRole("button", { name: "移除 Tag Status::To Do" }));
+		expect(updateLabels).toHaveBeenCalledWith(
+			expect.objectContaining({ issueIid: 127 }),
+			expect.any(String),
+			expect.arrayContaining(["組別::開發", "Status::Inbox", "Priority::High", "Backend"])
+		);
+
+		await user.click(within(tags as HTMLElement).getByText("新增"));
+		await user.click(await within(tags as HTMLElement).findByRole("option", { name: /組別::設計/ }));
+		expect(updateLabels).toHaveBeenLastCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), expect.not.arrayContaining(["組別::開發"]));
+		expect(vi.mocked(updateLabels).mock.calls.at(-1)?.[2]).toContain("組別::設計");
+	});
+
+	it("renders system activity and keeps a failed Comment draft for retry", async () => {
+		const user = userEvent.setup();
+		vi.mocked(listComments).mockResolvedValue([
+			{
+				id: 1,
+				body: "changed status to **To Do**",
+				author: { gitLabUserId: 114, username: "yorukot", displayName: "Yorukot", avatarUrl: null, profileUrl: "https://gitlab.com/yorukot" },
+				system: true,
+				createdAt: "2026-07-28T08:00:00Z",
+				updatedAt: "2026-07-28T08:00:00Z"
+			}
+		]);
+		vi.mocked(createComment)
+			.mockRejectedValueOnce(new Error("GitLab unavailable"))
+			.mockResolvedValueOnce({
+				id: 2,
+				body: "請協助 review",
+				author: { gitLabUserId: 114, username: "yorukot", displayName: "Yorukot", avatarUrl: null, profileUrl: "https://gitlab.com/yorukot" },
+				system: false,
+				createdAt: "2026-07-29T08:00:00Z",
+				updatedAt: "2026-07-29T08:00:00Z"
+			});
+		render(<Harness />);
+
+		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		expect(await within(dialog).findByText("系統活動")).toBeVisible();
+		const comments = within(dialog).getByRole("heading", { name: "Comment" }).closest("section");
+		expect(comments).not.toBeNull();
+		expect(within(comments as HTMLElement).getByText("To Do")).toBeVisible();
+
+		const composer = within(dialog).getByRole("textbox", { name: "Comment" });
+		await user.type(composer, "請協助 review");
+		await user.click(within(dialog).getByRole("button", { name: "送出 Comment" }));
+		expect(await within(dialog).findByRole("alert")).toHaveTextContent("GitLab unavailable");
+		expect(composer).toHaveValue("請協助 review");
+
+		await user.click(within(dialog).getByRole("button", { name: "送出 Comment" }));
+		await waitFor(() => expect(composer).toHaveValue(""));
+		expect(within(dialog).getByText("請協助 review")).toBeVisible();
 	});
 
 	it("switches cards inside the right detail drawer", async () => {

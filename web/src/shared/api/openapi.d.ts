@@ -140,6 +140,23 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/cards/labels": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List labels available in the GitLab project */
+		get: operations["listProjectLabels"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/cards/{issueIid}/assignee": {
 		parameters: {
 			query?: never;
@@ -151,6 +168,24 @@ export interface paths {
 		/** Optimistically change a card assignee */
 		put: operations["updateCardAssignee"];
 		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/cards/{issueIid}/comments": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List GitLab comments and system notes for a card */
+		get: operations["listCardComments"];
+		put?: never;
+		/** Add a GitLab comment as the current user */
+		post: operations["createCardComment"];
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -184,6 +219,23 @@ export interface paths {
 		get?: never;
 		/** Optimistically change a card due date */
 		put: operations["updateCardDueDate"];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/cards/{issueIid}/labels": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Optimistically update card labels */
+		put: operations["updateCardLabels"];
 		post?: never;
 		delete?: never;
 		options?: never;
@@ -485,9 +537,50 @@ export interface components {
 			/** Format: password */
 			token: string;
 		};
+		/**
+		 * @example {
+		 *       "id": 9876,
+		 *       "body": "已確認寄信重試條件，請協助 review。",
+		 *       "author": {
+		 *         "gitLabUserId": 114,
+		 *         "username": "yorukot",
+		 *         "displayName": "Yorukot",
+		 *         "avatarUrl": null,
+		 *         "profileUrl": "https://gitlab.com/yorukot"
+		 *       },
+		 *       "system": false,
+		 *       "createdAt": "2026-07-29T08:00:00Z",
+		 *       "updatedAt": "2026-07-29T08:00:00Z"
+		 *     }
+		 */
+		CardComment: {
+			/** Format: int64 */
+			id: number;
+			body: string;
+			author: components["schemas"]["CardCommentAuthor"];
+			system: boolean;
+			/** Format: date-time */
+			createdAt: string;
+			/** Format: date-time */
+			updatedAt: string;
+		};
+		CardCommentAuthor: {
+			/** Format: int64 */
+			gitLabUserId: number;
+			username: string;
+			displayName: string;
+			avatarUrl: string | null;
+			profileUrl: string;
+		};
+		CardCommentsResponse: {
+			comments: components["schemas"]["CardComment"][];
+		};
 		CardMutationResponse: {
 			card: components["schemas"]["BoardCard"];
 			operation: components["schemas"]["DurableOperation"];
+		};
+		CreateCardCommentRequest: {
+			body: string;
 		};
 		CreateCardRequest: {
 			operationId: components["schemas"]["uuid"];
@@ -592,7 +685,7 @@ export interface components {
 		DurableOperation: {
 			id: components["schemas"]["uuid"];
 			/** @enum {string} */
-			kind: "create_card" | "update_details" | "update_team" | "update_assignee" | "update_start_date" | "update_due_date" | "move_card";
+			kind: "create_card" | "update_details" | "update_team" | "update_assignee" | "update_start_date" | "update_due_date" | "update_labels" | "move_card";
 			/** @enum {string} */
 			state: "pending" | "processing" | "synced" | "failed";
 			/** Format: int32 */
@@ -695,6 +788,23 @@ export interface components {
 			message: string;
 			location?: string;
 		};
+		/**
+		 * @example {
+		 *       "name": "priority::high",
+		 *       "color": "#D73A4A",
+		 *       "textColor": "#FFFFFF",
+		 *       "description": "Needs prompt attention"
+		 *     }
+		 */
+		ProjectLabel: {
+			name: string;
+			color: string;
+			textColor: string;
+			description: string | null;
+		};
+		ProjectLabelsResponse: {
+			labels: components["schemas"]["ProjectLabel"][];
+		};
 		RefreshSyncResponse: {
 			/** Format: date-time */
 			acceptedAt: string;
@@ -721,6 +831,10 @@ export interface components {
 		UpdateCardDueDateRequest: {
 			operationId: components["schemas"]["uuid"];
 			dueDate: string | null;
+		};
+		UpdateCardLabelsRequest: {
+			operationId: components["schemas"]["uuid"];
+			labels: string[];
 		};
 		UpdateCardStartDateRequest: {
 			operationId: components["schemas"]["uuid"];
@@ -1146,6 +1260,53 @@ export interface operations {
 			};
 		};
 	};
+	listProjectLabels: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description The request has succeeded. */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ProjectLabelsResponse"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
 	updateCardAssignee: {
 		parameters: {
 			query?: never;
@@ -1219,6 +1380,155 @@ export interface operations {
 			};
 			/** @description Server error */
 			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	listCardComments: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description The request has succeeded. */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CardCommentsResponse"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	createCardComment: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CreateCardCommentRequest"];
+			};
+		};
+		responses: {
+			/** @description The request has succeeded and a new resource has been created as a result. */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CardComment"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
 				headers: {
 					[name: string]: unknown;
 				};
@@ -1383,6 +1693,97 @@ export interface operations {
 			};
 			/** @description Server error */
 			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	updateCardLabels: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["UpdateCardLabelsRequest"];
+			};
+		};
+		responses: {
+			/** @description The request has been accepted for processing, but processing has not yet completed. */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CardMutationResponse"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The request conflicts with the current state of the server. */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
 				headers: {
 					[name: string]: unknown;
 				};

@@ -72,6 +72,17 @@ function card(
 	dueDate: string | null,
 	syncState: BoardCard["syncState"] = "synced"
 ): BoardCard {
+	const labels = [
+		teams.find((team) => team.key === teamKey)?.gitLabLabel,
+		[
+			["wating", "Status::Waiting"],
+			["inbox", "Status::Inbox"],
+			["todo", "Status::To Do"],
+			["doing", "Status::Doing"],
+			["review", "Status::Review"]
+		].find(([key]) => key === listKey)?.[1],
+		...(issueIid === 127 ? ["Priority::High", "Backend"] : [])
+	].filter((label): label is string => Boolean(label));
 	return {
 		issueIid,
 		issueId: 9000 + issueIid,
@@ -84,7 +95,7 @@ function card(
 		assigneeGitLabUserIds,
 		startDate,
 		dueDate,
-		labels: [],
+		labels,
 		syncState,
 		syncError: syncState === "failed" ? "GitLab 暫時無法更新，請稍後重試。" : null,
 		pendingOperationId: syncState === "failed" ? "10000000-0000-4000-8000-000000000099" : null,

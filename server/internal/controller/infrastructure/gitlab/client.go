@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	appactivity "example.com/project-template/internal/controller/application/cardactivity"
 	appoauth "example.com/project-template/internal/controller/application/oauth"
 	appsync "example.com/project-template/internal/controller/application/sync"
 	"example.com/project-template/internal/domain/board"
@@ -108,6 +109,90 @@ func (c *Client) Issue(ctx context.Context, issueIID int64) (appsync.GitLabIssue
 		return appsync.GitLabIssue{}, fmt.Errorf("decode GitLab issue: %w", err)
 	}
 	return mapIssueWire(row), nil
+}
+
+func (c *Client) ProjectLabels(ctx context.Context) ([]appactivity.ProjectLabel, error) {
+	result := make([]appactivity.ProjectLabel, 0)
+	page := "1"
+	for page != "" {
+		requestURL := c.projectEndpoint("/labels?include_ancestor_groups=false&per_page=100&page=") + url.QueryEscape(page)
+		response, err := c.do(ctx, http.MethodGet, requestURL, nil, c.config.AccessToken, "")
+		if err != nil {
+			return nil, err
+		}
+		var rows []labelWire
+		decodeErr := decodeJSON(response.Body, &rows)
+		page = response.Header.Get("X-Next-Page")
+		closeErr := response.Body.Close()
+		if decodeErr != nil {
+			return nil, fmt.Errorf("decode GitLab project labels: %w", decodeErr)
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("close GitLab project labels response: %w", closeErr)
+		}
+		for _, row := range rows {
+			result = append(result, appactivity.ProjectLabel{
+				Name: row.Name, Color: row.Color, TextColor: row.TextColor, Description: row.Description,
+			})
+		}
+	}
+	return result, nil
+}
+
+func (c *Client) Comments(ctx context.Context, issueIID int64, actorAccessToken string) ([]appactivity.Comment, error) {
+	result := make([]appactivity.Comment, 0)
+	page := "1"
+	for page != "" {
+		requestURL := c.projectEndpoint("/issues/") + strconv.FormatInt(issueIID, 10) + "/notes?order_by=created_at&sort=asc&per_page=100&page=" + url.QueryEscape(page)
+		response, err := c.do(ctx, http.MethodGet, requestURL, nil, "", actorAccessToken)
+		if err != nil {
+			return nil, mapActivityStatus(err)
+		}
+		var rows []noteWire
+		decodeErr := decodeJSON(response.Body, &rows)
+		page = response.Header.Get("X-Next-Page")
+		closeErr := response.Body.Close()
+		if decodeErr != nil {
+			return nil, fmt.Errorf("decode GitLab issue notes: %w", decodeErr)
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("close GitLab issue notes response: %w", closeErr)
+		}
+		for _, row := range rows {
+			result = append(result, mapNoteWire(row))
+		}
+	}
+	return result, nil
+}
+
+func (c *Client) CreateComment(ctx context.Context, issueIID int64, commentBody, actorAccessToken string) (appactivity.Comment, error) {
+	payload, err := json.Marshal(map[string]string{"body": commentBody})
+	if err != nil {
+		return appactivity.Comment{}, fmt.Errorf("encode GitLab issue note: %w", err)
+	}
+	requestURL := c.projectEndpoint("/issues/") + strconv.FormatInt(issueIID, 10) + "/notes"
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, strings.NewReader(string(payload)))
+	if err != nil {
+		return appactivity.Comment{}, fmt.Errorf("create GitLab issue note request: %w", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+actorAccessToken)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := c.http.Do(request)
+	if err != nil {
+		return appactivity.Comment{}, identity.ErrGitLabUnavailable
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode >= 500 {
+		return appactivity.Comment{}, identity.ErrGitLabUnavailable
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return appactivity.Comment{}, mapActivityStatus(&httpStatusError{status: response.StatusCode})
+	}
+	var row noteWire
+	if err := decodeJSON(response.Body, &row); err != nil {
+		return appactivity.Comment{}, fmt.Errorf("decode GitLab issue note mutation: %w", err)
+	}
+	return mapNoteWire(row), nil
 }
 
 func (c *Client) ApplyIssue(ctx context.Context, mutation appsync.IssueMutation, actorAccessToken string) (appsync.GitLabIssue, error) {
@@ -349,6 +434,48 @@ type gitLabUser struct {
 type gitLabMember struct {
 	AccessLevel int32  `json:"access_level"`
 	State       string `json:"state"`
+}
+
+type labelWire struct {
+	Name        string  `json:"name"`
+	Color       string  `json:"color"`
+	TextColor   string  `json:"text_color"`
+	Description *string `json:"description"`
+}
+
+type noteWire struct {
+	ID        int64      `json:"id"`
+	Body      string     `json:"body"`
+	Author    gitLabUser `json:"author"`
+	System    bool       `json:"system"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}
+
+func mapNoteWire(row noteWire) appactivity.Comment {
+	return appactivity.Comment{
+		ID: row.ID, Body: row.Body, System: row.System,
+		Author: appactivity.CommentAuthor{
+			GitLabUserID: row.Author.ID, Username: row.Author.Username, DisplayName: row.Author.Name,
+			AvatarURL: row.Author.AvatarURL, ProfileURL: row.Author.WebURL,
+		},
+		CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC(),
+	}
+}
+
+func mapActivityStatus(err error) error {
+	var statusError *httpStatusError
+	if !errors.As(err, &statusError) {
+		return err
+	}
+	switch statusError.status {
+	case http.StatusNotFound:
+		return board.ErrCardNotFound
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return appactivity.ErrGitLabForbidden
+	default:
+		return err
+	}
 }
 
 type issueWire struct {

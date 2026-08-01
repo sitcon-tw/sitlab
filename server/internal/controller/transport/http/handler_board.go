@@ -6,8 +6,22 @@ import (
 
 	"example.com/project-template/internal/controller/application/apperror"
 	appboard "example.com/project-template/internal/controller/application/board"
+	appactivity "example.com/project-template/internal/controller/application/cardactivity"
 	"github.com/go-chi/chi/v5"
 )
+
+func (h handler) listProjectLabels(w http.ResponseWriter, r *http.Request) {
+	labels, err := h.activity.Labels(r.Context())
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	response := make([]projectLabelResponse, 0, len(labels))
+	for _, label := range labels {
+		response = append(response, mapProjectLabel(label))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"labels": response})
+}
 
 func (h handler) bootstrapState(w http.ResponseWriter, r *http.Request) {
 	result, err := h.bootstrap.Get(r.Context(), claimsFromContext(r.Context()))
@@ -178,6 +192,67 @@ func (h handler) updateCardStartDate(w http.ResponseWriter, r *http.Request) {
 		OperationID: body.OperationID, ActorUserID: actorID(r), IssueIID: issueIID, StartDate: body.StartDate,
 	})
 	h.writeMutation(w, r, result, err)
+}
+
+func (h handler) updateCardLabels(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		OperationID string   `json:"operationId"`
+		Labels      []string `json:"labels"`
+	}
+	if err := decodeJSON(w, r, &body); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	issueIID, err := issueIID(r)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	result, err := h.board.UpdateLabels(r.Context(), appboard.UpdateLabelsInput{
+		OperationID: body.OperationID, ActorUserID: actorID(r), IssueIID: issueIID, Labels: body.Labels,
+	})
+	h.writeMutation(w, r, result, err)
+}
+
+func (h handler) listCardComments(w http.ResponseWriter, r *http.Request) {
+	issueIID, err := issueIID(r)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	comments, err := h.activity.Comments(r.Context(), actorID(r), issueIID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	response := make([]cardCommentResponse, 0, len(comments))
+	for _, comment := range comments {
+		response = append(response, mapCardComment(comment))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"comments": response})
+}
+
+func (h handler) createCardComment(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Body string `json:"body"`
+	}
+	if err := decodeJSON(w, r, &body); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	issueIID, err := issueIID(r)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	comment, err := h.activity.CreateComment(r.Context(), appactivity.CreateCommentInput{
+		ActorUserID: actorID(r), IssueIID: issueIID, Body: body.Body,
+	})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, mapCardComment(comment))
 }
 
 func (h handler) moveCard(w http.ResponseWriter, r *http.Request) {

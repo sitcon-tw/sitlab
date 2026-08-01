@@ -21,6 +21,7 @@ const (
 	OperationUpdateAssignee  OperationKind = "update_assignee"
 	OperationUpdateStartDate OperationKind = "update_start_date"
 	OperationUpdateDueDate   OperationKind = "update_due_date"
+	OperationUpdateLabels    OperationKind = "update_labels"
 	OperationMoveCard        OperationKind = "move_card"
 )
 

@@ -1208,6 +1208,313 @@
 	gap: 0.75rem;
 }
 
+.detailTags,
+.comments {
+	display: grid;
+	gap: 0.75rem;
+	padding-top: 1rem;
+	border-top: 1px solid var(--sb-border);
+}
+
+.detailTags > header,
+.comments > header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+}
+
+.detailTags h3,
+.comments h3 {
+	margin: 0;
+	color: var(--sb-text);
+	font-size: 0.8125rem;
+}
+
+.comments > header > span {
+	display: grid;
+	min-width: 1.5rem;
+	height: 1.5rem;
+	place-items: center;
+	color: var(--sb-text-subtle);
+	background: var(--sb-surface-subtle);
+	border-radius: 0.25rem;
+	font-size: 0.6875rem;
+	font-weight: 750;
+}
+
+.tagList {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.375rem;
+	min-width: 0;
+}
+
+.tagChip {
+	display: inline-grid;
+	grid-template-columns: 0.625rem minmax(0, auto) 1.25rem;
+	align-items: center;
+	gap: 0.375rem;
+	max-width: 100%;
+	min-height: 1.75rem;
+	padding: 0.125rem 0.125rem 0.125rem 0.5rem;
+	color: var(--sb-text-muted);
+	background: var(--sb-surface-subtle);
+	border: 1px solid var(--sb-border);
+	border-radius: 0.25rem;
+	font-size: 0.75rem;
+	font-weight: 700;
+}
+
+.tagChip > span:nth-child(2) {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.tagChip button {
+	display: grid;
+	width: 1.25rem;
+	height: 1.25rem;
+	place-items: center;
+	color: var(--sb-text-subtle);
+	background: transparent;
+	border: 0;
+	border-radius: 0.1875rem;
+}
+
+.tagChip button:hover:not(:disabled) {
+	color: var(--sb-critical);
+	background: var(--sb-surface);
+}
+
+.tagChip button:disabled {
+	cursor: not-allowed;
+	opacity: 0.35;
+}
+
+.tagSwatch {
+	width: 0.625rem;
+	height: 0.625rem;
+	background: var(--tag-color, var(--sb-border-strong));
+	border: 1px solid color-mix(in srgb, var(--tag-color, var(--sb-border-strong)) 72%, black);
+	border-radius: 0.125rem;
+}
+
+.emptyTags,
+.commentState {
+	margin: 0;
+	color: var(--sb-text-subtle);
+	font-size: 0.75rem;
+}
+
+.tagPicker {
+	position: relative;
+}
+
+.tagPicker > summary {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	height: 2rem;
+	padding: 0 0.625rem;
+	color: var(--sb-text-muted);
+	background: var(--sb-control);
+	border: 1px solid var(--sb-border);
+	border-radius: 0.25rem;
+	cursor: pointer;
+	font-size: 0.75rem;
+	font-weight: 700;
+	list-style: none;
+}
+
+.tagPicker > summary::-webkit-details-marker {
+	display: none;
+}
+
+.tagMenu {
+	position: absolute;
+	top: calc(100% + 0.375rem);
+	right: 0;
+	z-index: 5;
+	display: grid;
+	gap: 0.375rem;
+	width: min(20rem, calc(100vw - 4rem));
+	padding: 0.5rem;
+	background: var(--sb-surface-raised);
+	border: 1px solid var(--sb-border);
+	border-radius: 0.375rem;
+	box-shadow: var(--sb-shadow-overlay);
+}
+
+.tagMenu input {
+	height: 2.25rem !important;
+}
+
+.tagMenu > div {
+	display: grid;
+	max-height: 15rem;
+	overflow-y: auto;
+}
+
+.tagMenu button {
+	display: grid;
+	grid-template-columns: 0.625rem minmax(0, 1fr);
+	align-items: center;
+	gap: 0.5rem;
+	min-height: 2.25rem;
+	padding: 0.375rem 0.5rem;
+	color: var(--sb-text-muted);
+	background: transparent;
+	border: 0;
+	border-radius: 0.25rem;
+	text-align: left;
+}
+
+.tagMenu button:hover {
+	color: var(--sb-text);
+	background: var(--sb-surface-subtle);
+}
+
+.tagMenu p {
+	margin: 0;
+	padding: 0.625rem 0.5rem;
+	color: var(--sb-text-subtle);
+	font-size: 0.75rem;
+}
+
+.commentList {
+	display: grid;
+}
+
+.comment {
+	display: grid;
+	grid-template-columns: 2rem minmax(0, 1fr);
+	gap: 0.625rem;
+	padding: 0.875rem 0;
+	border-bottom: 1px solid var(--sb-border);
+}
+
+.comment:first-child {
+	border-top: 1px solid var(--sb-border);
+}
+
+.comment[data-system="true"] {
+	padding-right: 0.625rem;
+	padding-left: 0.625rem;
+	background: var(--sb-surface-subtle);
+}
+
+.comment > div:last-child {
+	display: grid;
+	min-width: 0;
+	gap: 0.375rem;
+}
+
+.comment header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.375rem 0.625rem;
+}
+
+.comment header a {
+	color: var(--sb-text);
+	font-size: 0.75rem;
+	font-weight: 750;
+	text-decoration: none;
+}
+
+.comment header span {
+	padding: 0.125rem 0.375rem;
+	color: var(--sb-text-subtle);
+	background: var(--sb-control);
+	border: 1px solid var(--sb-border);
+	border-radius: 0.1875rem;
+	font-size: 0.625rem;
+	font-weight: 700;
+}
+
+.comment header time {
+	margin-left: auto;
+	color: var(--sb-text-subtle);
+	font-size: 0.6875rem;
+}
+
+.commentBody {
+	min-width: 0;
+	color: var(--sb-text-muted);
+	font-size: 0.8125rem;
+	line-height: 1.55;
+	overflow-wrap: anywhere;
+}
+
+.commentBody > :first-child {
+	margin-top: 0;
+}
+
+.commentBody > :last-child {
+	margin-bottom: 0;
+}
+
+.commentBody a {
+	color: var(--sb-brand-hover);
+}
+
+.commentBody pre {
+	padding: 0.625rem;
+	overflow-x: auto;
+	background: var(--sb-control);
+	border-radius: 0.25rem;
+}
+
+.commentComposer {
+	display: grid;
+	gap: 0.5rem;
+}
+
+.commentComposer textarea {
+	min-height: 6rem;
+}
+
+.commentComposer > p {
+	margin: 0;
+	color: var(--sb-critical);
+	font-size: 0.75rem;
+}
+
+.commentComposer > button,
+.commentError button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.375rem;
+	min-height: 2.25rem;
+	padding: 0 0.75rem;
+	color: var(--sb-on-brand);
+	background: var(--sb-brand);
+	border-radius: 0.25rem;
+	font-size: 0.75rem;
+	font-weight: 750;
+}
+
+.commentComposer > button {
+	justify-self: end;
+}
+
+.commentComposer > button:disabled {
+	cursor: not-allowed;
+	opacity: 0.5;
+}
+
+.commentError {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	color: var(--sb-critical);
+	font-size: 0.75rem;
+}
+
 .detailActions {
 	display: flex;
 	align-items: center;
@@ -1457,6 +1764,12 @@
 .pickerFooter button:focus-visible,
 .detailActions a:focus-visible,
 .detailActions button:focus-visible,
+.tagPicker > summary:focus-visible,
+.tagMenu button:focus-visible,
+.tagChip button:focus-visible,
+.comment header a:focus-visible,
+.commentComposer > button:focus-visible,
+.commentError button:focus-visible,
 .cardDetail input:not([type="checkbox"]):focus-visible,
 .cardDetail select:focus-visible,
 .cardDetail textarea:focus-visible {

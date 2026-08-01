@@ -140,10 +140,12 @@ test.describe("SITCON Board demo visual audit", () => {
 		await page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }).click();
 
 		const details = page.getByRole("dialog", { name: "#127 卡片詳細資料" });
-		await expect(details.getByLabel("組別")).toHaveValue("development");
+		await expect(details.getByLabel("組別", { exact: true })).toHaveValue("development");
 		await expect(details.getByLabel("狀態")).toHaveValue("todo");
 		await expect(details.getByLabel("Start")).toHaveValue("2026-07-17");
 		await expect(details.getByLabel("Due")).toHaveValue("2026-07-21");
+		await expect(details.getByText("組別::開發")).toBeVisible();
+		await expect(details.getByText("Priority::High")).toBeVisible();
 		await details.getByRole("textbox", { name: "描述" }).fill("## 驗收條件\n\n- [ ] 補齊測試\n\n[規格](https://example.com/spec)");
 		await details.getByRole("button", { name: "預覽" }).click();
 		await expect(details.getByRole("heading", { name: "驗收條件" })).toBeVisible();
@@ -153,8 +155,14 @@ test.describe("SITCON Board demo visual audit", () => {
 		await picker.getByRole("checkbox", { name: /沈明軒/ }).click();
 		await expect(picker.getByText("已選擇 2 人")).toBeVisible();
 		await picker.getByRole("button", { name: "完成" }).click();
+		await expect(details.getByText("系統活動")).toBeVisible();
+		await details.getByRole("textbox", { name: "Comment" }).fill("測試與監控紀錄已補齊。");
+		await details.getByRole("button", { name: "送出 Comment" }).click();
+		await expect(details.getByText("測試與監控紀錄已補齊。")).toBeVisible();
+		await details.getByRole("heading", { name: "Comment" }).scrollIntoViewIfNeeded();
+		await page.screenshot({ path: "../docs/assets/sitcon-board-tags-comments.png", fullPage: true });
 		await details.getByRole("button", { name: "儲存細節" }).click();
-		await expect(details).toBeHidden();
+		await expect(details).toBeVisible();
 	});
 
 	test("card details stay operable at 320px", async ({ page }) => {
@@ -170,6 +178,11 @@ test.describe("SITCON Board demo visual audit", () => {
 		await expect(startDate).toBeInViewport();
 		await expect(startDate).toHaveValue("");
 		await expect(details.getByLabel("Due")).toHaveValue("2026-07-25");
+		await details.getByRole("heading", { name: "Tag" }).scrollIntoViewIfNeeded();
+		await expect(details.getByLabel("新增 Tag")).toBeVisible();
+		await details.getByRole("textbox", { name: "Comment" }).scrollIntoViewIfNeeded();
+		await expect(details.getByRole("textbox", { name: "Comment" })).toBeInViewport();
+		await page.screenshot({ path: "../docs/assets/sitcon-board-tags-comments-mobile.png", fullPage: true });
 		await expect(details.getByRole("button", { name: "儲存細節" })).toBeVisible();
 		await page.screenshot({ path: "../docs/assets/sitcon-board-details-mobile.png", fullPage: true });
 	});

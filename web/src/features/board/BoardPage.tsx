@@ -1,6 +1,7 @@
 import { clearCsrfToken, errorMessage } from "@/shared/api/client";
 import { Avatar } from "@/shared/Avatar";
 import { Dialog, Drawer } from "@project-template/ui";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	Check,
 	ChevronDown,
@@ -14,8 +15,10 @@ import {
 	Plus,
 	RefreshCw,
 	Save,
+	Send,
 	SquareTerminal,
-	Users
+	Users,
+	X
 } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -23,6 +26,9 @@ import remarkGfm from "remark-gfm";
 import { AssigneePicker } from "./AssigneePicker";
 import {
 	createCard,
+	createComment,
+	listComments,
+	listProjectLabels,
 	logout,
 	moveCard,
 	retryOperation,
@@ -30,13 +36,25 @@ import {
 	updateAssignee,
 	updateDetails,
 	updateDueDate,
+	updateLabels,
 	updateStartDate,
 	updateTeam
 } from "./boardApi";
 import { BoardFilters } from "./BoardFilters";
 import styles from "./BoardPage.module.css";
 import { MembersDrawer } from "./MembersDrawer";
-import { compareBoardCards, memberById, preferredAssignees, taipeiDateAfter, teamLeaders, type BoardCard, type BoardSortMode, type Bootstrap } from "./model";
+import {
+	compareBoardCards,
+	memberById,
+	preferredAssignees,
+	taipeiDateAfter,
+	teamLeaders,
+	type BoardCard,
+	type BoardSortMode,
+	type Bootstrap,
+	type CardComment,
+	type ProjectLabel
+} from "./model";
 import { parseQuickAction, quickActionCommands, type QuickAction } from "./quickActions";
 
 export interface BoardPageProps {
@@ -45,7 +63,9 @@ export interface BoardPageProps {
 	backgroundOffline: boolean;
 }
 
-type CardPatch = Partial<Pick<BoardCard, "title" | "description" | "teamKey" | "assigneeGitLabUserIds" | "startDate" | "dueDate" | "listKey" | "position">>;
+type CardPatch = Partial<
+	Pick<BoardCard, "title" | "description" | "teamKey" | "assigneeGitLabUserIds" | "startDate" | "dueDate" | "labels" | "listKey" | "position">
+>;
 type CreateCardInput = {
 	title: string;
 	description: string;
@@ -130,6 +150,8 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 		const operationId = crypto.randomUUID();
 		const temporaryIid = nextTemporaryIid.current;
 		nextTemporaryIid.current -= 1;
+		const teamLabel = bootstrap.teams.find((team) => team.key === input.teamKey)?.gitLabLabel;
+		const listLabel = bootstrap.board.lists.find((list) => list.key === input.listKey)?.gitLabLabel;
 		const optimistic: BoardCard = {
 			issueIid: temporaryIid,
 			issueId: null,
@@ -142,7 +164,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 			assigneeGitLabUserIds: input.assigneeGitLabUserIds,
 			startDate: input.startDate,
 			dueDate: input.dueDate,
-			labels: [],
+			labels: [teamLabel, listLabel].filter((label): label is string => Boolean(label)),
 			syncState: "pending",
 			syncError: null,
 			pendingOperationId: operationId,
@@ -183,7 +205,8 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 				assigneeNames: removed.map((member) => member.displayName)
 			});
 		}
-		runCardMutation(card, { teamKey, assigneeGitLabUserIds: nextAssigneeIDs }, (operationId) => updateTeam(card, operationId, teamKey));
+		const labels = canonicalClientLabels(bootstrap, card.labels, teamKey, card.listKey);
+		runCardMutation(card, { teamKey, labels, assigneeGitLabUserIds: nextAssigneeIDs }, (operationId) => updateTeam(card, operationId, teamKey));
 	};
 
 	const handleAssignee = (card: BoardCard, assigneeGitLabUserIds: number[]) => {
@@ -202,10 +225,15 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 		runCardMutation(card, { startDate }, (operationId) => updateStartDate(card, operationId, startDate));
 	};
 
+	const handleLabels = (card: BoardCard, labels: string[]) => {
+		runCardMutation(card, { labels }, (operationId) => updateLabels(card, operationId, labels));
+	};
+
 	const handleMove = (card: BoardCard, listKey: string) => {
 		if (card.listKey === listKey) return;
 		const position = cards.filter((item) => item.listKey === listKey && item.issueIid !== card.issueIid).length;
-		runCardMutation(card, { listKey, position }, (operationId) => moveCard(card, operationId, listKey, position));
+		const labels = canonicalClientLabels(bootstrap, card.labels, card.teamKey, listKey);
+		runCardMutation(card, { listKey, labels, position }, (operationId) => moveCard(card, operationId, listKey, position));
 	};
 
 	const handleRetry = (card: BoardCard) => {
@@ -315,6 +343,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 					onAssignee={(memberIds) => handleAssignee(detailCard, memberIds)}
 					onStartDate={(startDate) => handleStartDate(detailCard, startDate)}
 					onDueDate={(dueDate) => handleDueDate(detailCard, dueDate)}
+					onLabels={(labels) => handleLabels(detailCard, labels)}
 				/>
 			) : null}
 			<MembersDrawer bootstrap={bootstrap} open={membersOpen} onOpenChange={setMembersOpen} />
@@ -636,7 +665,8 @@ function CardDetail({
 	onMove,
 	onAssignee,
 	onStartDate,
-	onDueDate
+	onDueDate,
+	onLabels
 }: {
 	card: BoardCard;
 	bootstrap: Bootstrap;
@@ -651,6 +681,7 @@ function CardDetail({
 	onAssignee: (memberIds: number[]) => void;
 	onStartDate: (startDate: string | null) => void;
 	onDueDate: (dueDate: string | null) => void;
+	onLabels: (labels: string[]) => void;
 }) {
 	const [title, setTitle] = useState(card.title);
 	const [description, setDescription] = useState(card.description);
@@ -747,7 +778,7 @@ function CardDetail({
 				<div className={styles.detailGrid}>
 					<label>
 						<span>組別</span>
-						<select value={card.teamKey} onChange={(event) => onTeam(event.target.value)}>
+						<select aria-label="組別" value={card.teamKey} onChange={(event) => onTeam(event.target.value)}>
 							{teams.map((team) => (
 								<option key={team.key} value={team.key}>
 									{team.name}
@@ -757,7 +788,7 @@ function CardDetail({
 					</label>
 					<label>
 						<span>狀態</span>
-						<select value={card.listKey} onChange={(event) => onMove(event.target.value)}>
+						<select aria-label="狀態" value={card.listKey} onChange={(event) => onMove(event.target.value)}>
 							{lists.map((list) => (
 								<option key={list.key} value={list.key}>
 									{list.name}
@@ -780,7 +811,9 @@ function CardDetail({
 						</label>
 					</div>
 				</div>
+				<CardTags card={card} bootstrap={bootstrap} onChange={onLabels} />
 				<QuickActionComposer bootstrap={bootstrap} card={card} onAction={runQuickAction} />
+				<CardComments card={card} />
 				<footer className={styles.detailActions}>
 					{card.webUrl ? (
 						<a href={card.webUrl} target="_blank" rel="noreferrer">
@@ -795,6 +828,214 @@ function CardDetail({
 				</footer>
 			</form>
 		</Drawer>
+	);
+}
+
+const legacyStatusLabels = new Set(["Wating", "Waiting", "Inbox", "To Do", "Todo", "Doing", "Review", "Closed"]);
+
+function canonicalClientLabels(bootstrap: Bootstrap, labels: string[], teamKey: string, listKey: string) {
+	const teamLabels = new Set(bootstrap.teams.map((team) => team.gitLabLabel));
+	const listLabels = new Set(bootstrap.board.lists.flatMap((list) => (list.gitLabLabel ? [list.gitLabLabel] : [])));
+	const general = labels.filter((label) => !teamLabels.has(label) && !listLabels.has(label) && !legacyStatusLabels.has(label) && !label.startsWith("Status::"));
+	const teamLabel = bootstrap.teams.find((team) => team.key === teamKey && team.active)?.gitLabLabel;
+	const list = bootstrap.board.lists.find((item) => item.key === listKey);
+	return [...general, ...(teamLabel ? [teamLabel] : []), ...(list?.gitLabLabel && !list.closed ? [list.gitLabLabel] : [])];
+}
+
+function CardTags({ card, bootstrap, onChange }: { card: BoardCard; bootstrap: Bootstrap; onChange: (labels: string[]) => void }) {
+	const [query, setQuery] = useState("");
+	const picker = useRef<HTMLDetailsElement>(null);
+	const labelsQuery = useQuery({
+		queryKey: ["sitcon", "project-labels"],
+		queryFn: listProjectLabels,
+		staleTime: 5 * 60_000
+	});
+	const teamLabels = new Set(bootstrap.teams.filter((team) => team.active).map((team) => team.gitLabLabel));
+	const statusLabels = new Set(bootstrap.board.lists.flatMap((list) => (list.gitLabLabel ? [list.gitLabLabel] : [])));
+	const labelMetadata = new Map(labelsQuery.data?.map((label) => [label.name, label]));
+	const normalizedQuery = query.trim().toLocaleLowerCase("zh-Hant");
+	const available = (labelsQuery.data ?? []).filter(
+		(label) =>
+			!card.labels.includes(label.name) &&
+			(!normalizedQuery || `${label.name} ${label.description ?? ""}`.toLocaleLowerCase("zh-Hant").includes(normalizedQuery))
+	);
+	const selectedTeamCount = card.labels.filter((label) => teamLabels.has(label)).length;
+
+	const scope = (label: string) => {
+		if (teamLabels.has(label)) return "team";
+		if (statusLabels.has(label) || legacyStatusLabels.has(label)) return "status";
+		return "general";
+	};
+	const add = (label: string) => {
+		const nextScope = scope(label);
+		const next = card.labels.filter((current) => nextScope === "general" || scope(current) !== nextScope);
+		onChange([...next, label]);
+		setQuery("");
+		if (picker.current) picker.current.open = false;
+	};
+	const remove = (label: string) => {
+		const currentScope = scope(label);
+		let next = card.labels.filter((current) => current !== label);
+		if (currentScope === "status" && !bootstrap.board.lists.find((list) => list.closed && list.key === card.listKey)) {
+			const inbox = bootstrap.board.lists.find((list) => list.key === "inbox")?.gitLabLabel;
+			if (inbox && !next.includes(inbox)) next = [...next.filter((current) => scope(current) !== "status"), inbox];
+		}
+		onChange(next);
+	};
+
+	return (
+		<section className={styles.detailTags} aria-labelledby="card-tags-heading">
+			<header>
+				<h3 id="card-tags-heading">Tag</h3>
+				<details className={styles.tagPicker} ref={picker}>
+					<summary aria-label="新增 Tag" title="新增 Tag">
+						<Plus size="0.875rem" aria-hidden="true" /> 新增
+					</summary>
+					<div className={styles.tagMenu}>
+						<input aria-label="搜尋 Tag" value={query} onChange={(event) => setQuery(event.target.value)} />
+						<div role="listbox" aria-label="可用 Tag">
+							{available.map((label) => (
+								<button key={label.name} type="button" role="option" aria-selected="false" onClick={() => add(label.name)}>
+									<TagSwatch label={label} />
+									<span>{label.name}</span>
+								</button>
+							))}
+							{labelsQuery.isLoading ? <p role="status">載入中...</p> : null}
+							{labelsQuery.isError ? (
+								<button type="button" onClick={() => void labelsQuery.refetch()}>
+									<RefreshCw size="0.8125rem" aria-hidden="true" /> 重新載入
+								</button>
+							) : null}
+							{labelsQuery.isSuccess && available.length === 0 ? <p>沒有可用的 Tag</p> : null}
+						</div>
+					</div>
+				</details>
+			</header>
+			<div className={styles.tagList}>
+				{card.labels.map((label) => {
+					const locked = scope(label) === "team" && selectedTeamCount <= 1;
+					return (
+						<span className={styles.tagChip} key={label}>
+							<TagSwatch label={labelMetadata.get(label)} />
+							<span>{label}</span>
+							<button
+								type="button"
+								aria-label={`移除 Tag ${label}`}
+								title={locked ? "Team Tag 必須保留一個" : `移除 ${label}`}
+								disabled={locked}
+								onClick={() => remove(label)}
+							>
+								<X size="0.75rem" aria-hidden="true" />
+							</button>
+						</span>
+					);
+				})}
+				{card.labels.length === 0 ? <span className={styles.emptyTags}>尚無 Tag</span> : null}
+			</div>
+		</section>
+	);
+}
+
+function TagSwatch({ label }: { label: ProjectLabel | undefined }) {
+	const color = label && /^#[0-9a-f]{6}$/i.test(label.color) ? label.color : undefined;
+	return <span className={styles.tagSwatch} style={color ? ({ "--tag-color": color } as React.CSSProperties) : undefined} aria-hidden="true" />;
+}
+
+function CardComments({ card }: { card: BoardCard }) {
+	const client = useQueryClient();
+	const [body, setBody] = useState("");
+	const queryKey = ["sitcon", "card-comments", card.issueIid] as const;
+	const commentsQuery = useQuery({
+		queryKey,
+		queryFn: () => listComments(card),
+		enabled: card.issueIid > 0
+	});
+	const commentMutation = useMutation({
+		mutationFn: () => createComment(card, body),
+		onSuccess: (comment) => {
+			client.setQueryData<CardComment[]>(queryKey, (current) => [...(current ?? []), comment]);
+			setBody("");
+		}
+	});
+	const submit = () => {
+		if (!body.trim() || commentMutation.isPending) return;
+		commentMutation.mutate();
+	};
+
+	return (
+		<section className={styles.comments} aria-labelledby="card-comments-heading">
+			<header>
+				<h3 id="card-comments-heading">Comment</h3>
+				{commentsQuery.data ? <span>{commentsQuery.data.length}</span> : null}
+			</header>
+			{commentsQuery.isLoading ? <p className={styles.commentState}>載入中...</p> : null}
+			{commentsQuery.isError ? (
+				<div className={styles.commentError} role="alert">
+					<span>{errorMessage(commentsQuery.error, "無法載入 Comment。")}</span>
+					<button type="button" onClick={() => void commentsQuery.refetch()}>
+						<RefreshCw size="0.8125rem" aria-hidden="true" /> 重試
+					</button>
+				</div>
+			) : null}
+			{commentsQuery.data?.length === 0 ? <p className={styles.commentState}>尚無 Comment</p> : null}
+			<div className={styles.commentList}>
+				{commentsQuery.data?.map((comment) => (
+					<article className={styles.comment} data-system={comment.system || undefined} key={comment.id}>
+						<Avatar name={comment.author.displayName} src={comment.author.avatarUrl} />
+						<div>
+							<header>
+								<a href={comment.author.profileUrl} target="_blank" rel="noreferrer">
+									{comment.author.displayName}
+								</a>
+								{comment.system ? <span>系統活動</span> : null}
+								<time dateTime={comment.createdAt}>{formatDateTime(comment.createdAt)}</time>
+							</header>
+							<div className={styles.commentBody}>
+								<MarkdownBody value={comment.body} />
+							</div>
+						</div>
+					</article>
+				))}
+			</div>
+			<div className={styles.commentComposer}>
+				<textarea
+					aria-label="Comment"
+					rows={4}
+					value={body}
+					onChange={(event) => {
+						setBody(event.target.value);
+						if (commentMutation.isError) commentMutation.reset();
+					}}
+					onKeyDown={(event) => {
+						if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+							event.preventDefault();
+							submit();
+						}
+					}}
+				/>
+				{commentMutation.isError ? <p role="alert">{errorMessage(commentMutation.error, "Comment 送出失敗，請重試。")}</p> : null}
+				<button type="button" disabled={!body.trim() || commentMutation.isPending || card.issueIid <= 0} onClick={submit}>
+					<Send size="0.875rem" aria-hidden="true" /> {commentMutation.isPending ? "送出中" : "送出 Comment"}
+				</button>
+			</div>
+		</section>
+	);
+}
+
+function MarkdownBody({ value }: { value: string }) {
+	return (
+		<ReactMarkdown
+			remarkPlugins={[remarkGfm]}
+			components={{
+				a: ({ href, children }) => (
+					<a href={href} target="_blank" rel="noreferrer">
+						{children}
+					</a>
+				)
+			}}
+		>
+			{value}
+		</ReactMarkdown>
 	);
 }
 

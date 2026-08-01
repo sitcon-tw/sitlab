@@ -48,6 +48,13 @@ type UpdateStartDateInput struct {
 	StartDate   *string
 }
 
+type UpdateLabelsInput struct {
+	OperationID string
+	ActorUserID string
+	IssueIID    int64
+	Labels      []string
+}
+
 type MoveInput struct {
 	OperationID string
 	ActorUserID string

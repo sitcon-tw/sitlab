@@ -218,6 +218,25 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 		t.Fatalf("process start date = %v, %v, mutation=%#v", processed, err, gitlab.lastMutation)
 	}
 
+	labelOperationID := uuid.NewString()
+	labelsChanged, err := boardService.UpdateLabels(ctx, appboard.UpdateLabelsInput{
+		OperationID: labelOperationID, ActorUserID: user.ID, IssueIID: canonical.Card.IssueIID,
+		Labels: []string{"組別::行政", "Status::Doing", "Backend"},
+	})
+	if err != nil || labelsChanged.Card.TeamKey != "administration" || labelsChanged.Card.ListKey != "doing" ||
+		len(labelsChanged.Card.AssigneeGitLabUserIDs) != 0 || labelsChanged.Operation.Kind != domainboard.OperationUpdateLabels {
+		t.Fatalf("label mutation = %#v, err = %v", labelsChanged, err)
+	}
+	var storedKind string
+	if err := pool.QueryRow(ctx, `SELECT kind FROM durable_operations WHERE id = $1`, labelOperationID).Scan(&storedKind); err != nil || storedKind != "update_labels" {
+		t.Fatalf("stored label operation kind = %q, err = %v", storedKind, err)
+	}
+	processed, err = syncService.ProcessOne(ctx)
+	if err != nil || !processed || gitlab.lastMutation == nil ||
+		!contains(gitlab.lastMutation.Labels, "組別::行政") || !contains(gitlab.lastMutation.Labels, "Status::Doing") || !contains(gitlab.lastMutation.Labels, "Backend") {
+		t.Fatalf("process labels = %v, %v, mutation=%#v", processed, err, gitlab.lastMutation)
+	}
+
 	changed, err := boardService.UpdateTeam(ctx, appboard.UpdateTeamInput{
 		OperationID: uuid.NewString(), ActorUserID: user.ID,
 		IssueIID: canonical.Card.IssueIID, TeamKey: "administration",
@@ -272,6 +291,15 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	if _, err := oauthRepo.OAuthCredential(ctx, user.ID); !errors.Is(err, identity.ErrOAuthCredentialNotFound) {
 		t.Fatalf("revoked member OAuth credential error = %v", err)
 	}
+}
+
+func contains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 type operationGitLabFake struct {

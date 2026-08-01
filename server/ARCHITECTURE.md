@@ -3,7 +3,7 @@
 The server is a modular monolith with inward-pointing dependencies:
 
 1. `internal/domain` owns identity, directory, board, durable-operation, and sync models.
-2. `internal/controller/application` owns OAuth, directory preferences, bootstrap, board mutation, and sync use cases plus their narrow ports.
+2. `internal/controller/application` owns OAuth, directory preferences, bootstrap, board mutation, card activity, and sync use cases plus their narrow ports.
 3. `internal/controller/infrastructure` implements file directory, GitLab, PostgreSQL, cryptography, and observability adapters.
 4. `internal/controller/transport/http` maps the TypeSpec contract, RFC 7807 errors, rolling session cookies, and injected HTML bootstrap.
 5. `internal/controller/app` is the only composition root.
@@ -12,6 +12,6 @@ The directory source is `.sitcon/board-directory.yml` from this repository, bund
 
 GitLab Project Issue and Group Member hooks use independent HMAC-SHA256 signing tokens. Valid deliveries are deduplicated by `webhook-id` and committed to PostgreSQL before a `202` response. The webhook worker retries durable deliveries, fetches canonical issues, preserves cards with local operations, and advances the bootstrap revision. PostgreSQL `LISTEN/NOTIFY` fans revisions to continuously connected authenticated SSE streams; a full Board sync every five seconds remains the recovery path for missed hooks.
 
-Unsafe authenticated requests require `X-CSRF-Token` plus an allowed Origin. Session cookies are opaque, HttpOnly, Secure in production, and renewed for 14 days on every valid use. OAuth PKCE verifiers and GitLab access/refresh tokens are encrypted at rest, while session and OAuth state tokens are stored only as keyed hashes. Durable operations retain the requesting user ID and call GitLab with that user's refreshed OAuth token so GitLab records the real actor.
+Unsafe authenticated requests require `X-CSRF-Token` plus an allowed Origin. Session cookies are opaque, HttpOnly, Secure in production, and renewed for 14 days on every valid use. OAuth PKCE verifiers and GitLab access/refresh tokens are encrypted at rest, while session and OAuth state tokens are stored only as keyed hashes. Durable operations retain the requesting user ID and call GitLab with that user's refreshed OAuth token so GitLab records the real actor. Comment reads and writes also resolve the current user's token synchronously, preserving GitLab visibility rules and attribution without storing notes locally.
 
-Optimistic mutations and durable operations commit atomically. Operation IDs are idempotency keys. The operation worker resolves the requesting user's encrypted OAuth credential, applies full current card intent to GitLab as that actor, and records technical failure detail for logs and retry while preserving stable client error codes.
+Optimistic mutations and durable operations commit atomically. Operation IDs are idempotency keys. The operation worker resolves the requesting user's encrypted OAuth credential, applies full current card intent, including normalized Team/Status/general labels, to GitLab as that actor, and records technical failure detail for logs and retry while preserving stable client error codes. Comment failures remain synchronous and return the draft to the browser for explicit retry rather than entering the durable queue.

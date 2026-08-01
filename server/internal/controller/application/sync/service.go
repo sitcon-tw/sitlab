@@ -24,17 +24,6 @@ var DefaultBoardLists = []board.List{
 	{Key: "closed", Name: "Closed", Position: 5, Closed: true, Color: "#15803d"},
 }
 
-var legacyStatusLabels = map[string]string{
-	"Wating":  "wating",
-	"Waiting": "wating",
-	"Inbox":   "inbox",
-	"To Do":   "todo",
-	"Todo":    "todo",
-	"Doing":   "doing",
-	"Review":  "review",
-	"Closed":  "closed",
-}
-
 type Service struct {
 	gitlab    GitLab
 	directory DirectorySource
@@ -405,7 +394,7 @@ func mapIssue(issue GitLabIssue, directorySnapshot directory.Snapshot, lists []b
 		}
 		if !matchedScoped {
 			for _, label := range issue.Labels {
-				legacyKey, legacy := legacyStatusLabels[label]
+				legacyKey, legacy := board.LegacyStatusListKey(label)
 				if candidate, found := boardList(lists, legacyKey); legacy && found && !candidate.Closed {
 					list = candidate
 					break
@@ -465,26 +454,21 @@ func boardList(lists []board.List, key string) (board.List, bool) {
 }
 
 func canonicalLabels(existing []string, team directory.Team, list board.List, teams []directory.Team, lists []board.List) []string {
-	reserved := make(map[string]struct{}, len(teams)+len(lists))
+	teamLabels := make([]string, 0, len(teams))
 	for _, candidate := range teams {
-		reserved[candidate.GitLabLabel] = struct{}{}
+		teamLabels = append(teamLabels, candidate.GitLabLabel)
 	}
+	listLabels := make([]string, 0, len(lists))
 	for _, candidate := range lists {
-		reserved[candidate.GitLabLabel] = struct{}{}
-	}
-	labels := make([]string, 0, len(existing)+2)
-	for _, label := range existing {
-		_, isReserved := reserved[label]
-		_, isLegacyStatus := legacyStatusLabels[label]
-		if !isReserved && !isLegacyStatus && !strings.HasPrefix(label, "Status::") {
-			labels = append(labels, label)
+		if candidate.GitLabLabel != "" {
+			listLabels = append(listLabels, candidate.GitLabLabel)
 		}
 	}
-	labels = append(labels, team.GitLabLabel)
+	listLabel := ""
 	if !list.Closed {
-		labels = append(labels, list.GitLabLabel)
+		listLabel = list.GitLabLabel
 	}
-	return labels
+	return board.CanonicalLabels(existing, team.GitLabLabel, listLabel, teamLabels, listLabels)
 }
 
 func technical(span trace.Span, action string, err error) error {

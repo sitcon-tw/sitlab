@@ -15,7 +15,7 @@ order: 10
 
 ## GitLab setup
 
-Create an OAuth application whose redirect URI exactly matches `SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL` and enable its `api` scope. User OAuth tokens execute card mutations so GitLab records the real actor. Provide a project access token able to read members, labels, and issues in `sitcon-tw/2027` for snapshots and webhook reconciliation.
+Create an OAuth application whose redirect URI exactly matches `SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL` and enable its `api` scope. User OAuth tokens execute card mutations and read or write issue Comments so GitLab permissions and actor attribution remain intact. Provide a project access token able to read members, labels, and issues in `sitcon-tw/2027` for snapshots, the Tag catalog, and webhook reconciliation.
 
 Production realtime delivery also requires a Project webhook for **Work item events** and a Premium/Ultimate Group webhook for **Member events**. Generate independent Signing tokens in GitLab, leave the legacy Secret token empty, and configure the matching `SITCON_BOARD_GITLAB_PROJECT_WEBHOOK_SIGNING_TOKEN` and `SITCON_BOARD_GITLAB_GROUP_WEBHOOK_SIGNING_TOKEN` values. The complete field-by-field setup is in the Dokploy runbook.
 

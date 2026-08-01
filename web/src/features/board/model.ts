@@ -8,6 +8,8 @@ export type DirectoryMember = components["schemas"]["DirectoryMember"];
 export type CurrentUser = components["schemas"]["CurrentUser"];
 export type UserPreferences = components["schemas"]["UserPreferences"];
 export type CardMutation = components["schemas"]["CardMutationResponse"];
+export type ProjectLabel = components["schemas"]["ProjectLabel"];
+export type CardComment = components["schemas"]["CardComment"];
 
 export type BoardSortMode = "manual" | "due-asc" | "due-desc" | "start-asc" | "start-desc" | "updated-desc" | "updated-asc";
 

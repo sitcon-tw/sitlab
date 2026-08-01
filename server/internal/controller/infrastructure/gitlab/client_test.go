@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"example.com/project-template/internal/controller/application/cardactivity"
 	"example.com/project-template/internal/controller/application/sync"
 	"example.com/project-template/internal/domain/board"
 	"example.com/project-template/internal/domain/identity"
@@ -85,6 +86,62 @@ func TestMissingIssueMapsToCardNotFound(t *testing.T) {
 	_, err := client.Issue(context.Background(), 404)
 	if !errors.Is(err, board.ErrCardNotFound) {
 		t.Fatalf("Issue() error = %v", err)
+	}
+}
+
+func TestProjectLabelsAndCommentsUseExpectedCredentialsAndPagination(t *testing.T) {
+	t.Parallel()
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch {
+		case strings.HasSuffix(request.URL.Path, "/labels"):
+			if request.Header.Get("PRIVATE-TOKEN") != "project-token" {
+				t.Errorf("labels PRIVATE-TOKEN = %q", request.Header.Get("PRIVATE-TOKEN"))
+			}
+			return response(http.StatusOK, `[{"name":"Backend","color":"#1D76DB","text_color":"#FFFFFF","description":"Server work"}]`), nil
+		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/notes"):
+			assertBearer(t, request)
+			if request.URL.Query().Get("page") == "1" {
+				result := response(http.StatusOK, `[{"id":2,"body":"changed status","system":true,"created_at":"2026-07-29T09:00:00Z","updated_at":"2026-07-29T09:00:00Z","author":{"id":101,"username":"alice","name":"Alice","web_url":"https://gitlab.example/alice"}}]`)
+				result.Header.Set("X-Next-Page", "2")
+				return result, nil
+			}
+			return response(http.StatusOK, `[{"id":3,"body":"please review","system":false,"created_at":"2026-07-29T10:00:00Z","updated_at":"2026-07-29T10:00:00Z","author":{"id":102,"username":"bob","name":"Bob","web_url":"https://gitlab.example/bob"}}]`), nil
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/notes"):
+			assertBearer(t, request)
+			var payload map[string]string
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil || payload["body"] != "new comment" {
+				t.Fatalf("comment payload = %#v, %v", payload, err)
+			}
+			return response(http.StatusCreated, `{"id":4,"body":"new comment","system":false,"created_at":"2026-07-29T11:00:00Z","updated_at":"2026-07-29T11:00:00Z","author":{"id":101,"username":"alice","name":"Alice","web_url":"https://gitlab.example/alice"}}`), nil
+		default:
+			return response(http.StatusNotFound, `{}`), nil
+		}
+	})
+	client, _ := New(&http.Client{Transport: transport}, Config{
+		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", AccessToken: "project-token",
+	})
+	labels, err := client.ProjectLabels(context.Background())
+	if err != nil || len(labels) != 1 || labels[0].Name != "Backend" || labels[0].TextColor != "#FFFFFF" {
+		t.Fatalf("ProjectLabels() = %#v, %v", labels, err)
+	}
+	comments, err := client.Comments(context.Background(), 42, "token")
+	if err != nil || len(comments) != 2 || !comments[0].System || comments[1].Author.DisplayName != "Bob" {
+		t.Fatalf("Comments() = %#v, %v", comments, err)
+	}
+	created, err := client.CreateComment(context.Background(), 42, "new comment", "token")
+	if err != nil || created.ID != 4 || created.Body != "new comment" {
+		t.Fatalf("CreateComment() = %#v, %v", created, err)
+	}
+}
+
+func TestCommentForbiddenMapsToActivityError(t *testing.T) {
+	t.Parallel()
+	client, _ := New(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return response(http.StatusForbidden, `{}`), nil
+	})}, Config{BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027"})
+	_, err := client.Comments(context.Background(), 42, "token")
+	if !errors.Is(err, cardactivity.ErrGitLabForbidden) {
+		t.Fatalf("Comments() error = %v", err)
 	}
 }
 

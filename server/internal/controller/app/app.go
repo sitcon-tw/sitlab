@@ -13,6 +13,7 @@ import (
 
 	appboard "example.com/project-template/internal/controller/application/board"
 	appbootstrap "example.com/project-template/internal/controller/application/bootstrap"
+	appactivity "example.com/project-template/internal/controller/application/cardactivity"
 	appdirectory "example.com/project-template/internal/controller/application/directory"
 	appoauth "example.com/project-template/internal/controller/application/oauth"
 	appsync "example.com/project-template/internal/controller/application/sync"
@@ -96,6 +97,7 @@ func New(ctx context.Context) (*Application, error) {
 	}, tracer)
 	directoryService := appdirectory.NewService(store, tracer)
 	boardService := appboard.NewService(store, directoryService, tracer)
+	cardActivityService := appactivity.NewService(store, gitLabClient, oauthService, tracer)
 	syncService := appsync.NewService(gitLabClient, directoryClient, store, oauthService, directoryLogger{log: log}, tracer)
 	bootstrapService := appbootstrap.NewService(oauthService, directoryService, boardService, store)
 
@@ -113,7 +115,7 @@ func New(ctx context.Context) (*Application, error) {
 	syncService.SetWebhookObserver(metrics)
 	router := httpserver.NewRouter(httpserver.Dependencies{
 		Log: log, Auth: oauthService, Bootstrap: bootstrapService,
-		Directory: directoryService, Board: boardService, Sync: syncService, Events: store,
+		Directory: directoryService, Board: boardService, CardActivity: cardActivityService, Sync: syncService, Events: store,
 		Webhooks: httpserver.WebhookConfig{
 			ProjectSigningToken: cfg.GitLab.ProjectWebhookSigningToken,
 			GroupSigningToken:   cfg.GitLab.GroupWebhookSigningToken,

@@ -7,6 +7,7 @@ import (
 
 	appboard "example.com/project-template/internal/controller/application/board"
 	appbootstrap "example.com/project-template/internal/controller/application/bootstrap"
+	appactivity "example.com/project-template/internal/controller/application/cardactivity"
 	appdirectory "example.com/project-template/internal/controller/application/directory"
 	appoauth "example.com/project-template/internal/controller/application/oauth"
 	"example.com/project-template/internal/domain/board"
@@ -41,8 +42,15 @@ type BoardService interface {
 	UpdateAssignee(context.Context, appboard.UpdateAssigneeInput) (appboard.Result, error)
 	UpdateStartDate(context.Context, appboard.UpdateStartDateInput) (appboard.Result, error)
 	UpdateDueDate(context.Context, appboard.UpdateDueDateInput) (appboard.Result, error)
+	UpdateLabels(context.Context, appboard.UpdateLabelsInput) (appboard.Result, error)
 	Move(context.Context, appboard.MoveInput) (appboard.Result, error)
 	Retry(context.Context, string) (board.Operation, error)
+}
+
+type CardActivityService interface {
+	Labels(context.Context) ([]appactivity.ProjectLabel, error)
+	Comments(context.Context, string, int64) ([]appactivity.Comment, error)
+	CreateComment(context.Context, appactivity.CreateCommentInput) (appactivity.Comment, error)
 }
 
 type SyncService interface {
@@ -67,6 +75,7 @@ type handler struct {
 	bootstrap BootstrapService
 	directory DirectoryService
 	board     BoardService
+	activity  CardActivityService
 	sync      SyncService
 	webhooks  WebhookConfig
 	events    RevisionEvents

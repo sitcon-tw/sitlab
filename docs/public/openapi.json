@@ -481,6 +481,61 @@
 				]
 			}
 		},
+		"/cards/labels": {
+			"get": {
+				"operationId": "listProjectLabels",
+				"summary": "List labels available in the GitLab project",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "The request has succeeded.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectLabelsResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
 		"/cards/{issueIid}/assignee": {
 			"put": {
 				"operationId": "updateCardAssignee",
@@ -572,6 +627,185 @@
 						"application/json": {
 							"schema": {
 								"$ref": "#/components/schemas/UpdateCardAssigneeRequest"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
+		"/cards/{issueIid}/comments": {
+			"get": {
+				"operationId": "listCardComments",
+				"summary": "List GitLab comments and system notes for a card",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The request has succeeded.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CardCommentsResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			},
+			"post": {
+				"operationId": "createCardComment",
+				"summary": "Add a GitLab comment as the current user",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					},
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"201": {
+						"description": "The request has succeeded and a new resource has been created as a result.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CardComment"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateCardCommentRequest"
 							}
 						}
 					}
@@ -776,6 +1010,118 @@
 						"application/json": {
 							"schema": {
 								"$ref": "#/components/schemas/UpdateCardDueDateRequest"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
+		"/cards/{issueIid}/labels": {
+			"put": {
+				"operationId": "updateCardLabels",
+				"summary": "Optimistically update card labels",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					},
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"202": {
+						"description": "The request has been accepted for processing, but processing has not yet completed.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CardMutationResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with the current state of the server.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateCardLabelsRequest"
 							}
 						}
 					}
@@ -2000,6 +2346,90 @@
 					}
 				]
 			},
+			"CardComment": {
+				"type": "object",
+				"required": ["id", "body", "author", "system", "createdAt", "updatedAt"],
+				"properties": {
+					"id": {
+						"type": "integer",
+						"format": "int64"
+					},
+					"body": {
+						"type": "string"
+					},
+					"author": {
+						"$ref": "#/components/schemas/CardCommentAuthor"
+					},
+					"system": {
+						"type": "boolean"
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"updatedAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				},
+				"examples": [
+					{
+						"id": 9876,
+						"body": "已確認寄信重試條件，請協助 review。",
+						"author": {
+							"gitLabUserId": 114,
+							"username": "yorukot",
+							"displayName": "Yorukot",
+							"avatarUrl": null,
+							"profileUrl": "https://gitlab.com/yorukot"
+						},
+						"system": false,
+						"createdAt": "2026-07-29T08:00:00Z",
+						"updatedAt": "2026-07-29T08:00:00Z"
+					}
+				]
+			},
+			"CardCommentAuthor": {
+				"type": "object",
+				"required": ["gitLabUserId", "username", "displayName", "avatarUrl", "profileUrl"],
+				"properties": {
+					"gitLabUserId": {
+						"type": "integer",
+						"format": "int64"
+					},
+					"username": {
+						"type": "string"
+					},
+					"displayName": {
+						"type": "string"
+					},
+					"avatarUrl": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"profileUrl": {
+						"type": "string"
+					}
+				}
+			},
+			"CardCommentsResponse": {
+				"type": "object",
+				"required": ["comments"],
+				"properties": {
+					"comments": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/CardComment"
+						}
+					}
+				}
+			},
 			"CardMutationResponse": {
 				"type": "object",
 				"required": ["card", "operation"],
@@ -2009,6 +2439,16 @@
 					},
 					"operation": {
 						"$ref": "#/components/schemas/DurableOperation"
+					}
+				}
+			},
+			"CreateCardCommentRequest": {
+				"type": "object",
+				"required": ["body"],
+				"properties": {
+					"body": {
+						"type": "string",
+						"minLength": 1
 					}
 				}
 			},
@@ -2282,7 +2722,7 @@
 					},
 					"kind": {
 						"type": "string",
-						"enum": ["create_card", "update_details", "update_team", "update_assignee", "update_start_date", "update_due_date", "move_card"]
+						"enum": ["create_card", "update_details", "update_team", "update_assignee", "update_start_date", "update_due_date", "update_labels", "move_card"]
 					},
 					"state": {
 						"type": "string",
@@ -2461,6 +2901,53 @@
 					}
 				]
 			},
+			"ProjectLabel": {
+				"type": "object",
+				"required": ["name", "color", "textColor", "description"],
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"color": {
+						"type": "string",
+						"pattern": "^#[0-9A-Fa-f]{6}$"
+					},
+					"textColor": {
+						"type": "string",
+						"pattern": "^#[0-9A-Fa-f]{6}$"
+					},
+					"description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				},
+				"examples": [
+					{
+						"name": "priority::high",
+						"color": "#D73A4A",
+						"textColor": "#FFFFFF",
+						"description": "Needs prompt attention"
+					}
+				]
+			},
+			"ProjectLabelsResponse": {
+				"type": "object",
+				"required": ["labels"],
+				"properties": {
+					"labels": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ProjectLabel"
+						}
+					}
+				}
+			},
 			"RefreshSyncResponse": {
 				"type": "object",
 				"required": ["acceptedAt"],
@@ -2554,6 +3041,21 @@
 								"type": "null"
 							}
 						]
+					}
+				}
+			},
+			"UpdateCardLabelsRequest": {
+				"type": "object",
+				"required": ["operationId", "labels"],
+				"properties": {
+					"operationId": {
+						"$ref": "#/components/schemas/uuid"
+					},
+					"labels": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
 					}
 				}
 			},

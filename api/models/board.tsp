@@ -1,7 +1,15 @@
 namespace SitconBoard;
 
 alias OperationState = "pending" | "processing" | "synced" | "failed";
-alias OperationKind = "create_card" | "update_details" | "update_team" | "update_assignee" | "update_start_date" | "update_due_date" | "move_card";
+alias OperationKind =
+	| "create_card"
+	| "update_details"
+	| "update_team"
+	| "update_assignee"
+	| "update_start_date"
+	| "update_due_date"
+	| "update_labels"
+	| "move_card";
 alias SyncHealth = "synced" | "syncing" | "offline";
 
 model BoardList {
@@ -74,6 +82,52 @@ model CardMutationResponse {
 	operation: DurableOperation;
 }
 
+@example(#{ name: "priority::high", color: "#D73A4A", textColor: "#FFFFFF", description: "Needs prompt attention" })
+model ProjectLabel {
+	name: string;
+
+	@pattern("^#[0-9A-Fa-f]{6}$")
+	color: string;
+
+	@pattern("^#[0-9A-Fa-f]{6}$")
+	textColor: string;
+
+	description: string | null;
+}
+
+model CardCommentAuthor {
+	gitLabUserId: int64;
+	username: string;
+	displayName: string;
+	avatarUrl: string | null;
+	profileUrl: string;
+}
+
+@example(#{
+	id: 9876,
+	body: "已確認寄信重試條件，請協助 review。",
+	author: #{ gitLabUserId: 114, username: "yorukot", displayName: "Yorukot", avatarUrl: null, profileUrl: "https://gitlab.com/yorukot" },
+	system: false,
+	createdAt: utcDateTime.fromISO("2026-07-29T08:00:00Z"),
+	updatedAt: utcDateTime.fromISO("2026-07-29T08:00:00Z"),
+})
+model CardComment {
+	id: int64;
+	body: string;
+	author: CardCommentAuthor;
+	system: boolean;
+	createdAt: utcDateTime;
+	updatedAt: utcDateTime;
+}
+
+model ProjectLabelsResponse {
+	labels: ProjectLabel[];
+}
+
+model CardCommentsResponse {
+	comments: CardComment[];
+}
+
 model CreateCardRequest {
 	operationId: uuid;
 
@@ -123,6 +177,16 @@ model UpdateCardDueDateRequest {
 model UpdateCardStartDateRequest {
 	operationId: uuid;
 	startDate: plainDate | null;
+}
+
+model UpdateCardLabelsRequest {
+	operationId: uuid;
+	labels: string[];
+}
+
+model CreateCardCommentRequest {
+	@minLength(1)
+	body: string;
 }
 
 model MoveCardRequest {
