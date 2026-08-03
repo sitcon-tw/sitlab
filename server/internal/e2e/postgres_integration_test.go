@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 
@@ -108,6 +109,7 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 		t.Fatalf("OAuth credential = %#v, error %v", storedCredential, err)
 	}
 	seedSnapshots(t, ctx, pool, now)
+	verifyCardReordering(t, ctx, pool, store, user.ID, now)
 
 	listenerCtx, stopListener := context.WithCancel(ctx)
 	updates, unsubscribe := store.SubscribeRevisions()
@@ -378,6 +380,76 @@ func seedSnapshots(t *testing.T, ctx context.Context, pool *pgxpool.Pool, now ti
 		if _, err := pool.Exec(ctx, statement, now); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func verifyCardReordering(t *testing.T, ctx context.Context, pool *pgxpool.Pool, store *pgsitcon.Repository, userID string, now time.Time) {
+	t.Helper()
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO issue_cache
+		    (issue_iid, title, description, list_key, position, team_key, labels, sync_state, created_at, updated_at)
+		VALUES
+		    (501, 'First', '', 'doing', 0, 'development', '{}', 'synced', $1, $1),
+		    (502, 'Second', '', 'doing', 1, 'development', '{}', 'synced', $1, $1),
+		    (503, 'Third', '', 'doing', 2, 'development', '{}', 'synced', $1, $1)
+	`, now); err != nil {
+		t.Fatalf("seed card reorder fixture: %v", err)
+	}
+
+	card, err := store.Card(ctx, 503)
+	if err != nil {
+		t.Fatalf("load card reorder fixture: %v", err)
+	}
+	operationID := uuid.NewString()
+	issueIID := card.IssueIID
+	card.Position = 0
+	card.SyncState = domainboard.OperationPending
+	card.PendingOperationID = operationID
+	card.UpdatedAt = now.Add(time.Second)
+	result, updateErr := store.UpdateCard(ctx, domainboard.Mutation{
+		Card: card,
+		Operation: domainboard.Operation{
+			ID: operationID, Kind: domainboard.OperationMoveCard, IssueIID: &issueIID,
+			State: domainboard.OperationPending, CreatedAt: card.UpdatedAt, UpdatedAt: card.UpdatedAt,
+		},
+		RequestedByUserID: userID,
+		Payload:           map[string]any{"listKey": "doing", "position": 0},
+	})
+
+	rows, queryErr := pool.Query(ctx, `SELECT issue_iid, position FROM issue_cache WHERE list_key = 'doing' ORDER BY position, issue_iid`)
+	var issueIIDs []int64
+	var positions []int32
+	if queryErr == nil {
+		for rows.Next() {
+			var currentIssueIID int64
+			var position int32
+			if scanErr := rows.Scan(&currentIssueIID, &position); scanErr != nil {
+				queryErr = scanErr
+				break
+			}
+			issueIIDs = append(issueIIDs, currentIssueIID)
+			positions = append(positions, position)
+		}
+		if rowsErr := rows.Err(); queryErr == nil && rowsErr != nil {
+			queryErr = rowsErr
+		}
+		rows.Close()
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM issue_cache WHERE issue_iid = ANY($1::bigint[])`, []int64{501, 502, 503}); err != nil {
+		t.Fatalf("clean card reorder fixtures: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM durable_operations WHERE id = $1`, uuid.MustParse(operationID)); err != nil {
+		t.Fatalf("clean card reorder operation: %v", err)
+	}
+
+	if updateErr != nil {
+		t.Fatalf("move card in repository: %v", updateErr)
+	}
+	if queryErr != nil {
+		t.Fatalf("read reordered cards: %v", queryErr)
+	}
+	if result.Card.Position != 0 || !slices.Equal(issueIIDs, []int64{503, 501, 502}) || !slices.Equal(positions, []int32{0, 1, 2}) {
+		t.Fatalf("reordered cards = ids %v positions %v result %#v", issueIIDs, positions, result.Card)
 	}
 }
 

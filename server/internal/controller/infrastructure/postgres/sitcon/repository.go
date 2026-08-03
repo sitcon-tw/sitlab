@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -815,6 +816,24 @@ func (r *Repository) UpdateCard(ctx context.Context, mutation domainboard.Mutati
 			uuid.MustParse(mutation.RequestedByUserID), payload, mutation.Operation.State, mutation.Operation.CreatedAt); err != nil {
 			return err
 		}
+		var currentList string
+		var currentPosition int32
+		if err := tx.QueryRow(ctx, `
+			SELECT list_key, position
+			FROM issue_cache
+			WHERE issue_iid = $1
+		`, mutation.Card.IssueIID).Scan(&currentList, &currentPosition); errors.Is(err, pgx.ErrNoRows) {
+			return domainboard.ErrCardNotFound
+		} else if err != nil {
+			return err
+		}
+		if currentList != mutation.Card.ListKey || currentPosition != mutation.Card.Position {
+			position, err := reorderCardPositions(ctx, tx, mutation.Card.IssueIID, currentList, mutation.Card.ListKey, mutation.Card.Position)
+			if err != nil {
+				return err
+			}
+			mutation.Card.Position = position
+		}
 		command, err := tx.Exec(ctx, `
 			UPDATE issue_cache
 			SET title = $2, description = $3, list_key = $4, position = $5, team_key = $6,
@@ -957,6 +976,87 @@ func replaceCardAssignees(ctx context.Context, tx pgx.Tx, issueIID int64, gitLab
 		FROM unnest($2::bigint[]) AS assignee_id
 		ON CONFLICT DO NOTHING
 	`, issueIID, gitLabUserIDs)
+	return err
+}
+
+func reorderCardPositions(ctx context.Context, tx pgx.Tx, issueIID int64, sourceList, destinationList string, targetPosition int32) (int32, error) {
+	listKeys := []string{sourceList}
+	if sourceList != destinationList {
+		listKeys = append(listKeys, destinationList)
+	}
+	sort.Strings(listKeys)
+
+	rows, err := tx.Query(ctx, `
+		SELECT issue_iid, list_key
+		FROM issue_cache
+		WHERE list_key = ANY($1::text[])
+		ORDER BY list_key, position, issue_iid
+		FOR UPDATE
+	`, listKeys)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	orders := make(map[string][]int64, len(listKeys))
+	for rows.Next() {
+		var currentIssueIID int64
+		var listKey string
+		if err := rows.Scan(&currentIssueIID, &listKey); err != nil {
+			return 0, err
+		}
+		orders[listKey] = append(orders[listKey], currentIssueIID)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	orders[sourceList] = removeIssueIID(orders[sourceList], issueIID)
+	nextDestination, normalizedPosition := placeIssueIID(orders[destinationList], issueIID, targetPosition)
+	orders[destinationList] = nextDestination
+	for _, listKey := range listKeys {
+		if err := writeCardPositions(ctx, tx, orders[listKey]); err != nil {
+			return 0, err
+		}
+	}
+	return normalizedPosition, nil
+}
+
+func removeIssueIID(order []int64, issueIID int64) []int64 {
+	result := make([]int64, 0, len(order))
+	for _, current := range order {
+		if current != issueIID {
+			result = append(result, current)
+		}
+	}
+	return result
+}
+
+func placeIssueIID(order []int64, issueIID int64, targetPosition int32) ([]int64, int32) {
+	order = removeIssueIID(order, issueIID)
+	position := int(targetPosition)
+	if position < 0 {
+		position = 0
+	}
+	if position > len(order) {
+		position = len(order)
+	}
+	order = append(order, 0)
+	copy(order[position+1:], order[position:])
+	order[position] = issueIID
+	return order, int32(position)
+}
+
+func writeCardPositions(ctx context.Context, tx pgx.Tx, order []int64) error {
+	if len(order) == 0 {
+		return nil
+	}
+	_, err := tx.Exec(ctx, `
+		UPDATE issue_cache AS card
+		SET position = (ordering.ordinality - 1)::integer
+		FROM unnest($1::bigint[]) WITH ORDINALITY AS ordering(issue_iid, ordinality)
+		WHERE card.issue_iid = ordering.issue_iid
+	`, order)
 	return err
 }
 

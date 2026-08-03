@@ -704,14 +704,48 @@
 	font-size: 0.6875rem;
 }
 
-.cardTopline svg:first-child {
+.cardTopline > svg:first-child {
 	cursor: grab;
+}
+
+.cardOrderControls {
+	display: flex;
+	gap: 0.125rem;
+	margin-left: auto;
+}
+
+.cardOrderControls[data-visible="false"] {
+	visibility: hidden;
+}
+
+.cardOrderControls button {
+	display: grid;
+	width: 1.625rem;
+	height: 1.625rem;
+	padding: 0;
+	place-items: center;
+	color: var(--sb-text-subtle);
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 0.25rem;
+}
+
+.cardOrderControls button:hover:not(:disabled) {
+	color: var(--sb-text);
+	background: var(--sb-surface-subtle);
+	border-color: var(--sb-border);
+}
+
+.cardOrderControls button:disabled {
+	opacity: 0.32;
+	cursor: not-allowed;
 }
 
 .cardTopline a {
 	display: grid;
+	width: 1.625rem;
+	height: 1.625rem;
 	place-items: center;
-	margin-left: auto;
 	color: var(--sb-text-subtle);
 }
 
@@ -1743,6 +1777,7 @@
 .card select:focus-visible,
 .card input:focus-visible,
 .card a:focus-visible,
+.cardOrderControls button:focus-visible,
 .quickNotice button:focus-visible,
 .undo button:focus-visible,
 .syncError button:focus-visible,

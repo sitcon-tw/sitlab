@@ -271,6 +271,30 @@ describe("SITCON Board interactions", () => {
 		expect(titles()).toEqual(["[場務組] 盤點會場網路設備", "[設計組] 製作工作人員識別證"]);
 	});
 
+	it("moves cards up and down within a lane using the manual order", async () => {
+		const user = userEvent.setup();
+		vi.mocked(moveCard).mockReturnValue(new Promise(() => undefined));
+		render(<Harness />);
+		const doingLane = screen.getByRole("heading", { name: "Doing" }).closest("section");
+		if (!doingLane) throw new Error("Doing lane is missing");
+		const designTitle = "[設計組] 製作工作人員識別證";
+		const venueTitle = "[場務組] 盤點會場網路設備";
+		const titles = () =>
+			within(doingLane)
+				.getAllByRole("heading", { level: 3 })
+				.map((heading) => heading.textContent);
+
+		expect(within(doingLane).getByRole("button", { name: `上移 ${designTitle}` })).toBeDisabled();
+		expect(within(doingLane).getByRole("button", { name: `下移 ${venueTitle}` })).toBeDisabled();
+		await user.click(within(doingLane).getByRole("button", { name: `下移 ${designTitle}` }));
+
+		expect(titles()).toEqual([venueTitle, designTitle]);
+		expect(moveCard).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 130 }), expect.any(String), "doing", 1);
+		expect(within(doingLane).getByRole("button", { name: `上移 ${venueTitle}` })).toBeDisabled();
+		expect(within(doingLane).getByRole("button", { name: `下移 ${designTitle}` })).toBeDisabled();
+		await waitFor(() => expect(within(doingLane).getByRole("button", { name: `上移 ${designTitle}` })).toHaveFocus());
+	});
+
 	it("keeps team and status controls in card details and moves optimistically", async () => {
 		const user = userEvent.setup();
 		vi.mocked(moveCard).mockReturnValue(new Promise(() => undefined));

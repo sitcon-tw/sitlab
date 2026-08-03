@@ -3,6 +3,8 @@ import { Avatar } from "@/shared/Avatar";
 import { Dialog, Drawer } from "@project-template/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+	ArrowDown,
+	ArrowUp,
 	Check,
 	ChevronDown,
 	ChevronLeft,
@@ -20,7 +22,7 @@ import {
 	Users,
 	X
 } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AssigneePicker } from "./AssigneePicker";
@@ -236,6 +238,58 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 		runCardMutation(card, { listKey, labels, position }, (operationId) => moveCard(card, operationId, listKey, position));
 	};
 
+	const handleReorder = (card: BoardCard, adjacentCard: BoardCard, direction: "up" | "down") => {
+		if (card.listKey !== adjacentCard.listKey) return;
+		const laneCards = cards.filter((item) => item.listKey === card.listKey).sort((a, b) => compareBoardCards(a, b, "manual"));
+		const withoutCard = laneCards.filter((item) => item.issueIid !== card.issueIid);
+		const adjacentIndex = withoutCard.findIndex((item) => item.issueIid === adjacentCard.issueIid);
+		if (adjacentIndex < 0) return;
+		withoutCard.splice(direction === "up" ? adjacentIndex : adjacentIndex + 1, 0, card);
+		const positions = new Map(withoutCard.map((item, index) => [item.issueIid, index]));
+		const position = positions.get(card.issueIid);
+		if (position === undefined || position === card.position) return;
+
+		const operationId = crypto.randomUUID();
+		updateBootstrap((current) => ({
+			...current,
+			board: {
+				...current.board,
+				cards: current.board.cards.map((item) => {
+					const nextPosition = positions.get(item.issueIid);
+					if (nextPosition === undefined) return item;
+					if (item.issueIid !== card.issueIid) return { ...item, position: nextPosition };
+					return {
+						...item,
+						position: nextPosition,
+						syncState: "pending",
+						syncError: null,
+						pendingOperationId: operationId,
+						updatedAt: new Date().toISOString()
+					};
+				})
+			}
+		}));
+
+		const execute = () => {
+			moveCard(card, operationId, card.listKey, position)
+				.then((result) => {
+					localRetries.current.delete(operationId);
+					replaceCard(card.issueIid, result.card);
+				})
+				.catch((cause: unknown) => {
+					localRetries.current.set(operationId, execute);
+					patchCard(card.issueIid, {
+						position,
+						syncState: "failed",
+						syncError: errorMessage(cause, "卡片順序尚未同步，請重試。"),
+						pendingOperationId: operationId
+					});
+				});
+		};
+		localRetries.current.set(operationId, execute);
+		execute();
+	};
+
 	const handleRetry = (card: BoardCard) => {
 		if (!card.pendingOperationId) return;
 		const localRetry = localRetries.current.get(card.pendingOperationId);
@@ -308,7 +362,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 									<span>{listCards.length}</span>
 								</header>
 								<div className={styles.cardList}>
-									{listCards.map((card) => (
+									{listCards.map((card, index) => (
 										<CardItem
 											key={card.issueIid}
 											card={card}
@@ -317,6 +371,9 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 											onOpen={() => setDetailIid(card.issueIid)}
 											onAssignee={(memberIds) => handleAssignee(card, memberIds)}
 											onDueDate={(dueDate) => handleDueDate(card, dueDate)}
+											manualOrder={sortMode === "manual"}
+											onMoveUp={index > 0 ? () => handleReorder(card, listCards[index - 1]!, "up") : undefined}
+											onMoveDown={index < listCards.length - 1 ? () => handleReorder(card, listCards[index + 1]!, "down") : undefined}
 											onRetry={() => handleRetry(card)}
 										/>
 									))}
@@ -597,6 +654,9 @@ function CardItem({
 	onOpen,
 	onAssignee,
 	onDueDate,
+	manualOrder,
+	onMoveUp,
+	onMoveDown,
 	onRetry
 }: {
 	card: BoardCard;
@@ -605,17 +665,60 @@ function CardItem({
 	onOpen: () => void;
 	onAssignee: (memberIds: number[]) => void;
 	onDueDate: (dueDate: string | null) => void;
+	manualOrder: boolean;
+	onMoveUp: (() => void) | undefined;
+	onMoveDown: (() => void) | undefined;
 	onRetry: () => void;
 }) {
 	const team = bootstrap.teams.find((item) => item.key === card.teamKey);
 	const title = team && !card.title.startsWith(team.titlePrefix) ? `${team.titlePrefix} ${card.title}` : card.title;
 	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
 	const overdue = Boolean(card.dueDate && card.dueDate < taipeiDateAfter(0) && !lists.find((list) => list.key === card.listKey)?.closed);
+	const moveUpRef = useRef<HTMLButtonElement>(null);
+	const moveDownRef = useRef<HTMLButtonElement>(null);
+	const pendingOrderFocus = useRef<"up" | "down" | null>(null);
+	const moveAndKeepFocus = (direction: "up" | "down") => {
+		const move = direction === "up" ? onMoveUp : onMoveDown;
+		if (!move) return;
+		pendingOrderFocus.current = direction;
+		move();
+	};
+	useEffect(() => {
+		const direction = pendingOrderFocus.current;
+		if (!direction) return;
+		pendingOrderFocus.current = null;
+		const preferred = direction === "up" ? moveUpRef.current : moveDownRef.current;
+		const fallback = direction === "up" ? moveDownRef.current : moveUpRef.current;
+		if (preferred && !preferred.disabled) preferred.focus();
+		else if (fallback && !fallback.disabled) fallback.focus();
+	}, [onMoveDown, onMoveUp]);
 	return (
 		<article className={styles.card} data-sync={card.syncState === "failed" ? "failed" : undefined} draggable onDragStart={onDragStart}>
 			<div className={styles.cardTopline}>
 				<GripVertical size="0.9375rem" aria-hidden="true" />
 				<span>#{card.issueIid > 0 ? card.issueIid : "new"}</span>
+				<div className={styles.cardOrderControls} data-visible={manualOrder} role="group" aria-label={`${title} 的手動順序`}>
+					<button
+						ref={moveUpRef}
+						type="button"
+						aria-label={`上移 ${title}`}
+						title="上移卡片"
+						disabled={!manualOrder || !onMoveUp}
+						onClick={() => moveAndKeepFocus("up")}
+					>
+						<ArrowUp size="0.875rem" aria-hidden="true" />
+					</button>
+					<button
+						ref={moveDownRef}
+						type="button"
+						aria-label={`下移 ${title}`}
+						title="下移卡片"
+						disabled={!manualOrder || !onMoveDown}
+						onClick={() => moveAndKeepFocus("down")}
+					>
+						<ArrowDown size="0.875rem" aria-hidden="true" />
+					</button>
+				</div>
 				{card.webUrl ? (
 					<a href={card.webUrl} target="_blank" rel="noreferrer" aria-label={`在 GitLab 開啟 ${title}`} title="在 GitLab 開啟">
 						<ExternalLink size="0.875rem" aria-hidden="true" />
