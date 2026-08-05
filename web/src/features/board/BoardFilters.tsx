@@ -1,19 +1,23 @@
 import { Dialog } from "@project-template/ui";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowUpDown, Check, ChevronDown, Filter, Search, UsersRound, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { listProjectLabels } from "./boardApi";
 import styles from "./BoardPage.module.css";
 import { GroupedMemberList } from "./GroupedMemberList";
-import { activeMembers, filterDirectoryMembers, type BoardSortMode, type Bootstrap, type DirectoryMember } from "./model";
+import { activeMembers, filterDirectoryMembers, type BoardSortMode, type Bootstrap, type DirectoryMember, type ProjectLabel } from "./model";
 
 export interface BoardFiltersProps {
 	bootstrap: Bootstrap;
 	teamKey: string;
 	memberIds: number[];
+	labels: string[];
 	sortMode: BoardSortMode;
 	visibleCount: number;
 	totalCount: number;
 	onTeamChange: (teamKey: string) => void;
 	onMemberIdsChange: (memberIds: number[]) => void;
+	onLabelsChange: (labels: string[]) => void;
 	onSortModeChange: (sortMode: BoardSortMode) => void;
 	onClear: () => void;
 }
@@ -22,16 +26,18 @@ export function BoardFilters({
 	bootstrap,
 	teamKey,
 	memberIds,
+	labels,
 	sortMode,
 	visibleCount,
 	totalCount,
 	onTeamChange,
 	onMemberIdsChange,
+	onLabelsChange,
 	onSortModeChange,
 	onClear
 }: BoardFiltersProps) {
 	const teams = bootstrap.teams.filter((team) => team.active).sort((a, b) => a.sortOrder - b.sortOrder);
-	const active = Boolean(teamKey || memberIds.length);
+	const active = Boolean(teamKey || memberIds.length || labels.length);
 
 	return (
 		<section className={styles.filters} aria-label="篩選看板">
@@ -66,6 +72,7 @@ export function BoardFilters({
 				</select>
 			</label>
 			<MemberFilter bootstrap={bootstrap} value={memberIds} onChange={onMemberIdsChange} />
+			<LabelFilter value={labels} onChange={onLabelsChange} />
 			<span className={styles.filterResult} role="status" aria-live="polite">
 				{visibleCount} / {totalCount} 張卡片
 			</span>
@@ -85,6 +92,95 @@ export function BoardFilters({
 	);
 }
 
+function LabelFilter({ value, onChange }: { value: string[]; onChange: (labels: string[]) => void }) {
+	const [open, setOpen] = useState(false);
+	const [query, setQuery] = useState("");
+	const labelsQuery = useQuery({ queryKey: ["sitcon", "project-labels"], queryFn: listProjectLabels, staleTime: 5 * 60_000 });
+	const normalizedQuery = query.trim().toLocaleLowerCase("zh-Hant");
+	const labels = (labelsQuery.data ?? []).filter(
+		(label) => !normalizedQuery || `${label.name} ${label.description ?? ""}`.toLocaleLowerCase("zh-Hant").includes(normalizedQuery)
+	);
+	const metadata = new Map(labelsQuery.data?.map((label) => [label.name, label]));
+	const changeOpen = (next: boolean) => {
+		setOpen(next);
+		if (!next) setQuery("");
+	};
+	const toggle = (label: string) => onChange(value.includes(label) ? value.filter((current) => current !== label) : [...value, label]);
+
+	return (
+		<>
+			<button
+				type="button"
+				className={styles.filterLabels}
+				aria-label="篩選 Label"
+				title={value.length ? value.join("、") : "所有 Labels"}
+				onClick={() => setOpen(true)}
+			>
+				<span>{value.length ? `Labels ${value.length}` : "所有 Labels"}</span>
+				<ChevronDown size="0.875rem" aria-hidden="true" />
+			</button>
+			<Dialog open={open} onOpenChange={changeOpen} title="篩選 Label" description="卡片必須包含所有選取的 Labels">
+				<div className={styles.pickerSearch}>
+					<Search size="1rem" aria-hidden="true" />
+					<input
+						autoFocus
+						type="search"
+						value={query}
+						onChange={(event) => setQuery(event.target.value)}
+						placeholder="搜尋 Label 名稱或說明"
+						aria-label="搜尋篩選 Label"
+					/>
+					{query ? (
+						<button type="button" aria-label="清除搜尋" onClick={() => setQuery("")}>
+							<X size="0.875rem" aria-hidden="true" />
+						</button>
+					) : null}
+				</div>
+				<div className={styles.pickerList}>
+					{value.map((label) =>
+						labels.some((candidate) => candidate.name === label) ? null : (
+							<LabelOption key={label} label={metadata.get(label) ?? { name: label, color: "", textColor: "", description: null }} selected onToggle={toggle} />
+						)
+					)}
+					{labels.map((label) => (
+						<LabelOption key={label.name} label={label} selected={value.includes(label.name)} onToggle={toggle} />
+					))}
+					{labelsQuery.isLoading ? <p role="status">載入中...</p> : null}
+					{labelsQuery.isError ? (
+						<button type="button" className={styles.memberOption} onClick={() => void labelsQuery.refetch()}>
+							重新載入 Labels
+						</button>
+					) : null}
+					{labelsQuery.isSuccess && labels.length === 0 ? <p className={styles.noResults}>找不到符合的 Label</p> : null}
+				</div>
+				<div className={styles.pickerFooter}>
+					<button type="button" disabled={value.length === 0} onClick={() => onChange([])}>
+						清除
+					</button>
+					<span>{value.length ? `已選擇 ${value.length} 個` : "所有 Labels"}</span>
+					<button type="button" onClick={() => changeOpen(false)}>
+						完成
+					</button>
+				</div>
+			</Dialog>
+		</>
+	);
+}
+
+function LabelOption({ label, selected, onToggle }: { label: ProjectLabel; selected: boolean; onToggle: (label: string) => void }) {
+	const color = /^#[0-9a-f]{6}$/i.test(label.color) ? label.color : undefined;
+	return (
+		<label className={styles.labelFilterOption}>
+			<input type="checkbox" checked={selected} onChange={() => onToggle(label.name)} />
+			<span className={styles.tagSwatch} style={color ? ({ "--tag-color": color } as React.CSSProperties) : undefined} aria-hidden="true" />
+			<span>
+				<strong>{label.name}</strong>
+				{label.description ? <small>{label.description}</small> : null}
+			</span>
+		</label>
+	);
+}
+
 function MemberFilter({ bootstrap, value, onChange }: { bootstrap: Bootstrap; value: number[]; onChange: (memberIds: number[]) => void }) {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
@@ -93,6 +189,7 @@ function MemberFilter({ bootstrap, value, onChange }: { bootstrap: Bootstrap; va
 		return member ? [member] : [];
 	});
 	const members = useMemo(() => filterDirectoryMembers(activeMembers(bootstrap), query), [bootstrap, query]);
+	const preferredTeamKey = bootstrap.preferences.defaultTeamKey ?? bootstrap.preferences.directoryTeamKeys[0] ?? "";
 
 	const changeOpen = (next: boolean) => {
 		setOpen(next);
@@ -139,7 +236,14 @@ function MemberFilter({ bootstrap, value, onChange }: { bootstrap: Bootstrap; va
 						</span>
 						{value.length === 0 ? <Check size="1rem" aria-hidden="true" /> : null}
 					</button>
-					<GroupedMemberList teams={bootstrap.teams} members={members} value={value} currentUserId={bootstrap.me.gitLabUserId} onChange={onChange} />
+					<GroupedMemberList
+						teams={bootstrap.teams}
+						members={members}
+						value={value}
+						currentUserId={bootstrap.me.gitLabUserId}
+						onChange={onChange}
+						preferredTeamKey={preferredTeamKey}
+					/>
 					{members.length === 0 ? <p className={styles.noResults}>找不到符合的成員</p> : null}
 				</div>
 				<div className={styles.pickerFooter}>

@@ -143,6 +143,7 @@ model CreateCardRequest {
 
 	description: string;
 	assigneeGitLabUserIds: int64[];
+	labels: string[];
 	startDate: plainDate | null;
 	dueDate: plainDate | null;
 }

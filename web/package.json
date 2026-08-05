@@ -19,6 +19,9 @@
 		"typecheck": "tsc -p tsconfig.json --noEmit"
 	},
 	"dependencies": {
+		"@dnd-kit/core": "^6.3.1",
+		"@dnd-kit/sortable": "^10.0.0",
+		"@dnd-kit/utilities": "^3.2.2",
 		"@project-template/ui": "workspace:*",
 		"@tanstack/react-query": "^5.101.2",
 		"lucide-react": "^0.468.0",

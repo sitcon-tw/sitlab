@@ -75,11 +75,31 @@ test.describe("SITCON Board demo visual audit", () => {
 		await picker.getByRole("checkbox", { name: /林采欣/ }).click();
 		await expect(picker.getByText("已選擇 2 人")).toBeVisible();
 		await picker.getByRole("button", { name: "完成" }).click();
-		await expect(page.getByRole("status")).toHaveText("0 / 7 張卡片");
+		await expect(page.getByRole("region", { name: "篩選看板" }).getByRole("status")).toHaveText("0 / 7 張卡片");
 
 		await page.getByRole("button", { name: "清除篩選" }).click();
-		await expect(page.getByRole("status")).toHaveText("7 / 7 張卡片");
+		await expect(page.getByRole("region", { name: "篩選看板" }).getByRole("status")).toHaveText("7 / 7 張卡片");
 		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
+	});
+
+	test("people pickers prioritize the current user's primary team", async ({ page }, testInfo) => {
+		await page.goto("/");
+
+		await page.getByRole("button", { name: "篩選負責人" }).click();
+		let picker = page.getByRole("dialog", { name: "篩選負責人" });
+		let primaryTeam = picker.getByRole("region").first();
+		await expect(primaryTeam).toHaveAccessibleName("開發組");
+		await expect(primaryTeam.getByRole("checkbox").nth(1)).toHaveAccessibleName(/Yorukot/);
+		await page.screenshot({ path: `/tmp/sitcon-member-filter-${testInfo.project.name}.png`, fullPage: true });
+		await picker.getByRole("button", { name: "完成" }).click();
+
+		await page.getByLabel("新卡片組別").selectOption("design");
+		await page.getByRole("button", { name: "選擇新卡片 Assignee" }).click();
+		picker = page.getByRole("dialog", { name: "選擇 Assignee" });
+		primaryTeam = picker.getByRole("region").first();
+		await expect(primaryTeam).toHaveAccessibleName("開發組");
+		await expect(primaryTeam.getByRole("checkbox").nth(1)).toHaveAccessibleName(/Yorukot/);
+		await page.screenshot({ path: `/tmp/sitcon-assignee-picker-${testInfo.project.name}.png`, fullPage: true });
 	});
 
 	test("team select all and due date sorting update the board", async ({ page }) => {
@@ -95,11 +115,54 @@ test.describe("SITCON Board demo visual audit", () => {
 		await picker.getByRole("checkbox", { name: "全選行政組" }).click();
 		await expect(picker.getByText("已選擇 2 人")).toBeVisible();
 		await picker.getByRole("button", { name: "完成" }).click();
-		await expect(page.getByRole("status")).toHaveText("1 / 7 張卡片");
+		await expect(page.getByRole("region", { name: "篩選看板" }).getByRole("status")).toHaveText("1 / 7 張卡片");
 		await expect(page.getByRole("heading", { name: "[行政組] 整理志工行前通知" })).toBeVisible();
 	});
 
-	test("quick create more options set status and description", async ({ page }) => {
+	test("shared filters and sorting survive reload", async ({ page }) => {
+		await page.goto("/?team=development&member=114&label=Backend&sort=due-desc");
+
+		await expect(page.getByLabel("篩選組別")).toHaveValue("development");
+		await expect(page.getByLabel("排序方式")).toHaveValue("due-desc");
+		await expect(page.getByRole("button", { name: "篩選 Label" })).toContainText("Labels 1");
+		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
+		await page.reload();
+		await expect(page.getByLabel("篩選組別")).toHaveValue("development");
+		await expect(page.getByLabel("排序方式")).toHaveValue("due-desc");
+		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
+	});
+
+	test("drag handle reorders within a lane and positions across lanes", async ({ page }, testInfo) => {
+		test.skip(testInfo.project.name === "mobile", "Playwright mobile emulation does not expose a stable touch-drag gesture");
+		await page.goto("/");
+		const drag = async (handle: ReturnType<typeof page.getByRole>, target: ReturnType<typeof page.locator>) => {
+			const sourceBox = await handle.boundingBox();
+			const targetBox = await target.boundingBox();
+			if (!sourceBox || !targetBox) throw new Error("drag source or target is not visible");
+			const source = { x: sourceBox.x + sourceBox.width / 2, y: sourceBox.y + sourceBox.height / 2 };
+			const destination = { x: targetBox.x + targetBox.width / 2, y: targetBox.y + targetBox.height / 2 };
+			await page.mouse.move(source.x, source.y);
+			await page.mouse.down();
+			await page.mouse.move(source.x, source.y + 12, { steps: 3 });
+			await page.mouse.move(destination.x, destination.y, { steps: 12 });
+			await page.mouse.up();
+		};
+		const designTitle = "[設計組] 製作工作人員識別證";
+		const venueTitle = "[場務組] 盤點會場網路設備";
+		const designCard = page.getByRole("heading", { name: designTitle }).locator("xpath=ancestor::article");
+		const venueCard = page.getByRole("heading", { name: venueTitle }).locator("xpath=ancestor::article");
+		await drag(page.getByRole("button", { name: `拖曳 ${designTitle}` }), venueCard);
+		const doing = page.locator('section[data-list="doing"]');
+		await expect(doing.getByRole("heading", { level: 3 }).last()).toHaveText(designTitle);
+
+		const todoCard = page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }).locator("xpath=ancestor::article");
+		await drag(page.getByRole("button", { name: `拖曳 ${venueTitle}` }), todoCard);
+		const todo = page.locator('section[data-list="todo"]');
+		await expect(todo.getByRole("heading", { level: 3 }).first()).toHaveText(venueTitle);
+		await expect(designCard).toBeVisible();
+	});
+
+	test("quick create more options set status, description, and Labels", async ({ page }) => {
 		await page.setViewportSize({ width: 390, height: 844 });
 		await page.goto("/");
 
@@ -108,6 +171,8 @@ test.describe("SITCON Board demo visual audit", () => {
 		await expect(dialog.getByLabel("新卡片 Status")).toHaveValue("inbox");
 		await dialog.getByLabel("新卡片 Status").selectOption("doing");
 		await dialog.getByLabel("新卡片 Description").fill("確認交接與值班時段");
+		await dialog.getByLabel("搜尋新卡片 Label").fill("Backend");
+		await dialog.getByRole("checkbox", { name: "Backend" }).check();
 		await page.screenshot({ path: "../docs/assets/sitcon-board-quick-create-more-mobile.png", fullPage: true });
 		await dialog.getByRole("button", { name: "套用" }).click();
 		await page.getByLabel("卡片標題").fill("新增值班表");
@@ -116,6 +181,8 @@ test.describe("SITCON Board demo visual audit", () => {
 		const doing = page.getByRole("heading", { name: "Doing" }).locator("..").locator("..");
 		await expect(doing.getByRole("heading", { level: 3 }).first()).toHaveText("[開發組] 新增值班表");
 		await expect(doing.getByText("確認交接與值班時段")).toBeVisible();
+		await doing.getByRole("heading", { name: "[開發組] 新增值班表" }).click();
+		await expect(page.getByRole("dialog", { name: "新卡片詳細資料" }).getByText("Backend")).toBeVisible();
 	});
 
 	test("member drawer and assignee dialog are complete", async ({ page }) => {
@@ -178,8 +245,8 @@ test.describe("SITCON Board demo visual audit", () => {
 		await expect(startDate).toBeInViewport();
 		await expect(startDate).toHaveValue("");
 		await expect(details.getByLabel("Due")).toHaveValue("2026-07-25");
-		await details.getByRole("heading", { name: "Tag" }).scrollIntoViewIfNeeded();
-		await expect(details.getByLabel("新增 Tag")).toBeVisible();
+		await details.getByRole("heading", { name: "Labels" }).scrollIntoViewIfNeeded();
+		await expect(details.getByLabel("新增 Label")).toBeVisible();
 		await details.getByRole("textbox", { name: "Comment" }).scrollIntoViewIfNeeded();
 		await expect(details.getByRole("textbox", { name: "Comment" })).toBeInViewport();
 		await page.screenshot({ path: "../docs/assets/sitcon-board-tags-comments-mobile.png", fullPage: true });

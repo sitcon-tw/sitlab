@@ -2454,7 +2454,7 @@
 			},
 			"CreateCardRequest": {
 				"type": "object",
-				"required": ["operationId", "title", "teamKey", "listKey", "description", "assigneeGitLabUserIds", "startDate", "dueDate"],
+				"required": ["operationId", "title", "teamKey", "listKey", "description", "assigneeGitLabUserIds", "labels", "startDate", "dueDate"],
 				"properties": {
 					"operationId": {
 						"$ref": "#/components/schemas/uuid"
@@ -2480,6 +2480,12 @@
 						"items": {
 							"type": "integer",
 							"format": "int64"
+						}
+					},
+					"labels": {
+						"type": "array",
+						"items": {
+							"type": "string"
 						}
 					},
 					"startDate": {

@@ -589,6 +589,7 @@ export interface components {
 			listKey: string;
 			description: string;
 			assigneeGitLabUserIds: number[];
+			labels: string[];
 			startDate: string | null;
 			dueDate: string | null;
 		};

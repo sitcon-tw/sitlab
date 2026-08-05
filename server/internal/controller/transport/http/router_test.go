@@ -218,7 +218,7 @@ func TestAuthenticatedRequestRenewsCookieAndReturnsBootstrap(t *testing.T) {
 }
 
 func TestCardMutationUsesAcceptedContractAndCSRF(t *testing.T) {
-	response := perform(testRouter(nil, ""), http.MethodPost, "/api/v1/cards", `{"operationId":"10000000-0000-0000-0000-000000000001","title":"修正流程","description":"詳細規劃","teamKey":"development","listKey":"inbox","assigneeGitLabUserIds":[101],"dueDate":"2026-07-21"}`, true)
+	response := perform(testRouter(nil, ""), http.MethodPost, "/api/v1/cards", `{"operationId":"10000000-0000-0000-0000-000000000001","title":"修正流程","description":"詳細規劃","teamKey":"development","listKey":"inbox","assigneeGitLabUserIds":[101],"labels":["Backend"],"startDate":null,"dueDate":"2026-07-21"}`, true)
 	if response.Code != http.StatusAccepted || !strings.Contains(response.Body.String(), `"card"`) || !strings.Contains(response.Body.String(), `"operation"`) {
 		t.Fatalf("response = %d %s", response.Code, response.Body.String())
 	}

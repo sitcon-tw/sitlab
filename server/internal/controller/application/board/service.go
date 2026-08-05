@@ -65,6 +65,10 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Result, error)
 	if err := domain.ValidateAssignees(directory, assigneeIDs); err != nil {
 		return Result{}, unknownAssignee()
 	}
+	labels, valid := domain.NormalizeLabels(input.Labels)
+	if !valid {
+		return Result{}, invalidField("labels", "INVALID_VALUE", "must contain non-empty label names")
+	}
 	startDate, err := normalizeDate(input.StartDate, "startDate")
 	if err != nil {
 		return Result{}, err
@@ -93,12 +97,12 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Result, error)
 	card := domain.Card{
 		Title: title, Description: input.Description, ListKey: input.ListKey, TeamKey: input.TeamKey,
 		AssigneeGitLabUserIDs: append([]int64(nil), assigneeIDs...), StartDate: startDate, DueDate: dueDate,
-		Labels:    canonicalCardLabels(nil, team.GitLabLabel, list, directory.Teams, boardSnapshot.Lists),
+		Labels:    canonicalCardLabels(labels, team.GitLabLabel, list, directory.Teams, boardSnapshot.Lists),
 		SyncState: domain.OperationPending, PendingOperationID: input.OperationID, CreatedAt: now, UpdatedAt: now,
 	}
 	result, err := s.repo.CreateCard(ctx, Mutation{
 		Card: card, Operation: operation, RequestedByUserID: input.ActorUserID,
-		Payload: map[string]any{"title": title, "description": input.Description, "teamKey": input.TeamKey, "listKey": input.ListKey, "assigneeGitLabUserIds": assigneeIDs, "startDate": nullableDate(startDate), "dueDate": nullableDate(dueDate)},
+		Payload: map[string]any{"title": title, "description": input.Description, "teamKey": input.TeamKey, "listKey": input.ListKey, "assigneeGitLabUserIds": assigneeIDs, "labels": card.Labels, "startDate": nullableDate(startDate), "dueDate": nullableDate(dueDate)},
 	})
 	if errors.Is(err, domain.ErrOperationConflict) {
 		return Result{}, operationConflict()

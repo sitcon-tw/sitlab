@@ -24,6 +24,7 @@ export function AssigneePicker({ bootstrap, teamKey, value, onChange, label, com
 	});
 	const members = useMemo(() => filterDirectoryMembers(activeMembers(bootstrap), query), [bootstrap, query]);
 	const teamName = bootstrap.teams.find((team) => team.key === teamKey)?.name ?? "目前組別";
+	const preferredTeamKey = bootstrap.preferences.defaultTeamKey ?? bootstrap.preferences.directoryTeamKeys[0] ?? "";
 
 	const changeOpen = (next: boolean) => {
 		setOpen(next);
@@ -84,7 +85,7 @@ export function AssigneePicker({ bootstrap, teamKey, value, onChange, label, com
 						value={value}
 						currentUserId={bootstrap.me.gitLabUserId}
 						onChange={onChange}
-						preferredTeamKey={teamKey}
+						preferredTeamKey={preferredTeamKey}
 					/>
 					{members.length === 0 ? <p className={styles.noResults}>找不到符合的可指派成員</p> : null}
 				</div>

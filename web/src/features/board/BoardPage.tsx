@@ -1,5 +1,8 @@
 import { clearCsrfToken, errorMessage } from "@/shared/api/client";
 import { Avatar } from "@/shared/Avatar";
+import { closestCenter, DndContext, PointerSensor, TouchSensor, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Dialog, Drawer } from "@project-template/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -58,6 +61,7 @@ import {
 	type ProjectLabel
 } from "./model";
 import { parseQuickAction, quickActionCommands, type QuickAction } from "./quickActions";
+import { parseBoardViewState, serializeBoardViewState } from "./viewState";
 
 export interface BoardPageProps {
 	bootstrap: Bootstrap;
@@ -74,31 +78,50 @@ type CreateCardInput = {
 	teamKey: string;
 	listKey: string;
 	assigneeGitLabUserIds: number[];
+	labels: string[];
 	startDate: string | null;
 	dueDate: string | null;
 };
 
 export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: BoardPageProps) {
+	const [initialView] = useState(() => parseBoardViewState(window.location.search, bootstrap));
 	const [membersOpen, setMembersOpen] = useState(false);
-	const [draggedIid, setDraggedIid] = useState<number | null>(null);
 	const [detailIid, setDetailIid] = useState<number | null>(null);
-	const [filterTeamKey, setFilterTeamKey] = useState("");
-	const [filterMemberIds, setFilterMemberIds] = useState<number[]>([]);
-	const [sortMode, setSortMode] = useState<BoardSortMode>("manual");
+	const [filterTeamKey, setFilterTeamKey] = useState(initialView.teamKey);
+	const [filterMemberIds, setFilterMemberIds] = useState<number[]>(initialView.memberIds);
+	const [filterLabels, setFilterLabels] = useState<string[]>(initialView.labels);
+	const [sortMode, setSortMode] = useState<BoardSortMode>(initialView.sortMode);
 	const [undo, setUndo] = useState<{ cardIid: number; assigneeIds: number[]; assigneeNames: string[] } | null>(null);
 	const localRetries = useRef(new Map<string, () => void>());
 	const nextTemporaryIid = useRef(-1);
+	const sensors = useSensors(
+		useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+		useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } })
+	);
 	const cards = bootstrap.board.cards;
 	const filteredCards = cards.filter(
 		(card) =>
 			(!filterTeamKey || card.teamKey === filterTeamKey) &&
-			(filterMemberIds.length === 0 || card.assigneeGitLabUserIds.some((id) => filterMemberIds.includes(id)))
+			(filterMemberIds.length === 0 || card.assigneeGitLabUserIds.some((id) => filterMemberIds.includes(id))) &&
+			filterLabels.every((label) => card.labels.includes(label))
 	);
 	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
 	const orderedCards = lists.flatMap((list) => filteredCards.filter((card) => card.listKey === list.key).sort((a, b) => compareBoardCards(a, b, sortMode)));
 	const detailCard = cards.find((card) => card.issueIid === detailIid) ?? null;
 	const detailIndex = detailCard ? orderedCards.findIndex((card) => card.issueIid === detailCard.issueIid) : -1;
-	const filtersActive = Boolean(filterTeamKey || filterMemberIds.length);
+	const filtersActive = Boolean(filterTeamKey || filterMemberIds.length || filterLabels.length);
+
+	useEffect(() => {
+		const search = serializeBoardViewState(window.location.search, {
+			teamKey: filterTeamKey,
+			memberIds: filterMemberIds,
+			labels: filterLabels,
+			sortMode
+		});
+		const nextURL = `${window.location.pathname}${search}${window.location.hash}`;
+		if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== nextURL)
+			window.history.replaceState(window.history.state, "", nextURL);
+	}, [filterLabels, filterMemberIds, filterTeamKey, sortMode]);
 
 	const replaceCard = (issueIid: number, card: BoardCard) => {
 		updateBootstrap((current) => ({
@@ -152,8 +175,6 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 		const operationId = crypto.randomUUID();
 		const temporaryIid = nextTemporaryIid.current;
 		nextTemporaryIid.current -= 1;
-		const teamLabel = bootstrap.teams.find((team) => team.key === input.teamKey)?.gitLabLabel;
-		const listLabel = bootstrap.board.lists.find((list) => list.key === input.listKey)?.gitLabLabel;
 		const optimistic: BoardCard = {
 			issueIid: temporaryIid,
 			issueId: null,
@@ -166,7 +187,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 			assigneeGitLabUserIds: input.assigneeGitLabUserIds,
 			startDate: input.startDate,
 			dueDate: input.dueDate,
-			labels: [teamLabel, listLabel].filter((label): label is string => Boolean(label)),
+			labels: canonicalClientLabels(bootstrap, input.labels, input.teamKey, input.listKey),
 			syncState: "pending",
 			syncError: null,
 			pendingOperationId: operationId,
@@ -234,33 +255,38 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 	const handleMove = (card: BoardCard, listKey: string) => {
 		if (card.listKey === listKey) return;
 		const position = cards.filter((item) => item.listKey === listKey && item.issueIid !== card.issueIid).length;
-		const labels = canonicalClientLabels(bootstrap, card.labels, card.teamKey, listKey);
-		runCardMutation(card, { listKey, labels, position }, (operationId) => moveCard(card, operationId, listKey, position));
+		handlePosition(card, listKey, position);
 	};
 
-	const handleReorder = (card: BoardCard, adjacentCard: BoardCard, direction: "up" | "down") => {
-		if (card.listKey !== adjacentCard.listKey) return;
-		const laneCards = cards.filter((item) => item.listKey === card.listKey).sort((a, b) => compareBoardCards(a, b, "manual"));
-		const withoutCard = laneCards.filter((item) => item.issueIid !== card.issueIid);
-		const adjacentIndex = withoutCard.findIndex((item) => item.issueIid === adjacentCard.issueIid);
-		if (adjacentIndex < 0) return;
-		withoutCard.splice(direction === "up" ? adjacentIndex : adjacentIndex + 1, 0, card);
-		const positions = new Map(withoutCard.map((item, index) => [item.issueIid, index]));
-		const position = positions.get(card.issueIid);
-		if (position === undefined || position === card.position) return;
-
+	const handlePosition = (card: BoardCard, listKey: string, requestedPosition: number) => {
+		const sourceCards = cards
+			.filter((item) => item.listKey === card.listKey && item.issueIid !== card.issueIid)
+			.sort((a, b) => compareBoardCards(a, b, "manual"));
+		const destinationCards =
+			listKey === card.listKey
+				? sourceCards
+				: cards.filter((item) => item.listKey === listKey && item.issueIid !== card.issueIid).sort((a, b) => compareBoardCards(a, b, "manual"));
+		const position = Math.max(0, Math.min(requestedPosition, destinationCards.length));
+		const nextDestination = [...destinationCards];
+		nextDestination.splice(position, 0, { ...card, listKey });
+		const positions = new Map<number, { listKey: string; position: number }>();
+		if (card.listKey !== listKey) sourceCards.forEach((item, index) => positions.set(item.issueIid, { listKey: card.listKey, position: index }));
+		nextDestination.forEach((item, index) => positions.set(item.issueIid, { listKey, position: index }));
+		if (card.listKey === listKey && position === card.position) return;
+		const labels = canonicalClientLabels(bootstrap, card.labels, card.teamKey, listKey);
 		const operationId = crypto.randomUUID();
 		updateBootstrap((current) => ({
 			...current,
 			board: {
 				...current.board,
 				cards: current.board.cards.map((item) => {
-					const nextPosition = positions.get(item.issueIid);
-					if (nextPosition === undefined) return item;
-					if (item.issueIid !== card.issueIid) return { ...item, position: nextPosition };
+					const next = positions.get(item.issueIid);
+					if (!next) return item;
+					if (item.issueIid !== card.issueIid) return { ...item, ...next };
 					return {
 						...item,
-						position: nextPosition,
+						...next,
+						labels,
 						syncState: "pending",
 						syncError: null,
 						pendingOperationId: operationId,
@@ -271,7 +297,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 		}));
 
 		const execute = () => {
-			moveCard(card, operationId, card.listKey, position)
+			moveCard(card, operationId, listKey, position)
 				.then((result) => {
 					localRetries.current.delete(operationId);
 					replaceCard(card.issueIid, result.card);
@@ -280,6 +306,8 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 					localRetries.current.set(operationId, execute);
 					patchCard(card.issueIid, {
 						position,
+						listKey,
+						labels,
 						syncState: "failed",
 						syncError: errorMessage(cause, "卡片順序尚未同步，請重試。"),
 						pendingOperationId: operationId
@@ -288,6 +316,38 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 		};
 		localRetries.current.set(operationId, execute);
 		execute();
+	};
+
+	const handleReorder = (card: BoardCard, adjacentCard: BoardCard, direction: "up" | "down") => {
+		if (card.listKey !== adjacentCard.listKey) return;
+		const laneCards = cards
+			.filter((item) => item.listKey === card.listKey && item.issueIid !== card.issueIid)
+			.sort((a, b) => compareBoardCards(a, b, "manual"));
+		const adjacentIndex = laneCards.findIndex((item) => item.issueIid === adjacentCard.issueIid);
+		if (adjacentIndex >= 0) handlePosition(card, card.listKey, direction === "up" ? adjacentIndex : adjacentIndex + 1);
+	};
+
+	const handleDragEnd = ({ active, over }: DragEndEvent) => {
+		if (!over || sortMode !== "manual") return;
+		const card = cards.find((item) => `card-${item.issueIid}` === active.id);
+		if (!card) return;
+		const targetCard = cards.find((item) => `card-${item.issueIid}` === over.id);
+		const targetListKey = targetCard?.listKey ?? (typeof over.id === "string" && over.id.startsWith("lane-") ? over.id.slice(5) : "");
+		if (!targetListKey) return;
+		const destination = cards
+			.filter((item) => item.listKey === targetListKey && item.issueIid !== card.issueIid)
+			.sort((a, b) => compareBoardCards(a, b, "manual"));
+		if (!targetCard) {
+			handlePosition(card, targetListKey, destination.length);
+			return;
+		}
+		let targetIndex = destination.findIndex((item) => item.issueIid === targetCard.issueIid);
+		if (targetIndex < 0) return;
+		if (card.listKey === targetListKey) {
+			const original = cards.filter((item) => item.listKey === targetListKey).sort((a, b) => compareBoardCards(a, b, "manual"));
+			if (original.findIndex((item) => item.issueIid === card.issueIid) < original.findIndex((item) => item.issueIid === targetCard.issueIid)) targetIndex += 1;
+		}
+		handlePosition(card, targetListKey, targetIndex);
 	};
 
 	const handleRetry = (card: BoardCard) => {
@@ -331,58 +391,54 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 					bootstrap={bootstrap}
 					teamKey={filterTeamKey}
 					memberIds={filterMemberIds}
+					labels={filterLabels}
 					sortMode={sortMode}
 					visibleCount={filteredCards.length}
 					totalCount={cards.length}
 					onTeamChange={setFilterTeamKey}
 					onMemberIdsChange={setFilterMemberIds}
+					onLabelsChange={setFilterLabels}
 					onSortModeChange={setSortMode}
 					onClear={() => {
 						setFilterTeamKey("");
 						setFilterMemberIds([]);
+						setFilterLabels([]);
 					}}
 				/>
-				<section className={styles.board} aria-label="SITCON 2027 工作看板">
-					{lists.map((list) => {
-						const listCards = filteredCards.filter((card) => card.listKey === list.key).sort((a, b) => compareBoardCards(a, b, sortMode));
-						return (
-							<section
-								className={styles.lane}
-								data-list={list.key}
-								key={list.key}
-								onDragOver={(event) => event.preventDefault()}
-								onDrop={() => {
-									const card = cards.find((item) => item.issueIid === draggedIid);
-									if (card) handleMove(card, list.key);
-									setDraggedIid(null);
-								}}
-							>
-								<header className={styles.laneHeader}>
-									<h2>{list.name}</h2>
-									<span>{listCards.length}</span>
-								</header>
-								<div className={styles.cardList}>
-									{listCards.map((card, index) => (
-										<CardItem
-											key={card.issueIid}
-											card={card}
-											bootstrap={bootstrap}
-											onDragStart={() => setDraggedIid(card.issueIid)}
-											onOpen={() => setDetailIid(card.issueIid)}
-											onAssignee={(memberIds) => handleAssignee(card, memberIds)}
-											onDueDate={(dueDate) => handleDueDate(card, dueDate)}
-											manualOrder={sortMode === "manual"}
-											onMoveUp={index > 0 ? () => handleReorder(card, listCards[index - 1]!, "up") : undefined}
-											onMoveDown={index < listCards.length - 1 ? () => handleReorder(card, listCards[index + 1]!, "down") : undefined}
-											onRetry={() => handleRetry(card)}
-										/>
-									))}
-									{listCards.length === 0 ? <p className={styles.emptyLane}>{filtersActive ? "沒有符合篩選的卡片" : "目前沒有卡片"}</p> : null}
-								</div>
-							</section>
-						);
-					})}
-				</section>
+				<DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+					<section className={styles.board} aria-label="SITCON 2027 工作看板">
+						{lists.map((list) => {
+							const listCards = filteredCards.filter((card) => card.listKey === list.key).sort((a, b) => compareBoardCards(a, b, sortMode));
+							return (
+								<DroppableLane listKey={list.key} key={list.key}>
+									<header className={styles.laneHeader}>
+										<h2>{list.name}</h2>
+										<span>{listCards.length}</span>
+									</header>
+									<SortableContext items={listCards.map((card) => `card-${card.issueIid}`)} strategy={verticalListSortingStrategy}>
+										<div className={styles.cardList}>
+											{listCards.map((card, index) => (
+												<CardItem
+													key={card.issueIid}
+													card={card}
+													bootstrap={bootstrap}
+													onOpen={() => setDetailIid(card.issueIid)}
+													onAssignee={(memberIds) => handleAssignee(card, memberIds)}
+													onDueDate={(dueDate) => handleDueDate(card, dueDate)}
+													manualOrder={sortMode === "manual"}
+													onMoveUp={index > 0 ? () => handleReorder(card, listCards[index - 1]!, "up") : undefined}
+													onMoveDown={index < listCards.length - 1 ? () => handleReorder(card, listCards[index + 1]!, "down") : undefined}
+													onRetry={() => handleRetry(card)}
+												/>
+											))}
+											{listCards.length === 0 ? <p className={styles.emptyLane}>{filtersActive ? "沒有符合篩選的卡片" : "目前沒有卡片"}</p> : null}
+										</div>
+									</SortableContext>
+								</DroppableLane>
+							);
+						})}
+					</section>
+				</DndContext>
 			</main>
 			{detailCard ? (
 				<CardDetail
@@ -469,9 +525,11 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 	const [teamKey, setTeamKey] = useState(defaultTeam);
 	const [listKey, setListKey] = useState(defaultList);
 	const [description, setDescription] = useState("");
+	const [labels, setLabels] = useState<string[]>([]);
 	const [moreOpen, setMoreOpen] = useState(false);
 	const [draftListKey, setDraftListKey] = useState(defaultList);
 	const [draftDescription, setDraftDescription] = useState("");
+	const [draftLabels, setDraftLabels] = useState<string[]>([]);
 	const [assignees, setAssignees] = useState<number[]>(preferredAssignees(bootstrap, defaultTeam));
 	const [dueDate, setDueDate] = useState(taipeiDateAfter(7));
 	const [clearedAssignees, setClearedAssignees] = useState<number[]>([]);
@@ -479,7 +537,7 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 	const leaderTargets = teams.map((team) => ({ team, leaders: teamLeaders(bootstrap, team.key) })).filter((target) => target.leaders.length > 0);
 	const leaderCount = leaderTargets.reduce((count, target) => count + target.leaders.length, 0);
 	const selectedListName = lists.find((list) => list.key === listKey)?.name ?? "Inbox";
-	const moreActive = listKey !== defaultList || Boolean(description.trim());
+	const moreActive = listKey !== defaultList || Boolean(description.trim()) || labels.length > 0;
 
 	const changeTeam = (nextTeam: string) => {
 		const compatible = assignees.filter((id) => memberById(bootstrap, id)?.teamKeys.includes(nextTeam));
@@ -491,12 +549,14 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 		if (next) {
 			setDraftListKey(listKey);
 			setDraftDescription(description);
+			setDraftLabels(labels);
 		}
 		setMoreOpen(next);
 	};
 	const applyMoreOptions = () => {
 		setListKey(draftListKey);
 		setDescription(draftDescription);
+		setLabels(draftLabels);
 		setMoreOpen(false);
 	};
 
@@ -512,17 +572,20 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 					teamKey: target.team.key,
 					listKey,
 					assigneeGitLabUserIds: target.leaders.map((leader) => leader.gitLabUserId),
+					labels,
 					startDate: null,
 					dueDate: dueDate || null
 				});
 			}
 		} else {
 			if (!teamKey) return;
-			onCreate({ title: normalized, description, teamKey, listKey, assigneeGitLabUserIds: assignees, startDate: null, dueDate: dueDate || null });
+			onCreate({ title: normalized, description, teamKey, listKey, assigneeGitLabUserIds: assignees, labels, startDate: null, dueDate: dueDate || null });
 		}
 		setTitle("");
 		setDescription("");
+		setLabels([]);
 		setDraftDescription("");
+		setDraftLabels([]);
 		setMoreOpen(false);
 	};
 
@@ -582,7 +645,7 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 						className={styles.quickMoreButton}
 						data-active={moreActive}
 						aria-label="更多建卡選項"
-						title={`更多建卡選項：${selectedListName}${description.trim() ? "，已填寫 Description" : ""}`}
+						title={`更多建卡選項：${selectedListName}${description.trim() ? "，已填寫 Description" : ""}${labels.length ? `，${labels.length} 個 Labels` : ""}`}
 					>
 						<Ellipsis size="1.125rem" aria-hidden="true" />
 					</button>
@@ -618,6 +681,7 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 							placeholder="輸入卡片描述..."
 						/>
 					</label>
+					<QuickCreateLabels bootstrap={bootstrap} value={draftLabels} onChange={setDraftLabels} />
 				</div>
 			</Dialog>
 			<button
@@ -647,10 +711,65 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 	);
 }
 
+function QuickCreateLabels({ bootstrap, value, onChange }: { bootstrap: Bootstrap; value: string[]; onChange: (labels: string[]) => void }) {
+	const [query, setQuery] = useState("");
+	const labelsQuery = useQuery({
+		queryKey: ["sitcon", "project-labels"],
+		queryFn: listProjectLabels,
+		staleTime: 5 * 60_000
+	});
+	const teamLabels = new Set(bootstrap.teams.map((team) => team.gitLabLabel));
+	const statusLabels = new Set(bootstrap.board.lists.flatMap((list) => (list.gitLabLabel ? [list.gitLabLabel] : [])));
+	const normalizedQuery = query.trim().toLocaleLowerCase("zh-Hant");
+	const available = (labelsQuery.data ?? []).filter(
+		(label) =>
+			!teamLabels.has(label.name) &&
+			!statusLabels.has(label.name) &&
+			!legacyStatusLabels.has(label.name) &&
+			!label.name.startsWith("Status::") &&
+			(!normalizedQuery || `${label.name} ${label.description ?? ""}`.toLocaleLowerCase("zh-Hant").includes(normalizedQuery))
+	);
+	const toggle = (label: string) => onChange(value.includes(label) ? value.filter((current) => current !== label) : [...value, label]);
+
+	return (
+		<section className={styles.quickLabels} aria-labelledby="quick-labels-heading">
+			<header>
+				<span id="quick-labels-heading">Labels</span>
+				{value.length ? <small>已選擇 {value.length} 個</small> : null}
+			</header>
+			<input type="search" aria-label="搜尋新卡片 Label" placeholder="搜尋 Label 名稱或說明" value={query} onChange={(event) => setQuery(event.target.value)} />
+			<div className={styles.quickLabelOptions}>
+				{available.map((label) => (
+					<label key={label.name}>
+						<input type="checkbox" checked={value.includes(label.name)} onChange={() => toggle(label.name)} />
+						<TagSwatch label={label} />
+						<span>{label.name}</span>
+					</label>
+				))}
+				{labelsQuery.isLoading ? <p role="status">載入 Labels...</p> : null}
+				{labelsQuery.isError ? (
+					<button type="button" onClick={() => void labelsQuery.refetch()}>
+						<RefreshCw size="0.8125rem" aria-hidden="true" /> 重新載入 Labels
+					</button>
+				) : null}
+				{labelsQuery.isSuccess && available.length === 0 ? <p>沒有符合的一般 Label</p> : null}
+			</div>
+		</section>
+	);
+}
+
+function DroppableLane({ listKey, children }: { listKey: string; children: React.ReactNode }) {
+	const { isOver, setNodeRef } = useDroppable({ id: `lane-${listKey}` });
+	return (
+		<section ref={setNodeRef} className={styles.lane} data-list={listKey} data-drag-over={isOver || undefined}>
+			{children}
+		</section>
+	);
+}
+
 function CardItem({
 	card,
 	bootstrap,
-	onDragStart,
 	onOpen,
 	onAssignee,
 	onDueDate,
@@ -661,7 +780,6 @@ function CardItem({
 }: {
 	card: BoardCard;
 	bootstrap: Bootstrap;
-	onDragStart: () => void;
 	onOpen: () => void;
 	onAssignee: (memberIds: number[]) => void;
 	onDueDate: (dueDate: string | null) => void;
@@ -670,6 +788,10 @@ function CardItem({
 	onMoveDown: (() => void) | undefined;
 	onRetry: () => void;
 }) {
+	const { attributes, isDragging, listeners, setActivatorNodeRef, setNodeRef, transform, transition } = useSortable({
+		id: `card-${card.issueIid}`,
+		disabled: !manualOrder
+	});
 	const team = bootstrap.teams.find((item) => item.key === card.teamKey);
 	const title = team && !card.title.startsWith(team.titlePrefix) ? `${team.titlePrefix} ${card.title}` : card.title;
 	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
@@ -693,9 +815,26 @@ function CardItem({
 		else if (fallback && !fallback.disabled) fallback.focus();
 	}, [onMoveDown, onMoveUp]);
 	return (
-		<article className={styles.card} data-sync={card.syncState === "failed" ? "failed" : undefined} draggable onDragStart={onDragStart}>
+		<article
+			ref={setNodeRef}
+			className={styles.card}
+			data-sync={card.syncState === "failed" ? "failed" : undefined}
+			data-dragging={isDragging || undefined}
+			style={{ transform: CSS.Transform.toString(transform), transition }}
+		>
 			<div className={styles.cardTopline}>
-				<GripVertical size="0.9375rem" aria-hidden="true" />
+				<button
+					ref={setActivatorNodeRef}
+					type="button"
+					className={styles.dragHandle}
+					aria-label={`拖曳 ${title}`}
+					title={manualOrder ? "拖曳調整卡片位置" : "切換至手動順序後拖曳"}
+					disabled={!manualOrder}
+					{...attributes}
+					{...listeners}
+				>
+					<GripVertical size="0.9375rem" aria-hidden="true" />
+				</button>
 				<span>#{card.issueIid > 0 ? card.issueIid : "new"}</span>
 				<div className={styles.cardOrderControls} data-visible={manualOrder} role="group" aria-label={`${title} 的手動順序`}>
 					<button
@@ -987,16 +1126,16 @@ function CardTags({ card, bootstrap, onChange }: { card: BoardCard; bootstrap: B
 	};
 
 	return (
-		<section className={styles.detailTags} aria-labelledby="card-tags-heading">
+		<section className={styles.detailTags} aria-labelledby="card-labels-heading">
 			<header>
-				<h3 id="card-tags-heading">Tag</h3>
+				<h3 id="card-labels-heading">Labels</h3>
 				<details className={styles.tagPicker} ref={picker}>
-					<summary aria-label="新增 Tag" title="新增 Tag">
+					<summary aria-label="新增 Label" title="新增 Label">
 						<Plus size="0.875rem" aria-hidden="true" /> 新增
 					</summary>
 					<div className={styles.tagMenu}>
-						<input aria-label="搜尋 Tag" value={query} onChange={(event) => setQuery(event.target.value)} />
-						<div role="listbox" aria-label="可用 Tag">
+						<input aria-label="搜尋 Label" value={query} onChange={(event) => setQuery(event.target.value)} />
+						<div role="listbox" aria-label="可用 Labels">
 							{available.map((label) => (
 								<button key={label.name} type="button" role="option" aria-selected="false" onClick={() => add(label.name)}>
 									<TagSwatch label={label} />
@@ -1009,7 +1148,7 @@ function CardTags({ card, bootstrap, onChange }: { card: BoardCard; bootstrap: B
 									<RefreshCw size="0.8125rem" aria-hidden="true" /> 重新載入
 								</button>
 							) : null}
-							{labelsQuery.isSuccess && available.length === 0 ? <p>沒有可用的 Tag</p> : null}
+							{labelsQuery.isSuccess && available.length === 0 ? <p>沒有可用的 Label</p> : null}
 						</div>
 					</div>
 				</details>
@@ -1023,7 +1162,7 @@ function CardTags({ card, bootstrap, onChange }: { card: BoardCard; bootstrap: B
 							<span>{label}</span>
 							<button
 								type="button"
-								aria-label={`移除 Tag ${label}`}
+								aria-label={`移除 Label ${label}`}
 								title={locked ? "Team Tag 必須保留一個" : `移除 ${label}`}
 								disabled={locked}
 								onClick={() => remove(label)}
@@ -1033,7 +1172,7 @@ function CardTags({ card, bootstrap, onChange }: { card: BoardCard; bootstrap: B
 						</span>
 					);
 				})}
-				{card.labels.length === 0 ? <span className={styles.emptyTags}>尚無 Tag</span> : null}
+				{card.labels.length === 0 ? <span className={styles.emptyTags}>尚無 Label</span> : null}
 			</div>
 		</section>
 	);

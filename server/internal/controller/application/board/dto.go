@@ -8,6 +8,7 @@ type CreateInput struct {
 	TeamKey               string
 	ListKey               string
 	AssigneeGitLabUserIDs []int64
+	Labels                []string
 	StartDate             *string
 	DueDate               *string
 }

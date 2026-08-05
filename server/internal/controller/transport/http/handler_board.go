@@ -70,14 +70,15 @@ func (h handler) updatePreferences(w http.ResponseWriter, r *http.Request) {
 
 func (h handler) createCard(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		OperationID           string  `json:"operationId"`
-		Title                 string  `json:"title"`
-		Description           string  `json:"description"`
-		TeamKey               string  `json:"teamKey"`
-		ListKey               string  `json:"listKey"`
-		AssigneeGitLabUserIDs []int64 `json:"assigneeGitLabUserIds"`
-		StartDate             *string `json:"startDate"`
-		DueDate               *string `json:"dueDate"`
+		OperationID           string   `json:"operationId"`
+		Title                 string   `json:"title"`
+		Description           string   `json:"description"`
+		TeamKey               string   `json:"teamKey"`
+		ListKey               string   `json:"listKey"`
+		AssigneeGitLabUserIDs []int64  `json:"assigneeGitLabUserIds"`
+		Labels                []string `json:"labels"`
+		StartDate             *string  `json:"startDate"`
+		DueDate               *string  `json:"dueDate"`
 	}
 	if err := decodeJSON(w, r, &body); err != nil {
 		writeError(w, r, err)
@@ -86,7 +87,7 @@ func (h handler) createCard(w http.ResponseWriter, r *http.Request) {
 	result, err := h.board.Create(r.Context(), appboard.CreateInput{
 		OperationID: body.OperationID, ActorUserID: actorID(r), Title: body.Title,
 		Description: body.Description, TeamKey: body.TeamKey, ListKey: body.ListKey,
-		AssigneeGitLabUserIDs: body.AssigneeGitLabUserIDs, StartDate: body.StartDate, DueDate: body.DueDate,
+		AssigneeGitLabUserIDs: body.AssigneeGitLabUserIDs, Labels: body.Labels, StartDate: body.StartDate, DueDate: body.DueDate,
 	})
 	h.writeMutation(w, r, result, err)
 }

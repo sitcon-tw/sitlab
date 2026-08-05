@@ -87,7 +87,7 @@ func TestCreateStoresOptimisticCardAndOperation(t *testing.T) {
 
 	result, err := service.Create(context.Background(), CreateInput{
 		OperationID: testOperationID, ActorUserID: testActorID, Title: "修正  報名流程",
-		Description: "詳細規劃", TeamKey: "development", ListKey: "todo", AssigneeGitLabUserIDs: assignees, StartDate: &startDate, DueDate: &dueDate,
+		Description: "詳細規劃", TeamKey: "development", ListKey: "todo", AssigneeGitLabUserIDs: assignees, Labels: []string{"Backend", "Backend"}, StartDate: &startDate, DueDate: &dueDate,
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -104,8 +104,24 @@ func TestCreateStoresOptimisticCardAndOperation(t *testing.T) {
 	if got := repo.createMutation.Payload["listKey"]; got != "todo" {
 		t.Fatalf("list payload = %#v", got)
 	}
+	if got := repo.createMutation.Payload["labels"]; !reflect.DeepEqual(got, []string{"Backend", "組別::開發"}) {
+		t.Fatalf("labels payload = %#v", got)
+	}
 	if result.Card.Description != "詳細規劃" || len(result.Card.AssigneeGitLabUserIDs) != 1 || result.Card.StartDate != startDate {
 		t.Fatalf("Create() card details = %#v", result.Card)
+	}
+}
+
+func TestCreateRejectsEmptyLabelBeforePersistence(t *testing.T) {
+	t.Parallel()
+	repo := &repositoryFake{board: Snapshot{Lists: []domain.List{{Key: "inbox"}}}}
+	service := newTestService(repo)
+	_, err := service.Create(context.Background(), CreateInput{
+		OperationID: testOperationID, ActorUserID: testActorID, Title: "修正流程", TeamKey: "development", ListKey: "inbox", Labels: []string{" "},
+	})
+	assertAppError(t, err, apperror.KindInvalid, "VALIDATION_FAILED")
+	if repo.createMutation != nil {
+		t.Fatal("card with an empty label was persisted")
 	}
 }
 

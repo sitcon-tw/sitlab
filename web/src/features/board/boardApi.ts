@@ -8,6 +8,7 @@ export async function createCard(input: {
 	teamKey: string;
 	listKey: string;
 	assigneeGitLabUserIds: number[];
+	labels: string[];
 	startDate: string | null;
 	dueDate: string | null;
 }) {
