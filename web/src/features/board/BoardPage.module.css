@@ -801,7 +801,14 @@
 
 .card[data-dragging="true"] {
 	z-index: 5;
-	opacity: 0.55;
+	opacity: 0.24;
+}
+
+.dragPreview {
+	width: min(17rem, calc(100vw - 2rem));
+	pointer-events: none;
+	box-shadow: 0 1rem 2.5rem rgb(15 23 42 / 24%);
+	transform: rotate(1deg);
 }
 
 .dragHandle {
