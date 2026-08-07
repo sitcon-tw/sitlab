@@ -5,7 +5,7 @@ import type { Bootstrap } from "@/features/board/model";
 import { subscribeBootstrapEvents } from "@/features/board/realtime";
 import { OnboardingPage } from "@/features/onboarding/OnboardingPage";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const bootstrapKey = ["sitcon", "bootstrap"] as const;
 const queryClient = new QueryClient({
@@ -34,21 +34,32 @@ export function App({ initialBootstrap, initialError = null }: AppProps) {
 function AuthenticatedApp({ initialBootstrap }: { initialBootstrap: Bootstrap }) {
 	const client = useQueryClient();
 	const demo = import.meta.env.VITE_SITCON_DEMO === "true";
+	const [boardDragging, setBoardDragging] = useState(false);
+	const boardDraggingRef = useRef(false);
 	const bootstrapQuery = useQuery({
 		queryKey: bootstrapKey,
 		queryFn: refreshBootstrap,
 		initialData: initialBootstrap,
-		refetchInterval: demo ? false : 5_000,
+		refetchInterval: demo || boardDragging ? false : 5_000,
 		staleTime: demo ? Infinity : 4_000
 	});
 	const bootstrap = bootstrapQuery.data;
 	useEffect(() => {
 		if (demo) return;
 		return subscribeBootstrapEvents((revision) => {
+			if (boardDraggingRef.current) return;
 			const current = client.getQueryData<Bootstrap>(bootstrapKey);
 			if (revision !== current?.revision) void client.invalidateQueries({ queryKey: bootstrapKey });
 		});
 	}, [client, demo]);
+	const handleBoardDraggingChange = useCallback(
+		(dragging: boolean) => {
+			boardDraggingRef.current = dragging;
+			setBoardDragging(dragging);
+			if (dragging) void client.cancelQueries({ queryKey: bootstrapKey });
+		},
+		[client]
+	);
 	const updateBootstrap = (update: (current: Bootstrap) => Bootstrap) => {
 		client.setQueryData<Bootstrap>(bootstrapKey, (current) => update(current ?? bootstrap));
 	};
@@ -57,7 +68,14 @@ function AuthenticatedApp({ initialBootstrap }: { initialBootstrap: Bootstrap })
 		return <OnboardingPage bootstrap={bootstrap} updateBootstrap={updateBootstrap} />;
 	}
 
-	return <BoardPage bootstrap={bootstrap} updateBootstrap={updateBootstrap} backgroundOffline={bootstrapQuery.isRefetchError} />;
+	return (
+		<BoardPage
+			bootstrap={bootstrap}
+			updateBootstrap={updateBootstrap}
+			backgroundOffline={bootstrapQuery.isRefetchError}
+			onDraggingChange={handleBoardDraggingChange}
+		/>
+	);
 }
 
 function StartupError({ message }: { message: string }) {

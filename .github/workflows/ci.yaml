@@ -116,6 +116,13 @@ jobs:
       - run: pnpm --filter @project-template/web typecheck
       - run: pnpm --filter @project-template/web test
       - run: pnpm --filter @project-template/web build
+      - name: Install Chromium for drag regression
+        run: pnpm --filter @project-template/web exec playwright install --with-deps chromium
+      - name: Run board drag regression
+        env:
+          E2E_DEMO: "true"
+          VITE_SITCON_DEMO: "true"
+        run: pnpm --filter @project-template/web exec playwright test e2e/board-demo.spec.ts --grep "drag handle reorders|dragging near the board edge" --project=chromium
 
   ui:
     name: UI and Storybook

@@ -134,6 +134,13 @@ test.describe("SITCON Board demo visual audit", () => {
 
 	test("drag handle reorders within a lane and positions across lanes", async ({ page }, testInfo) => {
 		test.skip(testInfo.project.name === "mobile", "Playwright mobile emulation does not expose a stable touch-drag gesture");
+		const renderErrors: string[] = [];
+		page.on("pageerror", (error) => renderErrors.push(error.message));
+		page.on("console", (message) => {
+			if (message.type() === "error" && /Maximum update depth exceeded|sitcon_board_render_failed/.test(message.text())) {
+				renderErrors.push(message.text());
+			}
+		});
 		await page.goto("/");
 		const drag = async (handle: ReturnType<typeof page.getByRole>, target: ReturnType<typeof page.locator>, beforeDrop?: () => Promise<void>) => {
 			const sourceBox = await handle.boundingBox();
@@ -144,9 +151,17 @@ test.describe("SITCON Board demo visual audit", () => {
 			await page.mouse.move(source.x, source.y);
 			await page.mouse.down();
 			await page.mouse.move(source.x, source.y + 12, { steps: 3 });
+			await expect(page.locator('[class*="dragPreview"]')).toBeVisible();
 			await page.mouse.move(destination.x, destination.y, { steps: 12 });
 			await beforeDrop?.();
 			await page.mouse.up();
+			await expect(page.locator('[class*="dragPreview"]')).toBeHidden();
+			await page.evaluate(
+				() =>
+					new Promise<void>((resolve) => {
+						requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+					})
+			);
 		};
 		const designTitle = "[設計組] 製作工作人員識別證";
 		const venueTitle = "[場務組] 盤點會場網路設備";
@@ -159,11 +174,11 @@ test.describe("SITCON Board demo visual audit", () => {
 		const todoCard = page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }).locator("xpath=ancestor::article");
 		await drag(page.getByRole("button", { name: `拖曳 ${venueTitle}` }), todoCard, async () => {
 			const todo = page.locator('section[data-list="todo"]');
-			await expect(todo.getByRole("heading", { level: 3 }).first()).toHaveText(venueTitle);
+			await expect(todo.getByRole("heading", { name: venueTitle })).toBeVisible();
 			await expect(page.locator('[class*="dragPreview"]')).toBeVisible();
 		});
 		const todo = page.locator('section[data-list="todo"]');
-		await expect(todo.getByRole("heading", { level: 3 }).first()).toHaveText(venueTitle);
+		await expect(todo.getByRole("heading", { name: venueTitle })).toBeVisible();
 		await expect(designCard).toBeVisible();
 
 		const beforeCancel = await doing.getByRole("heading", { level: 3 }).allTextContents();
@@ -176,6 +191,8 @@ test.describe("SITCON Board demo visual audit", () => {
 		await page.keyboard.press("Escape");
 		await page.mouse.up();
 		await expect(doing.getByRole("heading", { level: 3 })).toHaveText(beforeCancel);
+		await expect(page.locator("main.sb-startup-error")).toHaveCount(0);
+		expect(renderErrors).toEqual([]);
 	});
 
 	test("dragging near the board edge scrolls horizontally", async ({ page }, testInfo) => {
@@ -183,7 +200,7 @@ test.describe("SITCON Board demo visual audit", () => {
 		await page.setViewportSize({ width: 600, height: 800 });
 		await page.goto("/");
 		const board = page.getByRole("region", { name: "SITCON 2027 工作看板" });
-		const handle = page.getByRole("button", { name: "拖曳 [設計組] 製作工作人員識別證" });
+		const handle = page.getByRole("button", { name: "拖曳 [議程組] 確認議程講者資料" });
 		const handleBox = await handle.boundingBox();
 		const boardBox = await board.boundingBox();
 		if (!handleBox || !boardBox) throw new Error("board drag controls are not visible");

@@ -4,6 +4,16 @@ import { afterEach } from "vitest";
 
 afterEach(cleanup);
 
+class TestResizeObserver implements ResizeObserver {
+	disconnect() {}
+
+	observe() {}
+
+	unobserve() {}
+}
+
+globalThis.ResizeObserver = TestResizeObserver;
+
 Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
 	configurable: true,
 	value: () => null

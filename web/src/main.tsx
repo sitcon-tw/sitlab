@@ -2,6 +2,7 @@ import "@project-template/ui/styles";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { AppErrorBoundary } from "./AppErrorBoundary";
 import { loadInitialBootstrap } from "./features/board/bootstrap";
 import "./index.css";
 
@@ -16,6 +17,8 @@ const initialBootstrap = await loadInitialBootstrap().catch((error: unknown) => 
 
 createRoot(root).render(
 	<StrictMode>
-		<App initialBootstrap={initialBootstrap} initialError={initialError} />
+		<AppErrorBoundary>
+			<App initialBootstrap={initialBootstrap} initialError={initialError} />
+		</AppErrorBoundary>
 	</StrictMode>
 );

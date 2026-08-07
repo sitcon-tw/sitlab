@@ -1,24 +1,8 @@
 import { clearCsrfToken, errorMessage } from "@/shared/api/client";
 import { Avatar } from "@/shared/Avatar";
-import {
-	closestCorners,
-	DndContext,
-	DragOverlay,
-	PointerSensor,
-	pointerWithin,
-	rectIntersection,
-	TouchSensor,
-	useDroppable,
-	useSensor,
-	useSensors,
-	type Collision,
-	type CollisionDetection,
-	type DragEndEvent,
-	type DragOverEvent,
-	type DragStartEvent
-} from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { PointerActivationConstraints } from "@dnd-kit/dom";
+import { DragDropProvider, DragOverlay, PointerSensor, useDroppable } from "@dnd-kit/react";
+import { useSortable } from "@dnd-kit/react/sortable";
 import { Dialog, Drawer } from "@project-template/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -62,6 +46,7 @@ import {
 	updateTeam
 } from "./boardApi";
 import { BoardFilters } from "./BoardFilters";
+import { planCardMove } from "./boardOrder";
 import styles from "./BoardPage.module.css";
 import { MembersDrawer } from "./MembersDrawer";
 import {
@@ -77,12 +62,14 @@ import {
 	type ProjectLabel
 } from "./model";
 import { parseQuickAction, quickActionCommands, type QuickAction } from "./quickActions";
+import { useBoardDrag } from "./useBoardDrag";
 import { parseBoardViewState, serializeBoardViewState } from "./viewState";
 
 export interface BoardPageProps {
 	bootstrap: Bootstrap;
 	updateBootstrap: (update: (current: Bootstrap) => Bootstrap) => void;
 	backgroundOffline: boolean;
+	onDraggingChange?: (dragging: boolean) => void;
 }
 
 type CardPatch = Partial<
@@ -99,26 +86,19 @@ type CreateCardInput = {
 	dueDate: string | null;
 };
 
-type DragPlacement = { cardIid: number; listKey: string; position: number };
+const noopDraggingChange = () => undefined;
+const boardPointerSensor = PointerSensor.configure({
+	activationConstraints(event) {
+		return event.pointerType === "touch"
+			? [new PointerActivationConstraints.Delay({ value: 180, tolerance: { x: 8, y: 8 } })]
+			: [new PointerActivationConstraints.Distance({ value: 6 })];
+	}
+});
 
-const boardCollisionDetection: CollisionDetection = (arguments_) => {
-	const withoutActive = (collisions: Collision[]) => collisions.filter((collision) => collision.id !== arguments_.active.id);
-	const preferCards = (collisions: Collision[]) => {
-		const cards = collisions.filter((collision) => String(collision.id).startsWith("card-"));
-		return cards.length ? cards : collisions;
-	};
-	const pointerCollisions = preferCards(withoutActive(pointerWithin(arguments_)));
-	if (pointerCollisions.length) return pointerCollisions;
-	const intersections = preferCards(withoutActive(rectIntersection(arguments_)));
-	if (intersections.length) return intersections;
-	return preferCards(withoutActive(closestCorners(arguments_)));
-};
-
-export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: BoardPageProps) {
+export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDraggingChange = noopDraggingChange }: BoardPageProps) {
 	const [initialView] = useState(() => parseBoardViewState(window.location.search, bootstrap));
 	const [membersOpen, setMembersOpen] = useState(false);
 	const [detailIid, setDetailIid] = useState<number | null>(null);
-	const [dragPlacement, setDragPlacement] = useState<DragPlacement | null>(null);
 	const [filterTeamKey, setFilterTeamKey] = useState(initialView.teamKey);
 	const [filterMemberIds, setFilterMemberIds] = useState<number[]>(initialView.memberIds);
 	const [filterLabels, setFilterLabels] = useState<string[]>(initialView.labels);
@@ -126,10 +106,6 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 	const [undo, setUndo] = useState<{ cardIid: number; assigneeIds: number[]; assigneeNames: string[] } | null>(null);
 	const localRetries = useRef(new Map<string, () => void>());
 	const nextTemporaryIid = useRef(-1);
-	const sensors = useSensors(
-		useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-		useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } })
-	);
 	const cards = bootstrap.board.cards;
 	const filteredCards = cards.filter(
 		(card) =>
@@ -142,7 +118,6 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 	const detailCard = cards.find((card) => card.issueIid === detailIid) ?? null;
 	const detailIndex = detailCard ? orderedCards.findIndex((card) => card.issueIid === detailCard.issueIid) : -1;
 	const filtersActive = Boolean(filterTeamKey || filterMemberIds.length || filterLabels.length);
-	const draggedCard = dragPlacement ? (cards.find((card) => card.issueIid === dragPlacement.cardIid) ?? null) : null;
 
 	useEffect(() => {
 		const search = serializeBoardViewState(window.location.search, {
@@ -292,20 +267,10 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 	};
 
 	const handlePosition = (card: BoardCard, listKey: string, requestedPosition: number) => {
-		const sourceCards = cards
-			.filter((item) => item.listKey === card.listKey && item.issueIid !== card.issueIid)
-			.sort((a, b) => compareBoardCards(a, b, "manual"));
-		const destinationCards =
-			listKey === card.listKey
-				? sourceCards
-				: cards.filter((item) => item.listKey === listKey && item.issueIid !== card.issueIid).sort((a, b) => compareBoardCards(a, b, "manual"));
-		const position = Math.max(0, Math.min(requestedPosition, destinationCards.length));
-		const nextDestination = [...destinationCards];
-		nextDestination.splice(position, 0, { ...card, listKey });
-		const positions = new Map<number, { listKey: string; position: number }>();
-		if (card.listKey !== listKey) sourceCards.forEach((item, index) => positions.set(item.issueIid, { listKey: card.listKey, position: index }));
-		nextDestination.forEach((item, index) => positions.set(item.issueIid, { listKey, position: index }));
-		if (card.listKey === listKey && position === card.position) return;
+		const plan = planCardMove(cards, card.issueIid, listKey, requestedPosition);
+		if (!plan) return;
+		const positions = new Map(plan.patches.map((patch) => [patch.issueIid, patch]));
+		const position = plan.position;
 		const labels = canonicalClientLabels(bootstrap, card.labels, card.teamKey, listKey);
 		const operationId = crypto.randomUUID();
 		updateBootstrap((current) => ({
@@ -359,61 +324,24 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 		const adjacentIndex = laneCards.findIndex((item) => item.issueIid === adjacentCard.issueIid);
 		if (adjacentIndex >= 0) handlePosition(card, card.listKey, direction === "up" ? adjacentIndex : adjacentIndex + 1);
 	};
-
-	const dragPosition = (activeId: string | number, overId: string | number, belowTarget: boolean): DragPlacement | null => {
-		if (sortMode !== "manual") return null;
-		const card = cards.find((item) => `card-${item.issueIid}` === activeId);
-		if (!card || activeId === overId) return null;
-		const targetCard = cards.find((item) => `card-${item.issueIid}` === overId);
-		const targetListKey = targetCard?.listKey ?? (typeof overId === "string" && overId.startsWith("lane-") ? overId.slice(5) : "");
-		if (!targetListKey) return null;
-		const destination = cards
-			.filter((item) => item.listKey === targetListKey && item.issueIid !== card.issueIid)
-			.sort((a, b) => compareBoardCards(a, b, "manual"));
-		if (!targetCard) return { cardIid: card.issueIid, listKey: targetListKey, position: destination.length };
-		const targetIndex = destination.findIndex((item) => item.issueIid === targetCard.issueIid);
-		if (targetIndex < 0) return null;
-		return { cardIid: card.issueIid, listKey: targetListKey, position: targetIndex + (belowTarget ? 1 : 0) };
-	};
-
-	const handleDragStart = ({ active }: DragStartEvent) => {
-		if (sortMode !== "manual") return;
-		const card = cards.find((item) => `card-${item.issueIid}` === active.id);
-		if (card) setDragPlacement({ cardIid: card.issueIid, listKey: card.listKey, position: card.position });
-	};
-
-	const handleDragOver = ({ active, over }: DragOverEvent) => {
-		if (!over) return;
-		const translated = active.rect.current.translated;
-		const belowTarget = Boolean(translated && translated.top + translated.height / 2 > over.rect.top + over.rect.height / 2);
-		const next = dragPosition(active.id, over.id, belowTarget);
-		if (next)
-			setDragPlacement((current) =>
-				current?.cardIid === next.cardIid && current.listKey === next.listKey && current.position === next.position ? current : next
-			);
-	};
-
-	const handleDragEnd = ({ active, over }: DragEndEvent) => {
-		const placement = dragPlacement;
-		setDragPlacement(null);
-		if (!over || !placement || sortMode !== "manual") return;
-		const card = cards.find((item) => `card-${item.issueIid}` === active.id);
-		if (card) handlePosition(card, placement.listKey, placement.position);
-	};
-
-	const visibleCardsForList = (listKey: string) => {
-		const visible = filteredCards
-			.filter((card) => card.listKey === listKey && card.issueIid !== dragPlacement?.cardIid)
-			.sort((a, b) => compareBoardCards(a, b, sortMode));
-		if (!dragPlacement || dragPlacement.listKey !== listKey || !draggedCard || !filteredCards.some((card) => card.issueIid === draggedCard.issueIid))
-			return visible;
-		const fullLane = cards
-			.filter((card) => card.listKey === listKey && card.issueIid !== draggedCard.issueIid)
-			.sort((a, b) => compareBoardCards(a, b, "manual"));
-		const cardsBefore = new Set(fullLane.slice(0, dragPlacement.position).map((card) => card.issueIid));
-		const visiblePosition = visible.filter((card) => cardsBefore.has(card.issueIid)).length;
-		visible.splice(visiblePosition, 0, { ...draggedCard, listKey, position: dragPlacement.position });
-		return visible;
+	const drag = useBoardDrag({
+		cards,
+		visibleCards: filteredCards,
+		listKeys: lists.map((list) => list.key),
+		enabled: sortMode === "manual",
+		onMove: (cardIid, listKey, position) => {
+			const card = cards.find((item) => item.issueIid === cardIid);
+			if (card) handlePosition(card, listKey, position);
+		},
+		onDraggingChange
+	});
+	const draggedCard = drag.activeCardIid === null ? null : (cards.find((card) => card.issueIid === drag.activeCardIid) ?? null);
+	const cardsForList = (listKey: string) => {
+		if (!drag.dragGroups) return filteredCards.filter((card) => card.listKey === listKey).sort((a, b) => compareBoardCards(a, b, sortMode));
+		return (drag.dragGroups[listKey] ?? []).flatMap((issueIid) => {
+			const card = cards.find((item) => item.issueIid === issueIid);
+			return card ? [{ ...card, listKey }] : [];
+		});
 	};
 
 	const handleRetry = (card: BoardCard) => {
@@ -471,49 +399,45 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline }: Boa
 						setFilterLabels([]);
 					}}
 				/>
-				<DndContext
-					sensors={sensors}
-					collisionDetection={boardCollisionDetection}
-					autoScroll={{ threshold: { x: 0.15, y: 0.1 }, acceleration: 12 }}
-					onDragStart={handleDragStart}
-					onDragOver={handleDragOver}
-					onDragEnd={handleDragEnd}
-					onDragCancel={() => setDragPlacement(null)}
+				<DragDropProvider
+					sensors={(defaults) => [...defaults.filter((sensor) => sensor !== PointerSensor), boardPointerSensor]}
+					onDragStart={drag.onDragStart}
+					onDragOver={drag.onDragOver}
+					onDragEnd={drag.onDragEnd}
 				>
 					<section className={styles.board} aria-label="SITCON 2027 工作看板">
 						{lists.map((list) => {
-							const listCards = visibleCardsForList(list.key);
+							const listCards = cardsForList(list.key);
 							return (
 								<DroppableLane listKey={list.key} key={list.key}>
 									<header className={styles.laneHeader}>
 										<h2>{list.name}</h2>
 										<span>{listCards.length}</span>
 									</header>
-									<SortableContext items={listCards.map((card) => `card-${card.issueIid}`)} strategy={verticalListSortingStrategy}>
-										<div className={styles.cardList}>
-											{listCards.map((card, index) => (
-												<CardItem
-													key={card.issueIid}
-													card={card}
-													bootstrap={bootstrap}
-													onOpen={() => setDetailIid(card.issueIid)}
-													onAssignee={(memberIds) => handleAssignee(card, memberIds)}
-													onDueDate={(dueDate) => handleDueDate(card, dueDate)}
-													manualOrder={sortMode === "manual"}
-													onMoveUp={index > 0 ? () => handleReorder(card, listCards[index - 1]!, "up") : undefined}
-													onMoveDown={index < listCards.length - 1 ? () => handleReorder(card, listCards[index + 1]!, "down") : undefined}
-													onRetry={() => handleRetry(card)}
-												/>
-											))}
-											{listCards.length === 0 ? <p className={styles.emptyLane}>{filtersActive ? "沒有符合篩選的卡片" : "目前沒有卡片"}</p> : null}
-										</div>
-									</SortableContext>
+									<div className={styles.cardList}>
+										{listCards.map((card, index) => (
+											<CardItem
+												key={card.issueIid}
+												card={card}
+												bootstrap={bootstrap}
+												onOpen={() => setDetailIid(card.issueIid)}
+												onAssignee={(memberIds) => handleAssignee(card, memberIds)}
+												onDueDate={(dueDate) => handleDueDate(card, dueDate)}
+												manualOrder={sortMode === "manual"}
+												sortableIndex={index}
+												onMoveUp={index > 0 ? () => handleReorder(card, listCards[index - 1]!, "up") : undefined}
+												onMoveDown={index < listCards.length - 1 ? () => handleReorder(card, listCards[index + 1]!, "down") : undefined}
+												onRetry={() => handleRetry(card)}
+											/>
+										))}
+										{listCards.length === 0 ? <p className={styles.emptyLane}>{filtersActive ? "沒有符合篩選的卡片" : "目前沒有卡片"}</p> : null}
+									</div>
 								</DroppableLane>
 							);
 						})}
 					</section>
 					<DragOverlay dropAnimation={null}>{draggedCard ? <CardDragPreview card={draggedCard} bootstrap={bootstrap} /> : null}</DragOverlay>
-				</DndContext>
+				</DragDropProvider>
 			</main>
 			{detailCard ? (
 				<CardDetail
@@ -834,9 +758,9 @@ function QuickCreateLabels({ bootstrap, value, onChange }: { bootstrap: Bootstra
 }
 
 function DroppableLane({ listKey, children }: { listKey: string; children: React.ReactNode }) {
-	const { isOver, setNodeRef } = useDroppable({ id: `lane-${listKey}` });
+	const { isDropTarget, ref } = useDroppable({ id: listKey, type: "lane", accept: "card", collisionPriority: -1 });
 	return (
-		<section ref={setNodeRef} className={styles.lane} data-list={listKey} data-drag-over={isOver || undefined}>
+		<section ref={ref} className={styles.lane} data-list={listKey} data-drag-over={isDropTarget || undefined}>
 			{children}
 		</section>
 	);
@@ -849,6 +773,7 @@ function CardItem({
 	onAssignee,
 	onDueDate,
 	manualOrder,
+	sortableIndex,
 	onMoveUp,
 	onMoveDown,
 	onRetry
@@ -859,12 +784,17 @@ function CardItem({
 	onAssignee: (memberIds: number[]) => void;
 	onDueDate: (dueDate: string | null) => void;
 	manualOrder: boolean;
+	sortableIndex: number;
 	onMoveUp: (() => void) | undefined;
 	onMoveDown: (() => void) | undefined;
 	onRetry: () => void;
 }) {
-	const { attributes, isDragging, listeners, setActivatorNodeRef, setNodeRef, transform, transition } = useSortable({
-		id: `card-${card.issueIid}`,
+	const { handleRef, isDragSource, ref } = useSortable({
+		id: card.issueIid,
+		index: sortableIndex,
+		group: card.listKey,
+		type: "card",
+		accept: "card",
 		disabled: !manualOrder
 	});
 	const team = bootstrap.teams.find((item) => item.key === card.teamKey);
@@ -890,23 +820,15 @@ function CardItem({
 		else if (fallback && !fallback.disabled) fallback.focus();
 	}, [onMoveDown, onMoveUp]);
 	return (
-		<article
-			ref={setNodeRef}
-			className={styles.card}
-			data-sync={card.syncState === "failed" ? "failed" : undefined}
-			data-dragging={isDragging || undefined}
-			style={{ transform: CSS.Transform.toString(transform), transition }}
-		>
+		<article ref={ref} className={styles.card} data-sync={card.syncState === "failed" ? "failed" : undefined} data-dragging={isDragSource || undefined}>
 			<div className={styles.cardTopline}>
 				<button
-					ref={setActivatorNodeRef}
+					ref={handleRef}
 					type="button"
 					className={styles.dragHandle}
 					aria-label={`拖曳 ${title}`}
 					title={manualOrder ? "拖曳調整卡片位置" : "切換至手動順序後拖曳"}
 					disabled={!manualOrder}
-					{...attributes}
-					{...listeners}
 				>
 					<GripVertical size="0.9375rem" aria-hidden="true" />
 				</button>

@@ -807,7 +807,7 @@
 .dragPreview {
 	width: min(17rem, calc(100vw - 2rem));
 	pointer-events: none;
-	box-shadow: 0 1rem 2.5rem rgb(15 23 42 / 24%);
+	box-shadow: var(--sb-shadow-overlay);
 	transform: rotate(1deg);
 }
 
