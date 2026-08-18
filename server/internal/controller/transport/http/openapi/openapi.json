@@ -2249,15 +2249,12 @@
 			},
 			"BoardList": {
 				"type": "object",
-				"required": ["key", "name", "gitLabLabel", "position", "closed", "color"],
+				"required": ["key", "name", "position", "closed", "color"],
 				"properties": {
 					"key": {
 						"type": "string"
 					},
 					"name": {
-						"type": "string"
-					},
-					"gitLabLabel": {
 						"type": "string"
 					},
 					"position": {

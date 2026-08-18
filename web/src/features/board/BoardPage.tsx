@@ -195,7 +195,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 			assigneeGitLabUserIds: input.assigneeGitLabUserIds,
 			startDate: input.startDate,
 			dueDate: input.dueDate,
-			labels: canonicalClientLabels(bootstrap, input.labels, input.teamKey, input.listKey),
+			labels: canonicalClientLabels(bootstrap, input.labels, input.teamKey),
 			syncState: "pending",
 			syncError: null,
 			pendingOperationId: operationId,
@@ -236,7 +236,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 				assigneeNames: removed.map((member) => member.displayName)
 			});
 		}
-		const labels = canonicalClientLabels(bootstrap, card.labels, teamKey, card.listKey);
+		const labels = canonicalClientLabels(bootstrap, card.labels, teamKey);
 		runCardMutation(card, { teamKey, labels, assigneeGitLabUserIds: nextAssigneeIDs }, (operationId) => updateTeam(card, operationId, teamKey));
 	};
 
@@ -271,7 +271,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 		if (!plan) return;
 		const positions = new Map(plan.patches.map((patch) => [patch.issueIid, patch]));
 		const position = plan.position;
-		const labels = canonicalClientLabels(bootstrap, card.labels, card.teamKey, listKey);
+		const labels = canonicalClientLabels(bootstrap, card.labels, card.teamKey);
 		const operationId = crypto.randomUUID();
 		updateBootstrap((current) => ({
 			...current,
@@ -718,13 +718,11 @@ function QuickCreateLabels({ bootstrap, value, onChange }: { bootstrap: Bootstra
 		staleTime: 5 * 60_000
 	});
 	const teamLabels = new Set(bootstrap.teams.map((team) => team.gitLabLabel));
-	const statusLabels = new Set(bootstrap.board.lists.flatMap((list) => (list.gitLabLabel ? [list.gitLabLabel] : [])));
 	const normalizedQuery = query.trim().toLocaleLowerCase("zh-Hant");
 	const available = (labelsQuery.data ?? []).filter(
 		(label) =>
 			!teamLabels.has(label.name) &&
-			!statusLabels.has(label.name) &&
-			!legacyStatusLabels.has(label.name) &&
+			!deprecatedLabels.has(label.name) &&
 			!label.name.startsWith("Status::") &&
 			(!normalizedQuery || `${label.name} ${label.description ?? ""}`.toLocaleLowerCase("zh-Hant").includes(normalizedQuery))
 	);
@@ -1087,15 +1085,13 @@ function CardDetail({
 	);
 }
 
-const legacyStatusLabels = new Set(["Wating", "Waiting", "Inbox", "To Do", "Todo", "Doing", "Review", "Closed"]);
+const deprecatedLabels = new Set(["Wating", "Waiting", "Inbox", "To Do", "Todo", "Doing", "Review", "Closed", "組別::總召", "組別::行政", "組別::開發"]);
 
-function canonicalClientLabels(bootstrap: Bootstrap, labels: string[], teamKey: string, listKey: string) {
+function canonicalClientLabels(bootstrap: Bootstrap, labels: string[], teamKey: string) {
 	const teamLabels = new Set(bootstrap.teams.map((team) => team.gitLabLabel));
-	const listLabels = new Set(bootstrap.board.lists.flatMap((list) => (list.gitLabLabel ? [list.gitLabLabel] : [])));
-	const general = labels.filter((label) => !teamLabels.has(label) && !listLabels.has(label) && !legacyStatusLabels.has(label) && !label.startsWith("Status::"));
+	const general = labels.filter((label) => !teamLabels.has(label) && !deprecatedLabels.has(label) && !label.startsWith("Status::"));
 	const teamLabel = bootstrap.teams.find((team) => team.key === teamKey && team.active)?.gitLabLabel;
-	const list = bootstrap.board.lists.find((item) => item.key === listKey);
-	return [...general, ...(teamLabel ? [teamLabel] : []), ...(list?.gitLabLabel && !list.closed ? [list.gitLabLabel] : [])];
+	return [...general, ...(teamLabel ? [teamLabel] : [])];
 }
 
 function CardTags({ card, bootstrap, onChange }: { card: BoardCard; bootstrap: Bootstrap; onChange: (labels: string[]) => void }) {
@@ -1107,19 +1103,19 @@ function CardTags({ card, bootstrap, onChange }: { card: BoardCard; bootstrap: B
 		staleTime: 5 * 60_000
 	});
 	const teamLabels = new Set(bootstrap.teams.filter((team) => team.active).map((team) => team.gitLabLabel));
-	const statusLabels = new Set(bootstrap.board.lists.flatMap((list) => (list.gitLabLabel ? [list.gitLabLabel] : [])));
 	const labelMetadata = new Map(labelsQuery.data?.map((label) => [label.name, label]));
 	const normalizedQuery = query.trim().toLocaleLowerCase("zh-Hant");
 	const available = (labelsQuery.data ?? []).filter(
 		(label) =>
 			!card.labels.includes(label.name) &&
+			!deprecatedLabels.has(label.name) &&
+			!label.name.startsWith("Status::") &&
 			(!normalizedQuery || `${label.name} ${label.description ?? ""}`.toLocaleLowerCase("zh-Hant").includes(normalizedQuery))
 	);
 	const selectedTeamCount = card.labels.filter((label) => teamLabels.has(label)).length;
 
 	const scope = (label: string) => {
 		if (teamLabels.has(label)) return "team";
-		if (statusLabels.has(label) || legacyStatusLabels.has(label)) return "status";
 		return "general";
 	};
 	const add = (label: string) => {
@@ -1130,13 +1126,7 @@ function CardTags({ card, bootstrap, onChange }: { card: BoardCard; bootstrap: B
 		if (picker.current) picker.current.open = false;
 	};
 	const remove = (label: string) => {
-		const currentScope = scope(label);
-		let next = card.labels.filter((current) => current !== label);
-		if (currentScope === "status" && !bootstrap.board.lists.find((list) => list.closed && list.key === card.listKey)) {
-			const inbox = bootstrap.board.lists.find((list) => list.key === "inbox")?.gitLabLabel;
-			if (inbox && !next.includes(inbox)) next = [...next.filter((current) => scope(current) !== "status"), inbox];
-		}
-		onChange(next);
+		onChange(card.labels.filter((current) => current !== label));
 	};
 
 	return (

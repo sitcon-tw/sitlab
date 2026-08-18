@@ -176,7 +176,7 @@ func TestCreateRejectsInactiveAssigneeBeforePersistence(t *testing.T) {
 func TestChangingTeamClearsIncompatibleAssignee(t *testing.T) {
 	t.Parallel()
 	repo := &repositoryFake{
-		board: Snapshot{Lists: []domain.List{{Key: "todo", GitLabLabel: "Status::To Do"}}},
+		board: Snapshot{Lists: []domain.List{{Key: "todo", GitLabStatusName: "To do"}}},
 		card:  domain.Card{IssueIID: 42, TeamKey: "development", ListKey: "todo", AssigneeGitLabUserIDs: []int64{1}},
 	}
 	service := newTestService(repo)
@@ -187,7 +187,7 @@ func TestChangingTeamClearsIncompatibleAssignee(t *testing.T) {
 		t.Fatalf("UpdateTeam() error = %v", err)
 	}
 	if len(result.Card.AssigneeGitLabUserIDs) != 0 || result.Card.TeamKey != "design" ||
-		!slices.Equal(result.Card.Labels, []string{"組別::設計", "Status::To Do"}) {
+		!slices.Equal(result.Card.Labels, []string{"組別::設計"}) {
 		t.Fatalf("UpdateTeam() card = %#v", result.Card)
 	}
 }
@@ -224,9 +224,9 @@ func TestUpdateLabelsNormalizesScopedLabels(t *testing.T) {
 		},
 	}
 	lists := []domain.List{
-		{Key: "inbox", GitLabLabel: "Status::Inbox"},
-		{Key: "todo", GitLabLabel: "Status::To Do"},
-		{Key: "closed", Closed: true},
+		{Key: "inbox", GitLabStatusName: "Inbox"},
+		{Key: "todo", GitLabStatusName: "To do"},
+		{Key: "closed", GitLabStatusName: "Done", Closed: true},
 	}
 	tests := []struct {
 		name               string
@@ -238,15 +238,15 @@ func TestUpdateLabelsNormalizesScopedLabels(t *testing.T) {
 		wantInvalid        bool
 	}{
 		{
-			name:   "removing open status moves to Inbox",
+			name:   "removing deprecated status preserves native status",
 			card:   domain.Card{IssueIID: 42, TeamKey: "development", ListKey: "todo", Labels: []string{"組別::開發", "Status::To Do", "Backend"}, AssigneeGitLabUserIDs: []int64{1}},
-			labels: []string{"組別::開發", "Backend"}, wantTeam: "development", wantList: "inbox",
-			wantLabels: []string{"Backend", "組別::開發", "Status::Inbox"}, wantAssignees: []int64{1},
+			labels: []string{"組別::開發", "Backend"}, wantTeam: "development", wantList: "todo",
+			wantLabels: []string{"Backend", "組別::開發"}, wantAssignees: []int64{1},
 		},
 		{
-			name:   "new scopes replace team and close card",
+			name:   "deprecated status cannot move card",
 			card:   domain.Card{IssueIID: 42, TeamKey: "development", ListKey: "todo", AssigneeGitLabUserIDs: []int64{1}},
-			labels: []string{"組別::設計", "Closed", "Backend"}, wantTeam: "design", wantList: "closed",
+			labels: []string{"組別::設計", "Closed", "Backend"}, wantTeam: "design", wantList: "todo",
 			wantLabels: []string{"Backend", "組別::設計"}, wantAssignees: []int64{},
 		},
 		{

@@ -64,10 +64,9 @@ describe("SITCON Board interactions", () => {
 		vi.mocked(updateStartDate).mockReset();
 		vi.mocked(updateTeam).mockReset();
 		vi.mocked(listProjectLabels).mockResolvedValue([
-			{ name: "組別::開發", color: "#0E8A16", textColor: "#FFFFFF", description: "開發組" },
-			{ name: "組別::設計", color: "#B60205", textColor: "#FFFFFF", description: "設計組" },
-			{ name: "Status::Inbox", color: "#64748B", textColor: "#FFFFFF", description: null },
-			{ name: "Status::To Do", color: "#0891B2", textColor: "#FFFFFF", description: null },
+			{ name: "Team::開發組", color: "#0E8A16", textColor: "#FFFFFF", description: "開發組" },
+			{ name: "Team::設計組", color: "#B60205", textColor: "#FFFFFF", description: "設計組" },
+			{ name: "Priority::High", color: "#D73A4A", textColor: "#FFFFFF", description: null },
 			{ name: "Backend", color: "#1D76DB", textColor: "#FFFFFF", description: null }
 		]);
 		vi.mocked(listComments).mockResolvedValue([]);
@@ -174,7 +173,7 @@ describe("SITCON Board interactions", () => {
 			within(board)
 				.getAllByRole("heading", { level: 2 })
 				.map((heading) => heading.textContent)
-		).toEqual(["Wating", "Inbox", "To Do", "Doing", "Review", "Closed"]);
+		).toEqual(["Waiting", "Inbox", "To do", "Doing", "Review", "Done"]);
 	});
 
 	it("filters the board to one team and clears the filter", async () => {
@@ -225,14 +224,14 @@ describe("SITCON Board interactions", () => {
 		await user.type(within(dialog).getByLabelText("搜尋篩選 Label"), "backend");
 		await user.click(within(dialog).getByRole("checkbox", { name: "Backend" }));
 		await user.clear(within(dialog).getByLabelText("搜尋篩選 Label"));
-		await user.type(within(dialog).getByLabelText("搜尋篩選 Label"), "to do");
-		await user.click(within(dialog).getByRole("checkbox", { name: "Status::To Do" }));
+		await user.type(within(dialog).getByLabelText("搜尋篩選 Label"), "priority");
+		await user.click(within(dialog).getByRole("checkbox", { name: "Priority::High" }));
 
 		expect(within(dialog).getByText("已選擇 2 個")).toBeVisible();
 		await user.click(within(dialog).getByRole("button", { name: "完成" }));
 		expect(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 		expect(within(screen.getByRole("region", { name: "篩選看板" })).getByRole("status")).toHaveTextContent("1 / 7 張卡片");
-		expect(new URLSearchParams(window.location.search).getAll("label")).toEqual(["Backend", "Status::To Do"]);
+		expect(new URLSearchParams(window.location.search).getAll("label")).toEqual(["Backend", "Priority::High"]);
 	});
 
 	it("filters by any selected person and combines people with the team filter", async () => {
@@ -410,7 +409,7 @@ describe("SITCON Board interactions", () => {
 		expect(within(dialog).getByLabelText("標題")).toHaveValue("完成寄信失敗重送");
 	});
 
-	it("shows every GitLab Label and normalizes scoped Label changes", async () => {
+	it("keeps status out of Labels and normalizes Team Label changes", async () => {
 		const user = userEvent.setup();
 		vi.mocked(updateLabels).mockReturnValue(new Promise(() => undefined));
 		render(<Harness />);
@@ -419,22 +418,22 @@ describe("SITCON Board interactions", () => {
 		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
 		const tags = within(dialog).getByRole("heading", { name: "Labels" }).closest("section");
 		expect(tags).not.toBeNull();
-		expect(within(tags as HTMLElement).getByText("組別::開發")).toBeVisible();
-		expect(within(tags as HTMLElement).getByText("Status::To Do")).toBeVisible();
+		expect(within(tags as HTMLElement).getByText("Team::開發組")).toBeVisible();
+		expect(within(tags as HTMLElement).queryByText("Status::To Do")).not.toBeInTheDocument();
 		expect(within(tags as HTMLElement).getByText("Priority::High")).toBeVisible();
-		expect(within(tags as HTMLElement).getByRole("button", { name: "移除 Label 組別::開發" })).toBeDisabled();
+		expect(within(tags as HTMLElement).getByRole("button", { name: "移除 Label Team::開發組" })).toBeDisabled();
 
-		await user.click(within(tags as HTMLElement).getByRole("button", { name: "移除 Label Status::To Do" }));
+		await user.click(within(tags as HTMLElement).getByRole("button", { name: "移除 Label Backend" }));
 		expect(updateLabels).toHaveBeenCalledWith(
 			expect.objectContaining({ issueIid: 127 }),
 			expect.any(String),
-			expect.arrayContaining(["組別::開發", "Status::Inbox", "Priority::High", "Backend"])
+			expect.arrayContaining(["Team::開發組", "Priority::High"])
 		);
 
 		await user.click(within(tags as HTMLElement).getByText("新增"));
-		await user.click(await within(tags as HTMLElement).findByRole("option", { name: /組別::設計/ }));
-		expect(updateLabels).toHaveBeenLastCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), expect.not.arrayContaining(["組別::開發"]));
-		expect(vi.mocked(updateLabels).mock.calls.at(-1)?.[2]).toContain("組別::設計");
+		await user.click(await within(tags as HTMLElement).findByRole("option", { name: /Team::設計組/ }));
+		expect(updateLabels).toHaveBeenLastCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), expect.not.arrayContaining(["Team::開發組"]));
+		expect(vi.mocked(updateLabels).mock.calls.at(-1)?.[2]).toContain("Team::設計組");
 	});
 
 	it("renders system activity and keeps a failed Comment draft for retry", async () => {

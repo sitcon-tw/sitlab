@@ -14,7 +14,7 @@ test.describe("SITCON Board demo visual audit", () => {
 		test(`${viewport.name} ${viewport.width}px stays contained`, async ({ page }) => {
 			await page.setViewportSize(viewport);
 			await page.goto("/");
-			await expect(page.getByRole("heading", { name: "To Do" })).toBeVisible();
+			await expect(page.getByRole("heading", { name: "To do" })).toBeVisible();
 			await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 
 			const layout = await page.evaluate(() => {
@@ -262,7 +262,7 @@ test.describe("SITCON Board demo visual audit", () => {
 		await expect(details.getByLabel("狀態")).toHaveValue("todo");
 		await expect(details.getByLabel("Start")).toHaveValue("2026-07-17");
 		await expect(details.getByLabel("Due")).toHaveValue("2026-07-21");
-		await expect(details.getByText("組別::開發")).toBeVisible();
+		await expect(details.getByText("Team::開發組")).toBeVisible();
 		await expect(details.getByText("Priority::High")).toBeVisible();
 		await details.getByRole("textbox", { name: "描述" }).fill("## 驗收條件\n\n- [ ] 補齊測試\n\n[規格](https://example.com/spec)");
 		await details.getByRole("button", { name: "預覽" }).click();

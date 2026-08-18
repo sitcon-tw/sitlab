@@ -17,12 +17,12 @@ import (
 func TestDefaultBoardListsMatchGitLabBoard(t *testing.T) {
 	t.Parallel()
 	want := []board.List{
-		{Key: "wating", Name: "Wating", GitLabLabel: "Status::Waiting", Position: 0, Color: "#dc2626"},
-		{Key: "inbox", Name: "Inbox", GitLabLabel: "Status::Inbox", Position: 1, Color: "#64748b"},
-		{Key: "todo", Name: "To Do", GitLabLabel: "Status::To Do", Position: 2, Color: "#0891b2"},
-		{Key: "doing", Name: "Doing", GitLabLabel: "Status::Doing", Position: 3, Color: "#2563eb"},
-		{Key: "review", Name: "Review", GitLabLabel: "Status::Review", Position: 4, Color: "#b45309"},
-		{Key: "closed", Name: "Closed", Position: 5, Closed: true, Color: "#15803d"},
+		{Key: "wating", Name: "Waiting", GitLabStatusName: "Waiting", Position: 0, Color: "#d2ad46"},
+		{Key: "inbox", Name: "Inbox", GitLabStatusName: "Inbox", Position: 1, Color: "#6699cc"},
+		{Key: "todo", Name: "To do", GitLabStatusName: "To do", Position: 2, Color: "#ed9121"},
+		{Key: "doing", Name: "Doing", GitLabStatusName: "Doing", Position: 3, Color: "#1f75cb"},
+		{Key: "review", Name: "Review", GitLabStatusName: "Review", Position: 4, Color: "#7a07ab"},
+		{Key: "closed", Name: "Done", GitLabStatusName: "Done", Position: 5, Closed: true, Color: "#108548"},
 	}
 	if !reflect.DeepEqual(DefaultBoardLists, want) {
 		t.Fatalf("DefaultBoardLists = %#v", DefaultBoardLists)
@@ -75,7 +75,7 @@ func (f *gitLabFake) ApplyIssue(_ context.Context, mutation IssueMutation, token
 	return GitLabIssue{
 		IssueIID: 42, GitLabIssueID: 420, Title: mutation.Title, Description: mutation.Description,
 		Labels: mutation.Labels, AssigneeGitLabUserIDs: mutation.AssigneeGitLabUserIDs,
-		StartDate: mutation.StartDate, DueDate: mutation.DueDate, State: "opened",
+		StartDate: mutation.StartDate, DueDate: mutation.DueDate, State: "opened", GitLabStatusName: mutation.GitLabStatusName,
 	}, nil
 }
 
@@ -163,17 +163,17 @@ func TestRefreshDirectoryUsesRevisionAndRefreshesMembers(t *testing.T) {
 	}
 }
 
-func TestRefreshBoardMapsLabelsAndSkipsUnknownTeams(t *testing.T) {
+func TestRefreshBoardMapsNativeStatusesAndSkipsUnknownTeams(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.July, 14, 8, 0, 0, 0, time.UTC)
 	gitlab := &gitLabFake{issues: []GitLabIssue{
-		{IssueIID: 1, GitLabIssueID: 10, Title: "[開發組] 修正流程", Labels: []string{"組別::開發", "Inbox", "Todo", "Status::Doing"}, StartDate: "2026-07-17", State: "opened", UpdatedAt: now},
-		{IssueIID: 2, GitLabIssueID: 20, Title: "[開發組] 舊版狀態", Labels: []string{"組別::開發", "Todo"}, State: "opened", UpdatedAt: now},
-		{IssueIID: 3, GitLabIssueID: 30, Title: "[開發組] 等待中", Labels: []string{"組別::開發", "Inbox", "Status::Waiting"}, State: "opened", UpdatedAt: now},
-		{IssueIID: 4, GitLabIssueID: 40, Title: "[開發組] 已關閉", Labels: []string{"組別::開發", "Status::Doing"}, State: "closed", UpdatedAt: now},
-		{IssueIID: 5, GitLabIssueID: 50, Title: "無組別", Labels: []string{"Todo"}, State: "opened", UpdatedAt: now},
+		{IssueIID: 1, GitLabIssueID: 10, Title: "[開發組] 修正流程", Labels: []string{"Team::開發組"}, GitLabStatusName: "Doing", StartDate: "2026-07-17", State: "opened", UpdatedAt: now},
+		{IssueIID: 2, GitLabIssueID: 20, Title: "[開發組] 待辦", Labels: []string{"Team::開發組"}, GitLabStatusName: "To do", State: "opened", UpdatedAt: now},
+		{IssueIID: 3, GitLabIssueID: 30, Title: "[開發組] 等待中", Labels: []string{"Team::開發組"}, GitLabStatusName: "Waiting", State: "opened", UpdatedAt: now},
+		{IssueIID: 4, GitLabIssueID: 40, Title: "[開發組] 已完成", Labels: []string{"Team::開發組"}, GitLabStatusName: "Done", State: "closed", UpdatedAt: now},
+		{IssueIID: 5, GitLabIssueID: 50, Title: "無組別", Labels: nil, GitLabStatusName: "Inbox", State: "opened", UpdatedAt: now},
 	}}
-	repo := &repoFake{directory: directory.Snapshot{Teams: []directory.Team{{Key: "development", TitlePrefix: "[開發組]", GitLabLabel: "組別::開發", Active: true}}}}
+	repo := &repoFake{directory: directory.Snapshot{Teams: []directory.Team{{Key: "development", TitlePrefix: "[開發組]", GitLabLabel: "Team::開發組", Active: true}}}}
 	service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
 	if err := service.RefreshBoard(context.Background()); err != nil {
 		t.Fatal(err)
@@ -181,6 +181,22 @@ func TestRefreshBoardMapsLabelsAndSkipsUnknownTeams(t *testing.T) {
 	if len(repo.cards) != 4 || repo.cards[0].ListKey != "doing" || repo.cards[0].Title != "修正流程" || repo.cards[0].StartDate != "2026-07-17" ||
 		repo.cards[1].ListKey != "todo" || repo.cards[2].ListKey != "wating" || repo.cards[3].ListKey != "closed" {
 		t.Fatalf("cards = %#v", repo.cards)
+	}
+}
+
+func TestRefreshBoardRejectsUnmappedNativeStatus(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 18, 8, 0, 0, 0, time.UTC)
+	gitlab := &gitLabFake{issues: []GitLabIssue{{
+		IssueIID: 9, GitLabIssueID: 90, Title: "[開發組] 取消工作",
+		Labels: []string{"Team::開發組"}, GitLabStatusName: "Won't do", UpdatedAt: now,
+	}}}
+	repo := &repoFake{directory: directory.Snapshot{Teams: []directory.Team{{
+		Key: "development", TitlePrefix: "[開發組]", GitLabLabel: "Team::開發組", Active: true,
+	}}}}
+	service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
+	if err := service.RefreshBoard(context.Background()); err == nil {
+		t.Fatal("RefreshBoard() accepted an unmapped native status")
 	}
 }
 
@@ -208,7 +224,7 @@ func TestProcessOneBuildsCanonicalIssueMutation(t *testing.T) {
 	}
 	if gitlab.applied == nil || gitlab.applied.Title != "[開發組] 修正流程" || gitlab.applied.Description != "詳細規劃" ||
 		gitlab.applied.StartDate != "2026-07-17" || gitlab.applied.DueDate != "2026-07-21" ||
-		!slices.Equal(gitlab.applied.AssigneeGitLabUserIDs, []int64{1, 2}) || !slices.Equal(gitlab.applied.Labels, []string{"security", "組別::開發", "Status::Doing"}) {
+		!slices.Equal(gitlab.applied.AssigneeGitLabUserIDs, []int64{1, 2}) || !slices.Equal(gitlab.applied.Labels, []string{"security", "組別::開發"}) || gitlab.applied.GitLabStatusName != "Doing" {
 		t.Fatalf("mutation = %#v", gitlab.applied)
 	}
 	if gitlab.token != "actor-token" {
@@ -222,7 +238,7 @@ func TestProcessWebhookFetchesCanonicalIssueAndReconcilesCard(t *testing.T) {
 	iid := int64(42)
 	gitlab := &gitLabFake{issues: []GitLabIssue{{
 		IssueIID: iid, GitLabIssueID: 420, Title: "[開發組] 即時同步", Description: "canonical",
-		Labels: []string{"組別::開發", "Status::Doing"}, State: "opened", CreatedAt: now, UpdatedAt: now,
+		Labels: []string{"組別::開發"}, GitLabStatusName: "Doing", State: "opened", CreatedAt: now, UpdatedAt: now,
 	}}}
 	repo := &repoFake{
 		directory: directory.Snapshot{Teams: []directory.Team{{Key: "development", TitlePrefix: "[開發組]", GitLabLabel: "組別::開發", Active: true}}},

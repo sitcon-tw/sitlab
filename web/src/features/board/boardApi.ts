@@ -144,11 +144,8 @@ export async function logout() {
 }
 
 const demoLabels: ProjectLabel[] = [
-	{ name: "組別::開發", color: "#0E8A16", textColor: "#FFFFFF", description: "開發組" },
-	{ name: "組別::設計", color: "#B60205", textColor: "#FFFFFF", description: "設計組" },
-	{ name: "Status::Inbox", color: "#64748B", textColor: "#FFFFFF", description: "收件匣" },
-	{ name: "Status::To Do", color: "#0891B2", textColor: "#FFFFFF", description: "待處理" },
-	{ name: "Status::Doing", color: "#2563EB", textColor: "#FFFFFF", description: "進行中" },
+	{ name: "Team::開發組", color: "#0E8A16", textColor: "#FFFFFF", description: "開發組" },
+	{ name: "Team::設計組", color: "#B60205", textColor: "#FFFFFF", description: "設計組" },
 	{ name: "Priority::High", color: "#D73A4A", textColor: "#FFFFFF", description: "優先處理" },
 	{ name: "Backend", color: "#1D76DB", textColor: "#FFFFFF", description: null }
 ];

@@ -24,10 +24,10 @@ describe("board view URL state", () => {
 			serializeBoardViewState("?demo=1&team=old&member=2&label=old&sort=due-asc", {
 				teamKey: "design",
 				memberIds: [202, 101, 202],
-				labels: ["Priority::High", "Status::To Do", "Priority::High"],
+				labels: ["Priority::High", "Backend", "Priority::High"],
 				sortMode: "updated-desc"
 			})
-		).toBe("?demo=1&team=design&member=202&member=101&label=Priority%3A%3AHigh&label=Status%3A%3ATo+Do&sort=updated-desc");
+		).toBe("?demo=1&team=design&member=202&member=101&label=Priority%3A%3AHigh&label=Backend&sort=updated-desc");
 
 		expect(serializeBoardViewState("?team=old", { teamKey: "", memberIds: [], labels: [], sortMode: "manual" })).toBe("");
 	});

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -97,8 +96,9 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Result, error)
 	card := domain.Card{
 		Title: title, Description: input.Description, ListKey: input.ListKey, TeamKey: input.TeamKey,
 		AssigneeGitLabUserIDs: append([]int64(nil), assigneeIDs...), StartDate: startDate, DueDate: dueDate,
-		Labels:    canonicalCardLabels(labels, team.GitLabLabel, list, directory.Teams, boardSnapshot.Lists),
-		SyncState: domain.OperationPending, PendingOperationID: input.OperationID, CreatedAt: now, UpdatedAt: now,
+		GitLabStatusName: list.GitLabStatusName,
+		Labels:           canonicalCardLabels(labels, team.GitLabLabel, list, directory.Teams, boardSnapshot.Lists),
+		SyncState:        domain.OperationPending, PendingOperationID: input.OperationID, CreatedAt: now, UpdatedAt: now,
 	}
 	result, err := s.repo.CreateCard(ctx, Mutation{
 		Card: card, Operation: operation, RequestedByUserID: input.ActorUserID,
@@ -193,39 +193,21 @@ func (s *Service) UpdateLabels(ctx context.Context, input UpdateLabelsInput) (Re
 		if teamCount != 1 {
 			return nil, invalidField("labels", "INVALID_VALUE", "must contain exactly one active team label")
 		}
-		list, listCount, unsupportedStatus := selectedList(labels, boardSnapshot.Lists)
-		if unsupportedStatus || listCount > 1 {
-			return nil, invalidField("labels", "INVALID_VALUE", "must contain at most one supported status label")
-		}
-		if listCount == 0 {
-			current, found := boardListByKey(boardSnapshot.Lists, card.ListKey)
-			if !found {
-				return nil, invalidField("labels", "INVALID_VALUE", "card list is unavailable")
-			}
-			if current.Closed {
-				list = current
-			} else {
-				list, found = boardListByKey(boardSnapshot.Lists, "inbox")
-				if !found {
-					return nil, invalidField("labels", "INVALID_VALUE", "Inbox board list is unavailable")
-				}
-			}
+		list, found := boardListByKey(boardSnapshot.Lists, card.ListKey)
+		if !found {
+			return nil, invalidField("labels", "INVALID_VALUE", "card list is unavailable")
 		}
 
 		assigneeIDs, _, err := domain.ReconcileAssignees(directorySnapshot, team.Key, card.AssigneeGitLabUserIDs)
 		if err != nil {
 			return nil, unknownAssignee()
 		}
-		if card.ListKey != list.Key {
-			card.Position = nextListPosition(boardSnapshot.Cards, list.Key, card.IssueIID)
-		}
 		card.TeamKey = team.Key
-		card.ListKey = list.Key
 		card.AssigneeGitLabUserIDs = append([]int64(nil), assigneeIDs...)
 		card.Labels = canonicalCardLabels(labels, team.GitLabLabel, list, directorySnapshot.Teams, boardSnapshot.Lists)
 		return map[string]any{
-			"labels": card.Labels, "teamKey": card.TeamKey, "listKey": card.ListKey,
-			"position": card.Position, "assigneeGitLabUserIds": card.AssigneeGitLabUserIDs,
+			"labels": card.Labels, "teamKey": card.TeamKey,
+			"assigneeGitLabUserIds": card.AssigneeGitLabUserIDs,
 		}, nil
 	})
 }
@@ -244,6 +226,7 @@ func (s *Service) Move(ctx context.Context, input MoveInput) (Result, error) {
 			return nil, unknownTeam("teamKey")
 		}
 		card.ListKey, card.Position = input.ListKey, input.Position
+		card.GitLabStatusName = list.GitLabStatusName
 		card.Labels = canonicalCardLabels(card.Labels, team.GitLabLabel, list, directorySnapshot.Teams, boardSnapshot.Lists)
 		return map[string]any{"listKey": input.ListKey, "position": input.Position, "labels": card.Labels}, nil
 	})
@@ -334,36 +317,6 @@ func selectedTeam(labels []string, teams []domaindirectory.Team) (domaindirector
 	return selected, count
 }
 
-func selectedList(labels []string, lists []domain.List) (domain.List, int, bool) {
-	selectedKeys := make(map[string]struct{})
-	for _, label := range labels {
-		matched := false
-		for _, list := range lists {
-			if list.GitLabLabel != "" && label == list.GitLabLabel {
-				selectedKeys[list.Key] = struct{}{}
-				matched = true
-				break
-			}
-		}
-		if matched {
-			continue
-		}
-		if key, legacy := domain.LegacyStatusListKey(label); legacy {
-			selectedKeys[key] = struct{}{}
-			continue
-		}
-		if strings.HasPrefix(label, "Status::") {
-			return domain.List{}, 0, true
-		}
-	}
-	for _, list := range lists {
-		if _, exists := selectedKeys[list.Key]; exists {
-			return list, len(selectedKeys), false
-		}
-	}
-	return domain.List{}, len(selectedKeys), false
-}
-
 func boardListByKey(lists []domain.List, key string) (domain.List, bool) {
 	for _, list := range lists {
 		if list.Key == key {
@@ -373,32 +326,12 @@ func boardListByKey(lists []domain.List, key string) (domain.List, bool) {
 	return domain.List{}, false
 }
 
-func nextListPosition(cards []domain.Card, listKey string, issueIID int64) int32 {
-	var position int32
-	for _, card := range cards {
-		if card.ListKey == listKey && card.IssueIID != issueIID {
-			position++
-		}
-	}
-	return position
-}
-
-func canonicalCardLabels(labels []string, teamLabel string, list domain.List, teams []domaindirectory.Team, lists []domain.List) []string {
+func canonicalCardLabels(labels []string, teamLabel string, _ domain.List, teams []domaindirectory.Team, _ []domain.List) []string {
 	teamLabels := make([]string, 0, len(teams))
 	for _, team := range teams {
 		teamLabels = append(teamLabels, team.GitLabLabel)
 	}
-	listLabels := make([]string, 0, len(lists))
-	for _, candidate := range lists {
-		if candidate.GitLabLabel != "" {
-			listLabels = append(listLabels, candidate.GitLabLabel)
-		}
-	}
-	listLabel := ""
-	if !list.Closed {
-		listLabel = list.GitLabLabel
-	}
-	return domain.CanonicalLabels(labels, teamLabel, listLabel, teamLabels, listLabels)
+	return domain.CanonicalLabels(labels, teamLabel, teamLabels)
 }
 
 func (s *Service) idempotent(ctx context.Context, operationID string, kind domain.OperationKind) (Result, bool, error) {

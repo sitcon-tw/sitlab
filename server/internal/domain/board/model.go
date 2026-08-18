@@ -37,12 +37,12 @@ var (
 )
 
 type List struct {
-	Key         string
-	Name        string
-	GitLabLabel string
-	Position    int32
-	Closed      bool
-	Color       string
+	Key              string
+	Name             string
+	GitLabStatusName string
+	Position         int32
+	Closed           bool
+	Color            string
 }
 
 type Card struct {
@@ -58,6 +58,7 @@ type Card struct {
 	StartDate             string
 	DueDate               string
 	Labels                []string
+	GitLabStatusName      string
 	SyncState             OperationState
 	SyncError             string
 	PendingOperationID    string
@@ -105,6 +106,7 @@ type CanonicalIssue struct {
 	StartDate             string
 	DueDate               string
 	State                 string
+	GitLabStatusName      string
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
 }
@@ -118,7 +120,7 @@ type IssueMutation struct {
 	AssigneeGitLabUserIDs []int64
 	StartDate             string
 	DueDate               string
-	Closed                bool
+	GitLabStatusName      string
 }
 
 type PendingOperation struct {

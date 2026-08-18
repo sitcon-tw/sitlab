@@ -41,7 +41,7 @@ export function parseQuickAction(raw: string, bootstrap: Bootstrap, card: BoardC
 			return { action: { kind: "start", value: null } };
 		case "/close": {
 			const closed = bootstrap.board.lists.find((list) => list.closed);
-			return closed ? { action: { kind: "move", listKey: closed.key } } : { error: "看板沒有 Closed 欄位" };
+			return closed ? { action: { kind: "move", listKey: closed.key } } : { error: "看板沒有 Done 欄位" };
 		}
 		case "/reopen": {
 			const fallback = bootstrap.board.lists.find((list) => !list.closed);

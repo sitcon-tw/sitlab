@@ -18,7 +18,7 @@ SITCON Board 是籌備團隊每天重複使用的工作介面。視覺應安靜�
 
 ## Product Layout
 
-Header 高度固定，包含產品識別、成員 Sheet、錯誤時才出現的離線狀態與帳號選單。快速開卡在桌面為單列，手機為 title 加控制列，並以 segmented mode 切換單組或所有組長；更多 icon 開啟 Status、Description 與可搜尋的一般 Labels 選擇，Status 預設為 `Inbox`，新卡固定出現在目標欄位最上方。Board 上方的緊湊控制列先提供欄內日期排序，再提供單一組別與依組別複選的成員篩選。Board lanes 固定依序為 `Wating`、`Inbox`、`To Do`、`Doing`、`Review`、`Closed`，保持穩定最小寬度；窄螢幕水平捲動，不壓縮到文字與控制重疊。
+Header 高度固定，包含產品識別、成員 Sheet、錯誤時才出現的離線狀態與帳號選單。快速開卡在桌面為單列，手機為 title 加控制列，並以 segmented mode 切換單組或所有組長；更多 icon 開啟 Status、Description 與可搜尋的一般 Labels 選擇，Status 預設為 `Inbox`，新卡固定出現在目標欄位最上方。Board 上方的緊湊控制列先提供欄內日期排序，再提供單一組別與依組別複選的成員篩選。Board lanes 固定依序為 `Waiting`、`Inbox`、`To do`、`Doing`、`Review`、`Done`，保持穩定最小寬度；窄螢幕水平捲動，不壓縮到文字與控制重疊。
 
 完整成員目錄只出現在右側 Drawer；桌面為窄 Sheet、手機可佔全寬。不建立永久 sidebar，也不在主 Board 重複完整名單。看板篩選列另提供可搜尋、可複選的全部 GitLab Labels；複選 Labels 採全部符合。
 
@@ -28,7 +28,7 @@ Header 高度固定，包含產品識別、成員 Sheet、錯誤時才出現的�
 - 背景刷新不替換成 loading state，不改變 layout；健康、pending 與 processing 狀態不顯示，只有離線或 mutation 失敗才顯示技術狀態。
 - 開卡與卡片 mutation 立即 optimistic update。失敗保留使用者意圖並顯示 Retry。
 - 手動排序時可由 grip 使用滑鼠或觸控在同欄與跨欄精確拖放；有篩選時以可見卡片為插入錨點並保留隱藏卡片相對順序。上下移按鈕與卡片右側 detail Drawer 的狀態 select 提供完整鍵盤操作，卡片表面不重複組別與狀態 controls。
-- 卡片 detail Drawer 包含前後卡片切換、title、支援 GFM 預覽的 Markdown description、組別、狀態、多人 Assignee、GitLab Start/Due dates、全部 GitLab Tags、typed Quick Actions、Comments 與 Issue 連結。Tag 以帶色彩 swatch 的緊湊 chips 呈現；既有 project labels 可搜尋新增，一般與 Status Tag 可移除，唯一 Team Tag 只能由另一個 Team Tag 取代。Comment thread 依時間顯示使用者留言與 GitLab system notes，composer 固定在 thread 下方，送出失敗保留 draft。
+- 卡片 detail Drawer 包含前後卡片切換、title、支援 GFM 預覽的 Markdown description、組別、原生 lifecycle status、多人 Assignee、GitLab Start/Due dates、GitLab Labels、typed Quick Actions、Comments 與 Issue 連結。Label 以帶色彩 swatch 的緊湊 chips 呈現；既有 project labels 可搜尋新增，唯一 Team Label 只能由另一個 Team Label 取代，status 只由獨立控制變更。Comment thread 依時間顯示使用者留言與 GitLab system notes，composer 固定在 thread 下方，送出失敗保留 draft。
 - Assignee picker 與成員篩選支援依組別複選；組別標題 checkbox 可切換該組目前可見成員，搜尋時不影響隱藏結果。Assignee picker 以目前組別優先，其他組別依目錄順序，未分組置底；跨組成員出現在每個所屬組別。
 - Sort by 在每個 lane 內提供手動、Due、Start 與 Updated time 正反向排序；空日期固定置底，清除篩選不重設排序。
 - 組別、負責人、Labels 與 Sort by 以 query string 保存；變更取代目前網址、不新增瀏覽歷史，分享與重新載入會還原相同視圖。

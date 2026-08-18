@@ -15,7 +15,6 @@ alias SyncHealth = "synced" | "syncing" | "offline";
 model BoardList {
 	key: string;
 	name: string;
-	gitLabLabel: string;
 	position: int32;
 	closed: boolean;
 	color: string;

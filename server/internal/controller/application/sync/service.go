@@ -16,12 +16,12 @@ import (
 )
 
 var DefaultBoardLists = []board.List{
-	{Key: "wating", Name: "Wating", GitLabLabel: "Status::Waiting", Position: 0, Color: "#dc2626"},
-	{Key: "inbox", Name: "Inbox", GitLabLabel: "Status::Inbox", Position: 1, Color: "#64748b"},
-	{Key: "todo", Name: "To Do", GitLabLabel: "Status::To Do", Position: 2, Color: "#0891b2"},
-	{Key: "doing", Name: "Doing", GitLabLabel: "Status::Doing", Position: 3, Color: "#2563eb"},
-	{Key: "review", Name: "Review", GitLabLabel: "Status::Review", Position: 4, Color: "#b45309"},
-	{Key: "closed", Name: "Closed", Position: 5, Closed: true, Color: "#15803d"},
+	{Key: "wating", Name: "Waiting", GitLabStatusName: "Waiting", Position: 0, Color: "#d2ad46"},
+	{Key: "inbox", Name: "Inbox", GitLabStatusName: "Inbox", Position: 1, Color: "#6699cc"},
+	{Key: "todo", Name: "To do", GitLabStatusName: "To do", Position: 2, Color: "#ed9121"},
+	{Key: "doing", Name: "Doing", GitLabStatusName: "Doing", Position: 3, Color: "#1f75cb"},
+	{Key: "review", Name: "Review", GitLabStatusName: "Review", Position: 4, Color: "#7a07ab"},
+	{Key: "closed", Name: "Done", GitLabStatusName: "Done", Position: 5, Closed: true, Color: "#108548"},
 }
 
 type Service struct {
@@ -107,7 +107,11 @@ func (s *Service) RefreshBoard(ctx context.Context) error {
 	cards := make([]board.Card, 0, len(issues))
 	positions := make(map[string]int32)
 	for _, issue := range issues {
-		card, ok := mapIssue(issue, directorySnapshot, DefaultBoardLists, positions)
+		card, ok, mapErr := mapIssue(issue, directorySnapshot, DefaultBoardLists, positions)
+		if mapErr != nil {
+			s.recordFailure(ctx, "board", now, mapErr)
+			return technical(span, "map GitLab work item status", mapErr)
+		}
 		if !ok {
 			continue
 		}
@@ -167,7 +171,7 @@ func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
 		Description:           pending.Card.Description,
 		Labels:                canonicalLabels(pending.Card.Labels, team, list, directorySnapshot.Teams, boardSnapshot.Lists),
 		AssigneeGitLabUserIDs: append([]int64(nil), pending.Card.AssigneeGitLabUserIDs...),
-		StartDate:             pending.Card.StartDate, DueDate: pending.Card.DueDate, Closed: list.Closed,
+		StartDate:             pending.Card.StartDate, DueDate: pending.Card.DueDate, GitLabStatusName: list.GitLabStatusName,
 	}
 	if s.actors == nil {
 		err := errors.New("GitLab authorization is unavailable; sign out and sign in again")
@@ -294,7 +298,10 @@ func (s *Service) reconcileWebhookIssue(ctx context.Context, issueIID int64, now
 			return err
 		}
 	}
-	card, included := mapIssue(issue, directorySnapshot, DefaultBoardLists, make(map[string]int32))
+	card, included, mapErr := mapIssue(issue, directorySnapshot, DefaultBoardLists, make(map[string]int32))
+	if mapErr != nil {
+		return mapErr
+	}
 	if !included {
 		_, err = s.repo.ReconcileIssue(ctx, issueIID, nil, now)
 		return err
@@ -370,37 +377,14 @@ func directoryFileFromSnapshot(snapshot directory.Snapshot) directory.File {
 	return file
 }
 
-func mapIssue(issue GitLabIssue, directorySnapshot directory.Snapshot, lists []board.List, positions map[string]int32) (board.Card, bool) {
+func mapIssue(issue GitLabIssue, directorySnapshot directory.Snapshot, lists []board.List, positions map[string]int32) (board.Card, bool, error) {
 	team, ok := issueTeam(issue.Labels, directorySnapshot.Teams)
 	if !ok {
-		return board.Card{}, false
+		return board.Card{}, false, nil
 	}
-	list := lists[0]
-	if issue.State == "closed" {
-		for _, candidate := range lists {
-			if candidate.Closed {
-				list = candidate
-				break
-			}
-		}
-	} else {
-		matchedScoped := false
-		for _, candidate := range lists {
-			if !candidate.Closed && slices.Contains(issue.Labels, candidate.GitLabLabel) {
-				list = candidate
-				matchedScoped = true
-				break
-			}
-		}
-		if !matchedScoped {
-			for _, label := range issue.Labels {
-				legacyKey, legacy := board.LegacyStatusListKey(label)
-				if candidate, found := boardList(lists, legacyKey); legacy && found && !candidate.Closed {
-					list = candidate
-					break
-				}
-			}
-		}
+	list, ok := boardListByStatus(lists, issue.GitLabStatusName)
+	if !ok {
+		return board.Card{}, false, fmt.Errorf("issue !%d uses unmapped GitLab status %q", issue.IssueIID, issue.GitLabStatusName)
 	}
 	title := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(issue.Title), team.TitlePrefix))
 	position := positions[list.Key]
@@ -409,9 +393,9 @@ func mapIssue(issue GitLabIssue, directorySnapshot directory.Snapshot, lists []b
 		IssueIID: issue.IssueIID, GitLabIssueID: &issue.GitLabIssueID,
 		Title: title, Description: issue.Description, WebURL: issue.WebURL, ListKey: list.Key, Position: position,
 		TeamKey: team.Key, AssigneeGitLabUserIDs: append([]int64(nil), issue.AssigneeGitLabUserIDs...),
-		StartDate: issue.StartDate, DueDate: issue.DueDate, Labels: append([]string(nil), issue.Labels...),
+		StartDate: issue.StartDate, DueDate: issue.DueDate, Labels: append([]string(nil), issue.Labels...), GitLabStatusName: issue.GitLabStatusName,
 		SyncState: board.OperationSynced, CreatedAt: issue.CreatedAt.UTC(), UpdatedAt: issue.UpdatedAt.UTC(),
-	}, true
+	}, true, nil
 }
 
 func issueTeam(labels []string, teams []directory.Team) (directory.Team, bool) {
@@ -453,22 +437,21 @@ func boardList(lists []board.List, key string) (board.List, bool) {
 	return board.List{}, false
 }
 
-func canonicalLabels(existing []string, team directory.Team, list board.List, teams []directory.Team, lists []board.List) []string {
+func boardListByStatus(lists []board.List, statusName string) (board.List, bool) {
+	for _, list := range lists {
+		if strings.EqualFold(list.GitLabStatusName, statusName) {
+			return list, true
+		}
+	}
+	return board.List{}, false
+}
+
+func canonicalLabels(existing []string, team directory.Team, _ board.List, teams []directory.Team, _ []board.List) []string {
 	teamLabels := make([]string, 0, len(teams))
 	for _, candidate := range teams {
 		teamLabels = append(teamLabels, candidate.GitLabLabel)
 	}
-	listLabels := make([]string, 0, len(lists))
-	for _, candidate := range lists {
-		if candidate.GitLabLabel != "" {
-			listLabels = append(listLabels, candidate.GitLabLabel)
-		}
-	}
-	listLabel := ""
-	if !list.Closed {
-		listLabel = list.GitLabLabel
-	}
-	return board.CanonicalLabels(existing, team.GitLabLabel, listLabel, teamLabels, listLabels)
+	return board.CanonicalLabels(existing, team.GitLabLabel, teamLabels)
 }
 
 func technical(span trace.Span, action string, err error) error {

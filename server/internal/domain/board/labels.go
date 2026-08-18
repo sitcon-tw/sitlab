@@ -13,6 +13,11 @@ var legacyStatusListKeys = map[string]string{
 	"Closed":  "closed",
 }
 
+var DeprecatedLabels = []string{
+	"Doing", "Inbox", "Review", "Status::Inbox", "To Do", "Todo", "Wating",
+	"組別::總召", "組別::行政", "組別::開發",
+}
+
 func LegacyStatusListKey(label string) (string, bool) {
 	key, ok := legacyStatusListKeys[label]
 	return key, ok
@@ -35,15 +40,15 @@ func NormalizeLabels(labels []string) ([]string, bool) {
 	return result, true
 }
 
-func CanonicalLabels(existing []string, teamLabel, listLabel string, teamLabels, listLabels []string) []string {
-	reserved := make(map[string]struct{}, len(teamLabels)+len(listLabels))
+func CanonicalLabels(existing []string, teamLabel string, teamLabels []string) []string {
+	reserved := make(map[string]struct{}, len(teamLabels)+len(DeprecatedLabels))
 	for _, label := range teamLabels {
 		reserved[label] = struct{}{}
 	}
-	for _, label := range listLabels {
+	for _, label := range DeprecatedLabels {
 		reserved[label] = struct{}{}
 	}
-	labels := make([]string, 0, len(existing)+2)
+	labels := make([]string, 0, len(existing)+1)
 	for _, label := range existing {
 		_, isReserved := reserved[label]
 		_, isLegacyStatus := LegacyStatusListKey(label)
@@ -53,9 +58,6 @@ func CanonicalLabels(existing []string, teamLabel, listLabel string, teamLabels,
 	}
 	if teamLabel != "" {
 		labels = append(labels, teamLabel)
-	}
-	if listLabel != "" {
-		labels = append(labels, listLabel)
 	}
 	return labels
 }

@@ -38,11 +38,11 @@ const memberDefinitions = [
 	[121, "newmember", "新加入成員"]
 ] as const;
 
-const teams: DirectoryTeam[] = teamDefinitions.map(([key, name, label, memberGitLabUserIds], index) => ({
+const teams: DirectoryTeam[] = teamDefinitions.map(([key, name, , memberGitLabUserIds], index) => ({
 	key,
 	name,
 	titlePrefix: `[${name}]`,
-	gitLabLabel: `組別::${label}`,
+	gitLabLabel: `Team::${name}`,
 	active: true,
 	sortOrder: index + 1,
 	memberGitLabUserIds: [...memberGitLabUserIds],
@@ -72,17 +72,9 @@ function card(
 	dueDate: string | null,
 	syncState: BoardCard["syncState"] = "synced"
 ): BoardCard {
-	const labels = [
-		teams.find((team) => team.key === teamKey)?.gitLabLabel,
-		[
-			["wating", "Status::Waiting"],
-			["inbox", "Status::Inbox"],
-			["todo", "Status::To Do"],
-			["doing", "Status::Doing"],
-			["review", "Status::Review"]
-		].find(([key]) => key === listKey)?.[1],
-		...(issueIid === 127 ? ["Priority::High", "Backend"] : [])
-	].filter((label): label is string => Boolean(label));
+	const labels = [teams.find((team) => team.key === teamKey)?.gitLabLabel, ...(issueIid === 127 ? ["Priority::High", "Backend"] : [])].filter(
+		(label): label is string => Boolean(label)
+	);
 	return {
 		issueIid,
 		issueId: 9000 + issueIid,
@@ -120,12 +112,12 @@ export const demoBootstrap: Bootstrap = {
 	members,
 	board: {
 		lists: [
-			{ key: "wating", name: "Wating", gitLabLabel: "Status::Waiting", position: 0, closed: false, color: "critical" },
-			{ key: "inbox", name: "Inbox", gitLabLabel: "Status::Inbox", position: 1, closed: false, color: "neutral" },
-			{ key: "todo", name: "To Do", gitLabLabel: "Status::To Do", position: 2, closed: false, color: "accent" },
-			{ key: "doing", name: "Doing", gitLabLabel: "Status::Doing", position: 3, closed: false, color: "info" },
-			{ key: "review", name: "Review", gitLabLabel: "Status::Review", position: 4, closed: false, color: "warning" },
-			{ key: "closed", name: "Closed", gitLabLabel: "", position: 5, closed: true, color: "success" }
+			{ key: "wating", name: "Waiting", position: 0, closed: false, color: "critical" },
+			{ key: "inbox", name: "Inbox", position: 1, closed: false, color: "neutral" },
+			{ key: "todo", name: "To do", position: 2, closed: false, color: "accent" },
+			{ key: "doing", name: "Doing", position: 3, closed: false, color: "info" },
+			{ key: "review", name: "Review", position: 4, closed: false, color: "warning" },
+			{ key: "closed", name: "Done", position: 5, closed: true, color: "success" }
 		],
 		cards: [
 			card(127, "修正報名系統寄信流程", "釐清失敗重送條件，補上整合測試與觀測紀錄。", "todo", 0, "development", [114], "2026-07-17", "2026-07-21"),

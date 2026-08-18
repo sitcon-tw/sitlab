@@ -505,7 +505,6 @@ export interface components {
 		BoardList: {
 			key: string;
 			name: string;
-			gitLabLabel: string;
 			/** Format: int32 */
 			position: number;
 			closed: boolean;

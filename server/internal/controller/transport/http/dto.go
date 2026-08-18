@@ -51,12 +51,11 @@ type preferencesResponse struct {
 }
 
 type boardListResponse struct {
-	Key         string `json:"key"`
-	Name        string `json:"name"`
-	GitLabLabel string `json:"gitLabLabel"`
-	Position    int32  `json:"position"`
-	Closed      bool   `json:"closed"`
-	Color       string `json:"color"`
+	Key      string `json:"key"`
+	Name     string `json:"name"`
+	Position int32  `json:"position"`
+	Closed   bool   `json:"closed"`
+	Color    string `json:"color"`
 }
 
 type cardResponse struct {
@@ -172,7 +171,7 @@ func mapPreferences(item appdirectory.Preferences) preferencesResponse {
 
 func mapBoardList(item board.List) boardListResponse {
 	return boardListResponse{
-		Key: item.Key, Name: item.Name, GitLabLabel: item.GitLabLabel,
+		Key: item.Key, Name: item.Name,
 		Position: item.Position, Closed: item.Closed, Color: item.Color,
 	}
 }

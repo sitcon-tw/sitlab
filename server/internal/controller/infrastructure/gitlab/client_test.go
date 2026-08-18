@@ -26,23 +26,34 @@ func TestSnapshotEndpointsParseMembersAndIssues(t *testing.T) {
 		switch {
 		case strings.Contains(request.URL.Path, "/members/all"):
 			return response(http.StatusOK, `[{"id":101,"username":"alice","name":"Alice","web_url":"https://gitlab.example/alice","access_level":40,"state":"active"}]`), nil
-		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/issues"):
-			if request.Header.Get("Authorization") != "Bearer actor-token" {
-				t.Errorf("Authorization = %q", request.Header.Get("Authorization"))
+		case request.URL.Path == "/api/graphql":
+			var payload struct {
+				Query     string         `json:"query"`
+				Variables map[string]any `json:"variables"`
 			}
-			var payload map[string]any
 			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 				t.Fatal(err)
 			}
-			assigneeIDs, _ := payload["assignee_ids"].([]any)
-			if payload["title"] != "[開發組] 新卡" || payload["description"] != "詳細規劃" || payload["start_date"] != "2026-07-17" || len(assigneeIDs) != 2 || assigneeIDs[0] != float64(101) || assigneeIDs[1] != float64(202) {
-				t.Errorf("issue payload = %#v", payload)
+			if strings.Contains(payload.Query, "WorkItemMetadata") {
+				return response(http.StatusOK, `{"data":{"project":{"labels":{"pageInfo":{"hasNextPage":false},"nodes":[{"id":"gid://gitlab/ProjectLabel/1","title":"Team::開發組"}]},"workItemTypes":{"nodes":[{"id":"gid://gitlab/WorkItems::Type/1","name":"Issue","widgetDefinitions":[{"allowedStatuses":[{"id":"status-1","name":"Waiting"},{"id":"status-2","name":"Inbox"},{"id":"status-3","name":"To do"},{"id":"status-4","name":"Doing"},{"id":"status-5","name":"Review"},{"id":"status-6","name":"Done"}]}]}]}}}}`), nil
 			}
-			return response(http.StatusCreated, `{"id":20,"iid":2,"title":"[開發組] 新卡","description":"詳細規劃","web_url":"https://gitlab.example/issues/2","labels":["組別::開發","To Do"],"start_date":"2026-07-17","due_date":"2026-07-21","state":"opened","created_at":"2026-07-14T08:00:00Z","updated_at":"2026-07-14T08:01:00Z","assignees":[{"id":101},{"id":202}]}`), nil
-		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/issues/1"):
-			return response(http.StatusOK, `{"id":10,"iid":1,"title":"[開發組] 修正流程","description":"工作拆解","web_url":"https://gitlab.example/issues/1","labels":["組別::開發","To Do"],"start_date":"2026-07-17","due_date":"2026-07-21","state":"opened","created_at":"2026-07-13T08:00:00Z","updated_at":"2026-07-14T08:00:00Z","assignees":[{"id":101},{"id":202}]}`), nil
-		case request.Method == http.MethodGet && strings.Contains(request.URL.Path, "/issues"):
-			return response(http.StatusOK, `[{"id":10,"iid":1,"title":"[開發組] 修正流程","description":"工作拆解","web_url":"https://gitlab.example/issues/1","labels":["組別::開發","To Do"],"start_date":"2026-07-17","due_date":"2026-07-21","state":"opened","created_at":"2026-07-13T08:00:00Z","updated_at":"2026-07-14T08:00:00Z","assignees":[{"id":101},{"id":202}]}]`), nil
+			if strings.Contains(payload.Query, "WorkItemLifecycle") {
+				return response(http.StatusOK, `{"data":{"project":{"workItemTypes":{"nodes":[{"name":"Issue","widgetDefinitions":[{"allowedStatuses":[{"id":"status-1","name":"Waiting"},{"id":"status-2","name":"Inbox"},{"id":"status-3","name":"To do"},{"id":"status-4","name":"Doing"},{"id":"status-5","name":"Review"},{"id":"status-6","name":"Done"}]}]}]}}}}`), nil
+			}
+			if strings.Contains(payload.Query, "CreateWorkItem") {
+				if request.Header.Get("Authorization") != "Bearer actor-token" {
+					t.Errorf("Authorization = %q", request.Header.Get("Authorization"))
+				}
+				input := payload.Variables["input"].(map[string]any)
+				if input["title"] != "[開發組] 新卡" || input["statusWidget"].(map[string]any)["name"] != "To do" {
+					t.Errorf("work item input = %#v", input)
+				}
+				return response(http.StatusOK, `{"data":{"workItemCreate":{"errors":[],"workItem":`+testWorkItemJSON("2", "20", "[開發組] 新卡")+`}}}`), nil
+			}
+			if strings.Contains(payload.Query, "query WorkItems") || strings.Contains(payload.Query, "query WorkItem") {
+				return response(http.StatusOK, `{"data":{"project":{"workItems":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[`+testWorkItemJSON("1", "10", "[開發組] 修正流程")+`]}}}}`), nil
+			}
+			return response(http.StatusBadRequest, `{}`), nil
 		default:
 			return response(http.StatusNotFound, `{}`), nil
 		}
@@ -68,7 +79,7 @@ func TestSnapshotEndpointsParseMembersAndIssues(t *testing.T) {
 	}
 	created, err := client.ApplyIssue(context.Background(), sync.IssueMutation{
 		Create: true, Title: "[開發組] 新卡", Description: "詳細規劃", StartDate: "2026-07-17", DueDate: "2026-07-21",
-		Labels: []string{"組別::開發", "To Do"}, AssigneeGitLabUserIDs: []int64{101, 202},
+		Labels: []string{"Team::開發組"}, AssigneeGitLabUserIDs: []int64{101, 202}, GitLabStatusName: "To do",
 	}, "actor-token")
 	if err != nil || created.IssueIID != 2 || created.StartDate != "2026-07-17" {
 		t.Fatalf("ApplyIssue() = %#v, %v", created, err)
@@ -78,7 +89,7 @@ func TestSnapshotEndpointsParseMembersAndIssues(t *testing.T) {
 func TestMissingIssueMapsToCardNotFound(t *testing.T) {
 	t.Parallel()
 	transport := roundTripFunc(func(*http.Request) (*http.Response, error) {
-		return response(http.StatusNotFound, `{}`), nil
+		return response(http.StatusOK, `{"data":{"project":{"workItems":{"nodes":[]}}}}`), nil
 	})
 	client, _ := New(&http.Client{Transport: transport}, Config{
 		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", AccessToken: "project-token",
@@ -252,4 +263,24 @@ func response(status int, body string) *http.Response {
 		Header:     make(http.Header),
 		Body:       io.NopCloser(strings.NewReader(body)),
 	}
+}
+
+func testWorkItemJSON(iid, id, title string) string {
+	value, _ := json.Marshal(map[string]any{
+		"id":        "gid://gitlab/WorkItem/" + id,
+		"iid":       iid,
+		"title":     title,
+		"state":     "OPEN",
+		"webUrl":    "https://gitlab.example/issues/" + iid,
+		"createdAt": "2026-07-13T08:00:00Z",
+		"updatedAt": "2026-07-14T08:00:00Z",
+		"widgets": []any{
+			map[string]any{"type": "DESCRIPTION", "description": "工作拆解"},
+			map[string]any{"type": "STATUS", "status": map[string]any{"id": "gid://gitlab/WorkItems::Statuses::Custom::Status/1513", "name": "To do", "category": "to_do", "color": "#ed9121"}},
+			map[string]any{"type": "LABELS", "labels": map[string]any{"nodes": []any{map[string]any{"id": "gid://gitlab/ProjectLabel/1", "title": "Team::開發組"}}}},
+			map[string]any{"type": "ASSIGNEES", "assignees": map[string]any{"nodes": []any{map[string]any{"id": "gid://gitlab/User/101"}, map[string]any{"id": "gid://gitlab/User/202"}}}},
+			map[string]any{"type": "START_AND_DUE_DATE", "startDate": "2026-07-17", "dueDate": "2026-07-21"},
+		},
+	})
+	return string(value)
 }

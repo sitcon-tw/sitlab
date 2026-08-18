@@ -2,7 +2,7 @@
 
 SITCON 2027 籌備工作的 GitLab-backed 看板。登入、選擇主要組別、開卡、移動、指派與關閉都在同一個快速工作面完成。
 
-正式資料來自兩個固定來源：本 GitHub repository 的 [`.sitcon/board-directory.yml`](./.sitcon/board-directory.yml) 提供組別、Title prefix 與 labels；GitLab `sitcon-tw/2027` 的 Project Members 提供可指派成員，issues 提供 Board 卡片。前端不內建正式組別或成員資料。
+正式資料來自兩個固定來源：本 GitHub repository 的 [`.sitcon/board-directory.yml`](./.sitcon/board-directory.yml) 提供組別、Title prefix 與 Team labels；GitLab `sitcon-tw/2027` 的 Project Members 提供可指派成員，Work Items 提供 Board 卡片與原生 lifecycle status。前端不內建正式組別或成員資料。
 
 ![SITCON Board desktop view](./docs/assets/sitcon-board-desktop.png)
 
@@ -14,8 +14,8 @@ SITCON 2027 籌備工作的 GitLab-backed 看板。登入、選擇主要組別�
 - Authenticated mutations 同時驗證 session-bound CSRF token 與 Origin。
 - Go 啟動時先同步 directory、members、board snapshots；沒有 snapshot 不會通過 readiness。
 - Go 回傳 SPA HTML 時注入完整 bootstrap，React 第一次 render 不等待額外 API。
-- Board 固定依序顯示 `Wating`、`Inbox`、`To Do`、`Doing`、`Review`、`Closed` 六欄。
-- 前五欄分別對應 GitLab scoped labels `Status::Waiting`、`Status::Inbox`、`Status::To Do`、`Status::Doing`、`Status::Review`；`Closed` 對應 issue closed state。
+- Board 固定依序顯示 `Waiting`、`Inbox`、`To do`、`Doing`、`Review`、`Done` 六欄。
+- 六欄直接對應 GitLab Work Item lifecycle status；status 不再以 Label 表示，也不會出現在 Label picker。
 - 卡片右側 drawer 可切換前後卡片並編輯 title、Markdown description、組別、狀態、多人 Assignee 與 Start/Due dates，也提供 typed `/` Quick Actions。
 - 單組與所有組長開卡、詳細規劃、移動、多人指派、期限與組別調整先寫 PostgreSQL optimistic cache 與 durable operation，再由 worker 以實際 actor 身分同步 GitLab；新卡預設在最上方。
 - GitLab signed project/group webhooks 觸發 targeted catch-up；PostgreSQL revision 與 SSE 讓已開啟的看板立即 refetch，既有 polling 負責漏訊恢復。

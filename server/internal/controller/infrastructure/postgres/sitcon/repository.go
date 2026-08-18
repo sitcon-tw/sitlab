@@ -221,16 +221,16 @@ func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List,
 		}
 		for _, list := range lists {
 			if _, err := tx.Exec(ctx, `
-				INSERT INTO board_lists (key, display_name, gitlab_label, position, closed, color, updated_at)
+				INSERT INTO board_lists (key, display_name, gitlab_status_name, position, closed, color, updated_at)
 				VALUES ($1, $2, $3, $4, $5, $6, $7)
 				ON CONFLICT (key) DO UPDATE
 				SET display_name = EXCLUDED.display_name,
-				    gitlab_label = EXCLUDED.gitlab_label,
+				    gitlab_status_name = EXCLUDED.gitlab_status_name,
 				    position = EXCLUDED.position,
 				    closed = EXCLUDED.closed,
 				    color = EXCLUDED.color,
 				    updated_at = EXCLUDED.updated_at
-			`, list.Key, list.Name, list.GitLabLabel, list.Position, list.Closed, list.Color, syncedAt); err != nil {
+			`, list.Key, list.Name, list.GitLabStatusName, list.Position, list.Closed, list.Color, syncedAt); err != nil {
 				return err
 			}
 		}
@@ -240,10 +240,10 @@ func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List,
 			command, err := tx.Exec(ctx, `
 				INSERT INTO issue_cache
 				    (issue_iid, gitlab_issue_id, title, description, web_url, list_key, position, team_key,
-				     start_date, due_date, labels, sync_state, gitlab_updated_at,
+				     start_date, due_date, labels, gitlab_status_name, sync_state, gitlab_updated_at,
 				     created_at, updated_at)
 				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11::text[], '{}'),
-				        'synced', $12, $13, $14)
+				        $12, 'synced', $13, $14, $15)
 				ON CONFLICT (issue_iid) DO UPDATE
 				SET gitlab_issue_id = EXCLUDED.gitlab_issue_id,
 				    title = EXCLUDED.title,
@@ -255,6 +255,7 @@ func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List,
 				    start_date = EXCLUDED.start_date,
 				    due_date = EXCLUDED.due_date,
 				    labels = EXCLUDED.labels,
+				    gitlab_status_name = EXCLUDED.gitlab_status_name,
 				    sync_state = 'synced',
 				    sync_error = NULL,
 				    pending_operation_id = NULL,
@@ -264,7 +265,7 @@ func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List,
 				WHERE issue_cache.sync_state = 'synced'
 			`, card.IssueIID, card.GitLabIssueID, card.Title, card.Description, nullableString(card.WebURL),
 				card.ListKey, card.Position, card.TeamKey, nullableDate(card.StartDate), nullableDate(card.DueDate), card.Labels,
-				card.UpdatedAt, card.CreatedAt, syncedAt)
+				card.GitLabStatusName, card.UpdatedAt, card.CreatedAt, syncedAt)
 			if err != nil {
 				return err
 			}
@@ -393,15 +394,16 @@ func (r *Repository) CompleteOperation(ctx context.Context, pending domainboard.
 				    web_url = $4,
 				    description = $5,
 				    labels = COALESCE($6::text[], '{}'),
-				    gitlab_updated_at = $7,
-				    created_at = $8,
-				    sync_state = CASE WHEN pending_operation_id = $9 THEN 'synced' ELSE sync_state END,
-				    sync_error = CASE WHEN pending_operation_id = $9 THEN NULL ELSE sync_error END,
-				    pending_operation_id = CASE WHEN pending_operation_id = $9 THEN NULL ELSE pending_operation_id END,
-				    updated_at = $10
+				    gitlab_status_name = $7,
+				    gitlab_updated_at = $8,
+				    created_at = $9,
+				    sync_state = CASE WHEN pending_operation_id = $10 THEN 'synced' ELSE sync_state END,
+				    sync_error = CASE WHEN pending_operation_id = $10 THEN NULL ELSE sync_error END,
+				    pending_operation_id = CASE WHEN pending_operation_id = $10 THEN NULL ELSE pending_operation_id END,
+				    updated_at = $11
 				WHERE issue_iid = $1
 			`, pending.Card.IssueIID, issue.IssueIID, issue.GitLabIssueID,
-				nullableString(issue.WebURL), issue.Description, issue.Labels, issue.UpdatedAt,
+				nullableString(issue.WebURL), issue.Description, issue.Labels, issue.GitLabStatusName, issue.UpdatedAt,
 				issue.CreatedAt, operationID, completedAt)
 			if err != nil {
 				return err
@@ -416,14 +418,15 @@ func (r *Repository) CompleteOperation(ctx context.Context, pending domainboard.
 				    web_url = $3,
 				    description = CASE WHEN pending_operation_id = $4 THEN $5 ELSE description END,
 				    labels = CASE WHEN pending_operation_id = $4 THEN COALESCE($6::text[], '{}') ELSE labels END,
-				    gitlab_updated_at = $7,
+				    gitlab_status_name = CASE WHEN pending_operation_id = $4 THEN $7 ELSE gitlab_status_name END,
+				    gitlab_updated_at = $8,
 				    sync_state = CASE WHEN pending_operation_id = $4 THEN 'synced' ELSE sync_state END,
 				    sync_error = CASE WHEN pending_operation_id = $4 THEN NULL ELSE sync_error END,
 				    pending_operation_id = CASE WHEN pending_operation_id = $4 THEN NULL ELSE pending_operation_id END,
-				    updated_at = $8
+				    updated_at = $9
 				WHERE issue_iid = $1
 			`, pending.Card.IssueIID, issue.GitLabIssueID, nullableString(issue.WebURL),
-				operationID, issue.Description, issue.Labels, issue.UpdatedAt, completedAt)
+				operationID, issue.Description, issue.Labels, issue.GitLabStatusName, issue.UpdatedAt, completedAt)
 			if err != nil {
 				return err
 			}
@@ -668,7 +671,7 @@ func (r *Repository) Board(ctx context.Context) (domainboard.Snapshot, error) {
 	}
 
 	listRows, err := db.Query(ctx, `
-		SELECT key, display_name, gitlab_label, position, closed, color
+		SELECT key, display_name, gitlab_status_name, position, closed, color
 		FROM board_lists
 		ORDER BY position, key
 	`)
@@ -679,7 +682,7 @@ func (r *Repository) Board(ctx context.Context) (domainboard.Snapshot, error) {
 	lists := make([]domainboard.List, 0)
 	for listRows.Next() {
 		var list domainboard.List
-		if err := listRows.Scan(&list.Key, &list.Name, &list.GitLabLabel, &list.Position, &list.Closed, &list.Color); err != nil {
+		if err := listRows.Scan(&list.Key, &list.Name, &list.GitLabStatusName, &list.Position, &list.Closed, &list.Color); err != nil {
 			return domainboard.Snapshot{}, fmt.Errorf("scan board list: %w", err)
 		}
 		lists = append(lists, list)
@@ -772,11 +775,11 @@ func (r *Repository) CreateCard(ctx context.Context, mutation domainboard.Mutati
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO issue_cache
 			    (title, description, list_key, position, team_key, start_date, due_date,
-			     labels, sync_state, pending_operation_id, created_at, updated_at)
-			VALUES ($1, $2, $3, 0, $4, $5, $6, COALESCE($7::text[], '{}'), $8, $9, $10, $11)
+			     labels, gitlab_status_name, sync_state, pending_operation_id, created_at, updated_at)
+			VALUES ($1, $2, $3, 0, $4, $5, $6, COALESCE($7::text[], '{}'), $8, $9, $10, $11, $12)
 			RETURNING issue_iid
 		`, mutation.Card.Title, mutation.Card.Description, mutation.Card.ListKey, mutation.Card.TeamKey,
-			nullableDate(mutation.Card.StartDate), nullableDate(mutation.Card.DueDate), mutation.Card.Labels, mutation.Card.SyncState,
+			nullableDate(mutation.Card.StartDate), nullableDate(mutation.Card.DueDate), mutation.Card.Labels, mutation.Card.GitLabStatusName, mutation.Card.SyncState,
 			uuid.MustParse(mutation.Card.PendingOperationID), mutation.Card.CreatedAt, mutation.Card.UpdatedAt,
 		).Scan(&issueIID); err != nil {
 			return err
@@ -837,12 +840,12 @@ func (r *Repository) UpdateCard(ctx context.Context, mutation domainboard.Mutati
 		command, err := tx.Exec(ctx, `
 			UPDATE issue_cache
 			SET title = $2, description = $3, list_key = $4, position = $5, team_key = $6,
-			    start_date = $7, due_date = $8, labels = COALESCE($9::text[], '{}'),
-			    sync_state = $10, sync_error = NULL, pending_operation_id = $11, updated_at = $12
+			    start_date = $7, due_date = $8, labels = COALESCE($9::text[], '{}'), gitlab_status_name = $10,
+			    sync_state = $11, sync_error = NULL, pending_operation_id = $12, updated_at = $13
 			WHERE issue_iid = $1
 		`, mutation.Card.IssueIID, mutation.Card.Title, mutation.Card.Description, mutation.Card.ListKey, mutation.Card.Position,
 			mutation.Card.TeamKey, nullableDate(mutation.Card.StartDate), nullableDate(mutation.Card.DueDate),
-			mutation.Card.Labels, mutation.Card.SyncState, uuid.MustParse(mutation.Card.PendingOperationID), mutation.Card.UpdatedAt)
+			mutation.Card.Labels, mutation.Card.GitLabStatusName, mutation.Card.SyncState, uuid.MustParse(mutation.Card.PendingOperationID), mutation.Card.UpdatedAt)
 		if err != nil {
 			return err
 		}
@@ -921,7 +924,7 @@ const selectCards = `
 	           FROM issue_cache_assignees assignee
 	           WHERE assignee.issue_iid = card.issue_iid
 	       ), '{}'),
-	       card.start_date, card.due_date, card.labels, card.sync_state, card.sync_error,
+	       card.start_date, card.due_date, card.labels, card.gitlab_status_name, card.sync_state, card.sync_error,
 	       card.pending_operation_id, card.created_at, card.updated_at
 	FROM issue_cache card
 	JOIN board_lists board_list ON board_list.key = card.list_key
@@ -939,7 +942,7 @@ func scanCard(row rowScanner) (domainboard.Card, error) {
 	err := row.Scan(
 		&card.IssueIID, &card.GitLabIssueID, &card.Title, &card.Description, &webURL,
 		&card.ListKey, &card.Position, &card.TeamKey, &card.AssigneeGitLabUserIDs,
-		&startDate, &dueDate, &card.Labels, &card.SyncState, &syncError,
+		&startDate, &dueDate, &card.Labels, &card.GitLabStatusName, &card.SyncState, &syncError,
 		&pendingOperationID, &card.CreatedAt, &card.UpdatedAt,
 	)
 	if err != nil {

@@ -123,7 +123,7 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	external := domainboard.Card{
 		IssueIID: 77, GitLabIssueID: &externalIssueID, Title: "外部更新", Description: "GitLab canonical",
 		WebURL: "https://gitlab.com/sitcon-tw/2027/-/issues/77", ListKey: "doing", TeamKey: "development",
-		AssigneeGitLabUserIDs: []int64{101}, Labels: []string{"組別::開發", "Status::Doing"},
+		AssigneeGitLabUserIDs: []int64{101}, Labels: []string{"Team::開發組"}, GitLabStatusName: "Doing",
 		SyncState: domainboard.OperationSynced, CreatedAt: now, UpdatedAt: now.Add(time.Minute),
 	}
 	realtimeChanged, err := store.ReconcileIssue(ctx, external.IssueIID, &external, now.Add(time.Minute))
@@ -223,7 +223,7 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	labelOperationID := uuid.NewString()
 	labelsChanged, err := boardService.UpdateLabels(ctx, appboard.UpdateLabelsInput{
 		OperationID: labelOperationID, ActorUserID: user.ID, IssueIID: canonical.Card.IssueIID,
-		Labels: []string{"組別::行政", "Status::Doing", "Backend"},
+		Labels: []string{"Team::行政組", "Backend"},
 	})
 	if err != nil || labelsChanged.Card.TeamKey != "administration" || labelsChanged.Card.ListKey != "doing" ||
 		len(labelsChanged.Card.AssigneeGitLabUserIDs) != 0 || labelsChanged.Operation.Kind != domainboard.OperationUpdateLabels {
@@ -235,7 +235,7 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	}
 	processed, err = syncService.ProcessOne(ctx)
 	if err != nil || !processed || gitlab.lastMutation == nil ||
-		!contains(gitlab.lastMutation.Labels, "組別::行政") || !contains(gitlab.lastMutation.Labels, "Status::Doing") || !contains(gitlab.lastMutation.Labels, "Backend") {
+		!contains(gitlab.lastMutation.Labels, "Team::行政組") || contains(gitlab.lastMutation.Labels, "Status::Doing") || !contains(gitlab.lastMutation.Labels, "Backend") || gitlab.lastMutation.GitLabStatusName != "Doing" {
 		t.Fatalf("process labels = %v, %v, mutation=%#v", processed, err, gitlab.lastMutation)
 	}
 
@@ -340,6 +340,7 @@ func (f *operationGitLabFake) ApplyIssue(_ context.Context, mutation appsync.Iss
 		WebURL: "https://gitlab.example/issues/42", Labels: mutation.Labels,
 		AssigneeGitLabUserIDs: mutation.AssigneeGitLabUserIDs,
 		StartDate:             mutation.StartDate, DueDate: mutation.DueDate, State: "opened", CreatedAt: f.now, UpdatedAt: f.now,
+		GitLabStatusName: mutation.GitLabStatusName,
 	}, nil
 }
 
@@ -349,9 +350,9 @@ func seedSnapshots(t *testing.T, ctx context.Context, pool *pgxpool.Pool, now ti
 		`INSERT INTO directory_teams
 		    (key, display_name, title_prefix, gitlab_label, sort_order, active, source_revision, updated_at)
 		VALUES
-		    ('development', '開發組', '[開發組]', '組別::開發', 0, true, 'revision-1', $1),
-		    ('design', '設計組', '[設計組]', '組別::設計', 1, true, 'revision-1', $1),
-		    ('administration', '行政組', '[行政組]', '組別::行政', 2, true, 'revision-1', $1)`,
+		    ('development', '開發組', '[開發組]', 'Team::開發組', 0, true, 'revision-1', $1),
+		    ('design', '設計組', '[設計組]', 'Team::設計組', 1, true, 'revision-1', $1),
+		    ('administration', '行政組', '[行政組]', 'Team::行政組', 2, true, 'revision-1', $1)`,
 		`INSERT INTO directory_members
 		    (gitlab_user_id, username, display_name, profile_url, access_level, state, last_synced_at)
 		VALUES
@@ -361,14 +362,14 @@ func seedSnapshots(t *testing.T, ctx context.Context, pool *pgxpool.Pool, now ti
 		VALUES
 		    ('development', 101, 'gitlab_directory', $1),
 		    ('design', 202, 'gitlab_directory', $1)`,
-		`INSERT INTO board_lists (key, display_name, gitlab_label, position, closed, color, updated_at)
+		`INSERT INTO board_lists (key, display_name, gitlab_status_name, position, closed, color, updated_at)
 		VALUES
-		    ('wating', 'Wating', 'Status::Waiting', 0, false, '#dc2626', $1),
-		    ('inbox', 'Inbox', 'Status::Inbox', 1, false, '#64748b', $1),
-		    ('todo', 'To Do', 'Status::To Do', 2, false, '#0891b2', $1),
-		    ('doing', 'Doing', 'Status::Doing', 3, false, '#2563eb', $1),
-		    ('review', 'Review', 'Status::Review', 4, false, '#b45309', $1),
-		    ('closed', 'Closed', '', 5, true, '#15803d', $1)`,
+		    ('wating', 'Waiting', 'Waiting', 0, false, '#d2ad46', $1),
+		    ('inbox', 'Inbox', 'Inbox', 1, false, '#6699cc', $1),
+		    ('todo', 'To do', 'To do', 2, false, '#ed9121', $1),
+		    ('doing', 'Doing', 'Doing', 3, false, '#1f75cb', $1),
+		    ('review', 'Review', 'Review', 4, false, '#7a07ab', $1),
+		    ('closed', 'Done', 'Done', 5, true, '#108548', $1)`,
 		`INSERT INTO sync_snapshots
 		    (resource, source_revision, last_success_at, last_attempt_at, updated_at)
 		VALUES

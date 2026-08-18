@@ -187,10 +187,10 @@ func (r *Repository) ReconcileIssue(ctx context.Context, issueIID int64, card *d
 			_, upsertErr := tx.Exec(ctx, `
 				INSERT INTO issue_cache
 				    (issue_iid, gitlab_issue_id, title, description, web_url, list_key, position,
-				     team_key, start_date, due_date, labels, sync_state, gitlab_updated_at,
+				     team_key, start_date, due_date, labels, gitlab_status_name, sync_state, gitlab_updated_at,
 				     created_at, updated_at)
 				VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, COALESCE($10::text[], '{}'),
-				        'synced', $11, $12, $13)
+				        $11, 'synced', $12, $13, $14)
 				ON CONFLICT (issue_iid) DO UPDATE
 				SET gitlab_issue_id = EXCLUDED.gitlab_issue_id,
 				    title = EXCLUDED.title,
@@ -202,6 +202,7 @@ func (r *Repository) ReconcileIssue(ctx context.Context, issueIID int64, card *d
 				    start_date = EXCLUDED.start_date,
 				    due_date = EXCLUDED.due_date,
 				    labels = EXCLUDED.labels,
+				    gitlab_status_name = EXCLUDED.gitlab_status_name,
 				    sync_state = 'synced',
 				    sync_error = NULL,
 				    pending_operation_id = NULL,
@@ -210,7 +211,7 @@ func (r *Repository) ReconcileIssue(ctx context.Context, issueIID int64, card *d
 				    updated_at = EXCLUDED.updated_at
 			`, card.IssueIID, card.GitLabIssueID, card.Title, card.Description, nullableString(card.WebURL),
 				card.ListKey, card.TeamKey, nullableDate(card.StartDate), nullableDate(card.DueDate), card.Labels,
-				card.UpdatedAt, card.CreatedAt, reconciledAt)
+				card.GitLabStatusName, card.UpdatedAt, card.CreatedAt, reconciledAt)
 			if upsertErr != nil {
 				return upsertErr
 			}
