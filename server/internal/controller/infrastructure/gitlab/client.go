@@ -389,9 +389,18 @@ func (c *Client) get(ctx context.Context, requestURL, accessToken string, target
 }
 
 func (c *Client) do(ctx context.Context, method, requestURL string, body io.Reader, privateToken, bearerToken string) (*http.Response, error) {
+	return c.doWithHeaders(ctx, method, requestURL, body, privateToken, bearerToken, nil)
+}
+
+func (c *Client) doWithHeaders(ctx context.Context, method, requestURL string, body io.Reader, privateToken, bearerToken string, headers http.Header) (*http.Response, error) {
 	request, err := http.NewRequestWithContext(ctx, method, requestURL, body)
 	if err != nil {
 		return nil, fmt.Errorf("create GitLab request: %w", err)
+	}
+	for name, values := range headers {
+		for _, value := range values {
+			request.Header.Add(name, value)
+		}
 	}
 	if privateToken != "" {
 		request.Header.Set("PRIVATE-TOKEN", privateToken)
@@ -431,7 +440,10 @@ func (c *Client) graphQL(ctx context.Context, query string, variables map[string
 	if err != nil {
 		return fmt.Errorf("encode GitLab GraphQL request: %w", err)
 	}
-	response, err := c.do(ctx, http.MethodPost, c.endpoint("/api/graphql"), strings.NewReader(string(body)), privateToken, bearerToken)
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/json")
+	headers.Set("Accept", "application/json")
+	response, err := c.doWithHeaders(ctx, http.MethodPost, c.endpoint("/api/graphql"), strings.NewReader(string(body)), privateToken, bearerToken, headers)
 	if err != nil {
 		return err
 	}

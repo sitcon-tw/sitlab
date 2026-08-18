@@ -27,6 +27,12 @@ func TestSnapshotEndpointsParseMembersAndIssues(t *testing.T) {
 		case strings.Contains(request.URL.Path, "/members/all"):
 			return response(http.StatusOK, `[{"id":101,"username":"alice","name":"Alice","web_url":"https://gitlab.example/alice","access_level":40,"state":"active"}]`), nil
 		case request.URL.Path == "/api/graphql":
+			if contentType := request.Header.Get("Content-Type"); contentType != "application/json" {
+				t.Errorf("GraphQL Content-Type = %q", contentType)
+			}
+			if accept := request.Header.Get("Accept"); accept != "application/json" {
+				t.Errorf("GraphQL Accept = %q", accept)
+			}
 			var payload struct {
 				Query     string         `json:"query"`
 				Variables map[string]any `json:"variables"`
