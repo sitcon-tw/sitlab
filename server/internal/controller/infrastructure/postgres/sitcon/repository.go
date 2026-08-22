@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -208,6 +209,34 @@ func (r *Repository) ReplaceDirectory(ctx context.Context, snapshot domaindirect
 
 func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List, cards []domainboard.Card, revision string, syncedAt time.Time) error {
 	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		var currentRevision string
+		var hadError bool
+		snapshotErr := tx.QueryRow(ctx, `
+			SELECT source_revision, last_error IS NOT NULL
+			FROM sync_snapshots
+			WHERE resource = 'board'
+		`).Scan(&currentRevision, &hadError)
+		if snapshotErr != nil && !errors.Is(snapshotErr, pgx.ErrNoRows) {
+			return snapshotErr
+		}
+		listsUnchanged, err := boardListsMatch(ctx, tx, lists)
+		if err != nil {
+			return err
+		}
+		if snapshotErr == nil && currentRevision == revision && listsUnchanged {
+			if _, err := tx.Exec(ctx, `
+				UPDATE sync_snapshots
+				SET last_success_at = $1, last_attempt_at = $1, last_error = NULL, updated_at = $1
+				WHERE resource = 'board'
+			`, syncedAt); err != nil {
+				return err
+			}
+			if hadError {
+				_, err = bumpBootstrapRevision(ctx, tx, syncedAt)
+			}
+			return err
+		}
+
 		if _, err := tx.Exec(ctx, `
 			WITH offset_value AS (
 				SELECT COALESCE(MAX(position), 0) + 1000 AS value
@@ -234,9 +263,70 @@ func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List,
 				return err
 			}
 		}
-		issueIIDs := make([]int64, 0, len(cards))
+		existing, orders, err := loadBoardMergeState(ctx, tx)
+		if err != nil {
+			return err
+		}
+		incoming := make(map[int64]struct{}, len(cards))
 		for _, card := range cards {
-			issueIIDs = append(issueIIDs, card.IssueIID)
+			incoming[card.IssueIID] = struct{}{}
+		}
+		mergeIncomplete := false
+		deleteIIDs := make([]int64, 0)
+		for issueIID, current := range existing {
+			if issueIID <= 0 || current.SyncState != domainboard.OperationSynced {
+				continue
+			}
+			if _, found := incoming[issueIID]; found {
+				continue
+			}
+			if current.GitLabUpdatedAt != nil && current.GitLabUpdatedAt.After(syncedAt) {
+				mergeIncomplete = true
+				continue
+			}
+			deleteIIDs = append(deleteIIDs, issueIID)
+			orders[current.ListKey] = removeIssueIID(orders[current.ListKey], issueIID)
+		}
+		if len(deleteIIDs) > 0 {
+			if _, err := tx.Exec(ctx, `DELETE FROM issue_cache WHERE issue_iid = ANY($1::bigint[])`, deleteIIDs); err != nil {
+				return err
+			}
+		}
+
+		eligible := make(map[int64]domainboard.Card, len(cards))
+		prepend := make(map[string][]int64)
+		for _, card := range cards {
+			current, found := existing[card.IssueIID]
+			if found && current.SyncState != domainboard.OperationSynced {
+				continue
+			}
+			if found && current.GitLabUpdatedAt != nil && current.GitLabUpdatedAt.After(card.UpdatedAt) {
+				mergeIncomplete = true
+				continue
+			}
+			eligible[card.IssueIID] = card
+			if !found || current.ListKey != card.ListKey {
+				if found {
+					orders[current.ListKey] = removeIssueIID(orders[current.ListKey], card.IssueIID)
+				}
+				prepend[card.ListKey] = append(prepend[card.ListKey], card.IssueIID)
+			}
+		}
+		for listKey, issueIIDs := range prepend {
+			orders[listKey] = append(issueIIDs, orders[listKey]...)
+		}
+		positions := make(map[int64]int32, len(existing)+len(eligible))
+		for _, issueIIDs := range orders {
+			for position, issueIID := range issueIIDs {
+				positions[issueIID] = int32(position)
+			}
+		}
+
+		for _, card := range cards {
+			if _, ok := eligible[card.IssueIID]; !ok {
+				continue
+			}
+			position := positions[card.IssueIID]
 			command, err := tx.Exec(ctx, `
 				INSERT INTO issue_cache
 				    (issue_iid, gitlab_issue_id, title, description, web_url, list_key, position, team_key,
@@ -263,8 +353,9 @@ func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List,
 				    created_at = EXCLUDED.created_at,
 				    updated_at = EXCLUDED.updated_at
 				WHERE issue_cache.sync_state = 'synced'
+				  AND (issue_cache.gitlab_updated_at IS NULL OR issue_cache.gitlab_updated_at <= EXCLUDED.gitlab_updated_at)
 			`, card.IssueIID, card.GitLabIssueID, card.Title, card.Description, nullableString(card.WebURL),
-				card.ListKey, card.Position, card.TeamKey, nullableDate(card.StartDate), nullableDate(card.DueDate), card.Labels,
+				card.ListKey, position, card.TeamKey, nullableDate(card.StartDate), nullableDate(card.DueDate), card.Labels,
 				card.GitLabStatusName, card.UpdatedAt, card.CreatedAt, syncedAt)
 			if err != nil {
 				return err
@@ -275,14 +366,16 @@ func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List,
 				}
 			}
 		}
-		if _, err := tx.Exec(ctx, `
-			DELETE FROM issue_cache
-			WHERE issue_iid > 0 AND sync_state = 'synced'
-			  AND NOT (issue_iid = ANY($1::bigint[]))
-		`, issueIIDs); err != nil {
-			return err
+		for _, issueIIDs := range orders {
+			if err := writeCardPositions(ctx, tx, issueIIDs); err != nil {
+				return err
+			}
 		}
-		_, err := tx.Exec(ctx, `
+		revisionToStore := revision
+		if mergeIncomplete && snapshotErr == nil {
+			revisionToStore = currentRevision
+		}
+		_, err = tx.Exec(ctx, `
 			INSERT INTO sync_snapshots
 			    (resource, source_revision, last_success_at, last_attempt_at, last_error, updated_at)
 			VALUES ('board', $1, $2, $2, NULL, $2)
@@ -292,13 +385,72 @@ func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List,
 			    last_attempt_at = EXCLUDED.last_attempt_at,
 			    last_error = NULL,
 			    updated_at = EXCLUDED.updated_at
-		`, revision, syncedAt)
+		`, revisionToStore, syncedAt)
 		if err != nil {
 			return err
 		}
 		_, err = bumpBootstrapRevision(ctx, tx, syncedAt)
 		return err
 	})
+}
+
+type boardMergeCard struct {
+	ListKey         string
+	Position        int32
+	SyncState       domainboard.OperationState
+	GitLabUpdatedAt *time.Time
+}
+
+func boardListsMatch(ctx context.Context, tx pgx.Tx, expected []domainboard.List) (bool, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT key, display_name, gitlab_status_name, position, closed, color
+		FROM board_lists
+		ORDER BY position, key
+	`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	actual := make([]domainboard.List, 0, len(expected))
+	for rows.Next() {
+		var list domainboard.List
+		if err := rows.Scan(&list.Key, &list.Name, &list.GitLabStatusName, &list.Position, &list.Closed, &list.Color); err != nil {
+			return false, err
+		}
+		actual = append(actual, list)
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	return slices.Equal(actual, expected), nil
+}
+
+func loadBoardMergeState(ctx context.Context, tx pgx.Tx) (map[int64]boardMergeCard, map[string][]int64, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT issue_iid, list_key, position, sync_state, gitlab_updated_at
+		FROM issue_cache
+		ORDER BY list_key, position, issue_iid
+		FOR UPDATE
+	`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	existing := make(map[int64]boardMergeCard)
+	orders := make(map[string][]int64)
+	for rows.Next() {
+		var issueIID int64
+		var current boardMergeCard
+		if err := rows.Scan(&issueIID, &current.ListKey, &current.Position, &current.SyncState, &current.GitLabUpdatedAt); err != nil {
+			return nil, nil, err
+		}
+		existing[issueIID] = current
+		orders[current.ListKey] = append(orders[current.ListKey], issueIID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	return existing, orders, nil
 }
 
 func (r *Repository) RecordSyncFailure(ctx context.Context, resource string, attemptedAt time.Time, detail string) error {

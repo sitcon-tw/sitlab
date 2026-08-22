@@ -110,6 +110,7 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	}
 	seedSnapshots(t, ctx, pool, now)
 	verifyCardReordering(t, ctx, pool, store, user.ID, now)
+	verifySnapshotMerge(t, ctx, pool, store, now)
 
 	listenerCtx, stopListener := context.WithCancel(ctx)
 	updates, unsubscribe := store.SubscribeRevisions()
@@ -451,6 +452,123 @@ func verifyCardReordering(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	}
 	if result.Card.Position != 0 || !slices.Equal(issueIIDs, []int64{503, 501, 502}) || !slices.Equal(positions, []int32{0, 1, 2}) {
 		t.Fatalf("reordered cards = ids %v positions %v result %#v", issueIIDs, positions, result.Card)
+	}
+}
+
+func verifySnapshotMerge(t *testing.T, ctx context.Context, pool *pgxpool.Pool, store *pgsitcon.Repository, now time.Time) {
+	t.Helper()
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO issue_cache
+		    (issue_iid, gitlab_issue_id, title, description, list_key, position, team_key,
+		     labels, gitlab_status_name, sync_state, gitlab_updated_at, created_at, updated_at)
+		VALUES
+		    (601, 6001, 'First snapshot card', '', 'doing', 0, 'development', '{}', 'Doing', 'synced', $1, $1, $1),
+		    (602, 6002, 'Second snapshot card', '', 'doing', 1, 'development', '{}', 'Doing', 'synced', $1, $1, $1)
+	`, now); err != nil {
+		t.Fatalf("seed snapshot merge fixtures: %v", err)
+	}
+	defer func() {
+		if _, err := pool.Exec(ctx, `DELETE FROM issue_cache WHERE issue_iid = ANY($1::bigint[])`, []int64{601, 602}); err != nil {
+			t.Fatalf("clean snapshot merge fixtures: %v", err)
+		}
+	}()
+
+	card := func(issueIID, gitLabIssueID int64, title, listKey, status string, updatedAt time.Time) domainboard.Card {
+		return domainboard.Card{
+			IssueIID: issueIID, GitLabIssueID: &gitLabIssueID, Title: title, ListKey: listKey, TeamKey: "development",
+			GitLabStatusName: status, SyncState: domainboard.OperationSynced, CreatedAt: now, UpdatedAt: updatedAt,
+		}
+	}
+	first := card(601, 6001, "First snapshot card", "doing", "Doing", now.Add(time.Minute))
+	second := card(602, 6002, "Second snapshot card", "doing", "Doing", now.Add(time.Minute))
+
+	revisionBefore, err := store.Revision(ctx)
+	if err != nil {
+		t.Fatalf("load revision before identical snapshot: %v", err)
+	}
+	if err := store.ReplaceBoard(ctx, appsync.DefaultBoardLists, []domainboard.Card{second, first}, "board-1", now.Add(time.Minute)); err != nil {
+		t.Fatalf("replace identical board snapshot: %v", err)
+	}
+	revisionAfter, err := store.Revision(ctx)
+	if err != nil || revisionAfter != revisionBefore {
+		t.Fatalf("identical snapshot revision = %q, error %v, want %q", revisionAfter, err, revisionBefore)
+	}
+	assertStoredOrder(t, ctx, pool, "doing", []int64{601, 602})
+
+	if err := store.ReplaceBoard(ctx, appsync.DefaultBoardLists, []domainboard.Card{second, first}, "board-merge-2", now.Add(2*time.Minute)); err != nil {
+		t.Fatalf("merge changed board snapshot: %v", err)
+	}
+	assertStoredOrder(t, ctx, pool, "doing", []int64{601, 602})
+
+	if _, err := pool.Exec(ctx, `
+		UPDATE issue_cache
+		SET list_key = 'review', position = 0, gitlab_status_name = 'Review', gitlab_updated_at = $2, updated_at = $2
+		WHERE issue_iid = $1
+	`, int64(601), now.Add(4*time.Minute)); err != nil {
+		t.Fatalf("seed completed local move: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE issue_cache SET position = 0 WHERE issue_iid = 602`); err != nil {
+		t.Fatalf("compact local move source: %v", err)
+	}
+	first.UpdatedAt = now.Add(2 * time.Minute)
+	second.UpdatedAt = now.Add(2 * time.Minute)
+	var revisionBeforeStaleMerge string
+	if err := pool.QueryRow(ctx, `SELECT source_revision FROM sync_snapshots WHERE resource = 'board'`).Scan(&revisionBeforeStaleMerge); err != nil {
+		t.Fatalf("load revision before stale merge: %v", err)
+	}
+	if err := store.ReplaceBoard(ctx, appsync.DefaultBoardLists, []domainboard.Card{second, first}, "board-merge-3", now.Add(3*time.Minute)); err != nil {
+		t.Fatalf("merge stale board snapshot: %v", err)
+	}
+	if stored, err := store.Card(ctx, 601); err != nil || stored.ListKey != "review" || stored.Position != 0 {
+		t.Fatalf("stale snapshot overwrote completed move: card %#v, error %v", stored, err)
+	}
+
+	if err := store.ReplaceBoard(ctx, appsync.DefaultBoardLists, []domainboard.Card{second}, "board-merge-4", now.Add(3*time.Minute)); err != nil {
+		t.Fatalf("merge stale snapshot missing a recently updated card: %v", err)
+	}
+	if _, err := store.Card(ctx, 601); err != nil {
+		t.Fatalf("stale snapshot deleted a recently updated card: %v", err)
+	}
+	var revisionAfterStaleMerge string
+	if err := pool.QueryRow(ctx, `SELECT source_revision FROM sync_snapshots WHERE resource = 'board'`).Scan(&revisionAfterStaleMerge); err != nil {
+		t.Fatalf("load revision after stale merge: %v", err)
+	}
+	if revisionAfterStaleMerge != revisionBeforeStaleMerge {
+		t.Fatalf("stale merge revision = %q, want %q so the next refresh retries", revisionAfterStaleMerge, revisionBeforeStaleMerge)
+	}
+
+	second.UpdatedAt = now.Add(5 * time.Minute)
+	if changed, err := store.ReconcileIssue(ctx, second.IssueIID, &second, now.Add(5*time.Minute)); err != nil || !changed {
+		t.Fatalf("reconcile same-list issue = changed %v, error %v", changed, err)
+	}
+	assertStoredOrder(t, ctx, pool, "doing", []int64{602})
+	second.ListKey, second.GitLabStatusName, second.UpdatedAt = "review", "Review", now.Add(6*time.Minute)
+	if changed, err := store.ReconcileIssue(ctx, second.IssueIID, &second, now.Add(6*time.Minute)); err != nil || !changed {
+		t.Fatalf("reconcile external list move = changed %v, error %v", changed, err)
+	}
+	assertStoredOrder(t, ctx, pool, "review", []int64{602, 601})
+}
+
+func assertStoredOrder(t *testing.T, ctx context.Context, pool *pgxpool.Pool, listKey string, want []int64) {
+	t.Helper()
+	rows, err := pool.Query(ctx, `SELECT issue_iid FROM issue_cache WHERE list_key = $1 ORDER BY position, issue_iid`, listKey)
+	if err != nil {
+		t.Fatalf("query %s card order: %v", listKey, err)
+	}
+	defer rows.Close()
+	var got []int64
+	for rows.Next() {
+		var issueIID int64
+		if err := rows.Scan(&issueIID); err != nil {
+			t.Fatalf("scan %s card order: %v", listKey, err)
+		}
+		got = append(got, issueIID)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate %s card order: %v", listKey, err)
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("%s card order = %v, want %v", listKey, got, want)
 	}
 }
 

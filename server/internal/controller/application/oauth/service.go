@@ -211,21 +211,17 @@ func (s *Service) VerifySession(ctx context.Context, raw string) (identity.Sessi
 	return identity.SessionClaims{SessionID: session.ID, UserID: session.UserID, ExpiresAt: session.ExpiresAt}, nil
 }
 
-func (s *Service) IssueCSRF(ctx context.Context, claims identity.SessionClaims) (string, error) {
-	raw, digest, err := s.tokens.New()
-	if err != nil {
-		return "", fmt.Errorf("issue csrf token: %w", err)
-	}
-	if err := s.repo.SetSessionCSRFHash(ctx, claims.SessionID, digest); err != nil {
-		return "", fmt.Errorf("store csrf token: %w", err)
-	}
-	return raw, nil
+func (s *Service) IssueCSRF(_ context.Context, claims identity.SessionClaims) (string, error) {
+	return s.tokens.Derive("csrf", claims.SessionID), nil
 }
 
 func (s *Service) VerifyCSRFToken(ctx context.Context, rawSession, rawCSRF string) (identity.SessionClaims, error) {
 	claims, err := s.VerifySession(ctx, rawSession)
 	if err != nil {
 		return identity.SessionClaims{}, err
+	}
+	if s.tokens.MatchesDerived(rawCSRF, "csrf", claims.SessionID) {
+		return claims, nil
 	}
 	session, err := s.repo.GetSessionByTokenHash(ctx, s.tokens.Digest(rawSession))
 	if err != nil {

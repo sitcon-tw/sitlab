@@ -29,6 +29,30 @@ func TestDefaultBoardListsMatchGitLabBoard(t *testing.T) {
 	}
 }
 
+func TestBoardRevisionIsOrderIndependentAndContentAddressed(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 22, 8, 0, 0, 0, time.UTC)
+	first := GitLabIssue{
+		IssueIID: 1, GitLabIssueID: 10, Title: "First", Labels: []string{"Backend", "Team::開發組"},
+		AssigneeGitLabUserIDs: []int64{202, 101}, GitLabStatusName: "Doing", UpdatedAt: now,
+	}
+	second := GitLabIssue{IssueIID: 2, GitLabIssueID: 20, Title: "Second", GitLabStatusName: "Review", UpdatedAt: now.Add(time.Second)}
+
+	want := boardRevision([]GitLabIssue{first, second})
+	first.Labels = []string{"Team::開發組", "Backend"}
+	first.AssigneeGitLabUserIDs = []int64{101, 202}
+	if got := boardRevision([]GitLabIssue{second, first}); got != want {
+		t.Fatalf("boardRevision() changed with source ordering: got %q want %q", got, want)
+	}
+	second.GitLabStatusName = "Done"
+	if got := boardRevision([]GitLabIssue{first, second}); got == want {
+		t.Fatal("boardRevision() ignored a canonical status change")
+	}
+	if boardRevision(nil) != boardRevision([]GitLabIssue{}) {
+		t.Fatal("boardRevision() must be stable for an empty board")
+	}
+}
+
 type gitLabFake struct {
 	members []directory.GitLabMember
 	issues  []GitLabIssue

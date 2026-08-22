@@ -71,3 +71,15 @@ func (t Tokens) Digest(raw string) []byte {
 func (t Tokens) Matches(raw string, expected []byte) bool {
 	return hmac.Equal(t.Digest(raw), expected)
 }
+
+func (t Tokens) Derive(purpose, value string) string {
+	mac := hmac.New(sha256.New, t.key)
+	_, _ = mac.Write([]byte(purpose))
+	_, _ = mac.Write([]byte{0})
+	_, _ = mac.Write([]byte(value))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func (t Tokens) MatchesDerived(raw, purpose, value string) bool {
+	return hmac.Equal([]byte(raw), []byte(t.Derive(purpose, value)))
+}

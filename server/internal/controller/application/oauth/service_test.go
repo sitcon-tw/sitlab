@@ -30,7 +30,6 @@ type repoFake struct {
 	session           identity.Session
 	upsertInTx        bool
 	createSessionInTx bool
-	csrfHash          []byte
 	touched           identity.Session
 }
 
@@ -73,13 +72,7 @@ func (f *repoFake) GetSessionByTokenHash(context.Context, []byte) (identity.Sess
 	if f.session.ID == "" {
 		return identity.Session{}, identity.ErrSessionNotFound
 	}
-	copy := f.session
-	copy.CSRFTokenHash = f.csrfHash
-	return copy, nil
-}
-func (f *repoFake) SetSessionCSRFHash(_ context.Context, _ string, hash []byte) error {
-	f.csrfHash = hash
-	return nil
+	return f.session, nil
 }
 func (f *repoFake) TouchSession(_ context.Context, _ string, session identity.Session) error {
 	f.touched = session
@@ -98,6 +91,10 @@ func (f *tokensFake) New() (string, []byte, error) {
 func (*tokensFake) Digest(raw string) []byte { return []byte("digest:" + raw) }
 func (f *tokensFake) Matches(raw string, hash []byte) bool {
 	return string(f.Digest(raw)) == string(hash)
+}
+func (*tokensFake) Derive(purpose, value string) string { return "derived:" + purpose + ":" + value }
+func (f *tokensFake) MatchesDerived(raw, purpose, value string) bool {
+	return raw == f.Derive(purpose, value)
 }
 
 type cipherFake struct{}
@@ -148,6 +145,36 @@ func TestVerifySessionRenewsFourteenDaysFromEveryUse(t *testing.T) {
 	wantExpiry := time.Unix(10_000, 0).UTC().Add(14 * 24 * time.Hour)
 	if !repo.touched.ExpiresAt.Equal(wantExpiry) || !claims.ExpiresAt.Equal(wantExpiry) {
 		t.Fatalf("renewed expiry = %s, claims = %s, want %s", repo.touched.ExpiresAt, claims.ExpiresAt, wantExpiry)
+	}
+}
+
+func TestCSRFTokensAreStablePerSessionAndAcceptLegacyTokens(t *testing.T) {
+	t.Parallel()
+	repo, tokens := &repoFake{session: identity.Session{
+		ID: "session-id", UserID: "10000000-0000-0000-0000-000000000001",
+		TokenHash: []byte("digest:session"), ExpiresAt: time.Unix(20_000, 0),
+	}}, &tokensFake{}
+	service := newService(repo, &txFake{}, tokens, &gitLabFake{})
+	claims := identity.SessionClaims{SessionID: repo.session.ID, UserID: repo.session.UserID}
+
+	first, err := service.IssueCSRF(context.Background(), claims)
+	if err != nil {
+		t.Fatalf("IssueCSRF() error = %v", err)
+	}
+	second, err := service.IssueCSRF(context.Background(), claims)
+	if err != nil || first != second {
+		t.Fatalf("IssueCSRF() tokens = %q, %q, error = %v", first, second, err)
+	}
+	if _, err := service.VerifyCSRFToken(context.Background(), "session", first); err != nil {
+		t.Fatalf("VerifyCSRFToken(derived) error = %v", err)
+	}
+
+	repo.session.CSRFTokenHash = tokens.Digest("legacy-csrf")
+	if _, err := service.VerifyCSRFToken(context.Background(), "session", "legacy-csrf"); err != nil {
+		t.Fatalf("VerifyCSRFToken(legacy) error = %v", err)
+	}
+	if _, err := service.VerifyCSRFToken(context.Background(), "session", tokens.Derive("csrf", "another-session")); err == nil {
+		t.Fatal("VerifyCSRFToken() accepted another session's token")
 	}
 }
 

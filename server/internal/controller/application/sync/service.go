@@ -2,9 +2,13 @@ package sync
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -117,7 +121,7 @@ func (s *Service) RefreshBoard(ctx context.Context) error {
 		}
 		cards = append(cards, card)
 	}
-	revision := boardRevision(issues, now)
+	revision := boardRevision(issues)
 	if err := s.repo.ReplaceBoard(ctx, DefaultBoardLists, cards, revision, now); err != nil {
 		return technical(span, "replace board snapshot", err)
 	}
@@ -407,17 +411,41 @@ func issueTeam(labels []string, teams []directory.Team) (directory.Team, bool) {
 	return directory.Team{}, false
 }
 
-func boardRevision(issues []GitLabIssue, now time.Time) string {
-	latest := time.Time{}
+func boardRevision(issues []GitLabIssue) string {
+	type revisionIssue struct {
+		IssueIID              int64
+		GitLabIssueID         int64
+		Title                 string
+		Description           string
+		WebURL                string
+		Labels                []string
+		AssigneeGitLabUserIDs []int64
+		StartDate             string
+		DueDate               string
+		State                 string
+		GitLabStatusName      string
+		CreatedAt             time.Time
+		UpdatedAt             time.Time
+	}
+	rows := make([]revisionIssue, 0, len(issues))
 	for _, issue := range issues {
-		if issue.UpdatedAt.After(latest) {
-			latest = issue.UpdatedAt
-		}
+		labels := append([]string(nil), issue.Labels...)
+		assignees := append([]int64(nil), issue.AssigneeGitLabUserIDs...)
+		sort.Strings(labels)
+		slices.Sort(assignees)
+		rows = append(rows, revisionIssue{
+			IssueIID: issue.IssueIID, GitLabIssueID: issue.GitLabIssueID,
+			Title: issue.Title, Description: issue.Description, WebURL: issue.WebURL,
+			Labels: labels, AssigneeGitLabUserIDs: assignees,
+			StartDate: issue.StartDate, DueDate: issue.DueDate, State: issue.State,
+			GitLabStatusName: issue.GitLabStatusName,
+			CreatedAt:        issue.CreatedAt.UTC(), UpdatedAt: issue.UpdatedAt.UTC(),
+		})
 	}
-	if latest.IsZero() {
-		latest = now
-	}
-	return fmt.Sprintf("%s:%d", latest.UTC().Format(time.RFC3339Nano), len(issues))
+	sort.Slice(rows, func(i, j int) bool { return rows[i].IssueIID < rows[j].IssueIID })
+	payload, _ := json.Marshal(rows)
+	digest := sha256.Sum256(payload)
+	return hex.EncodeToString(digest[:])
 }
 
 func (s *Service) recordFailure(ctx context.Context, resource string, at time.Time, err error) {

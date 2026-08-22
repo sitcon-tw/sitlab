@@ -35,4 +35,11 @@ func TestTokensAreOpaqueAndKeyed(t *testing.T) {
 	if NewTokens("another-key-which-is-long-enough-000").Matches(raw, digest) {
 		t.Fatal("digest must be keyed")
 	}
+	derived := tokens.Derive("csrf", "session-id")
+	if derived == "" || derived != tokens.Derive("csrf", "session-id") || !tokens.MatchesDerived(derived, "csrf", "session-id") {
+		t.Fatal("derived token must be stable and verifiable")
+	}
+	if tokens.MatchesDerived(derived, "oauth", "session-id") || tokens.MatchesDerived(derived, "csrf", "another-session") {
+		t.Fatal("derived tokens must be purpose- and session-bound")
+	}
 }

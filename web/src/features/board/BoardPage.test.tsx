@@ -19,7 +19,7 @@ import {
 	updateTeam
 } from "./boardApi";
 import { BoardPage } from "./BoardPage";
-import type { Bootstrap } from "./model";
+import type { BoardCard, Bootstrap, CardMutation } from "./model";
 
 vi.mock("./boardApi", () => ({
 	createCard: vi.fn(),
@@ -375,6 +375,54 @@ describe("SITCON Board interactions", () => {
 		expect(doingLane).not.toBeNull();
 		expect(within(doingLane as HTMLElement).getByRole("heading", { name: title })).toBeVisible();
 		expect(moveCard).toHaveBeenCalledOnce();
+	});
+
+	it("ignores an older move response after a newer move has started", async () => {
+		const user = userEvent.setup();
+		const requests: Array<{
+			card: BoardCard;
+			operationId: string;
+			listKey: string;
+			position: number;
+			resolve: (result: CardMutation) => void;
+		}> = [];
+		vi.mocked(moveCard).mockImplementation(
+			(card, operationId, listKey, position) => new Promise<CardMutation>((resolve) => requests.push({ card, operationId, listKey, position, resolve }))
+		);
+		render(<Harness />);
+		const title = "[開發組] 修正報名系統寄信流程";
+		await user.click(screen.getByRole("heading", { name: title }));
+		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		await user.selectOptions(within(dialog).getByLabelText("狀態"), "doing");
+		await user.selectOptions(within(dialog).getByLabelText("狀態"), "review");
+		expect(requests).toHaveLength(2);
+
+		const result = (request: (typeof requests)[number]): CardMutation => ({
+			card: {
+				...request.card,
+				listKey: request.listKey,
+				position: request.position,
+				syncState: "synced",
+				syncError: null,
+				pendingOperationId: null
+			},
+			operation: {
+				id: request.operationId,
+				kind: "move_card",
+				state: "synced",
+				attempts: 1,
+				lastError: null,
+				createdAt: "2026-08-22T08:00:00Z",
+				updatedAt: "2026-08-22T08:00:01Z"
+			}
+		});
+		requests[1]!.resolve(result(requests[1]!));
+		await waitFor(() => expect(within(dialog).getByLabelText("狀態")).toHaveValue("review"));
+		requests[0]!.resolve(result(requests[0]!));
+		await waitFor(() => expect(within(dialog).getByLabelText("狀態")).toHaveValue("review"));
+		await user.click(within(dialog).getByRole("button", { name: "Close drawer" }));
+		const reviewLane = screen.getByRole("heading", { name: "Review" }).closest("section");
+		expect(within(reviewLane as HTMLElement).getByRole("heading", { name: title })).toBeVisible();
 	});
 
 	it("edits GitLab Start date, previews Markdown, and keeps the detail drawer open while saving", async () => {

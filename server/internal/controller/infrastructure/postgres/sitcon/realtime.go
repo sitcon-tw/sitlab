@@ -170,7 +170,10 @@ func (r *Repository) ReconcileIssue(ctx context.Context, issueIID int64, card *d
 			if currentGitLabUpdatedAt != nil && currentGitLabUpdatedAt.After(card.UpdatedAt) {
 				return nil
 			}
-			if exists {
+			targetPosition := int32(0)
+			if exists && currentList == card.ListKey {
+				targetPosition = currentPosition
+			} else if exists {
 				if _, compactErr := tx.Exec(ctx, `
 					UPDATE issue_cache SET position = position - 1
 					WHERE list_key = $1 AND position > $2 AND issue_iid <> $3
@@ -178,26 +181,28 @@ func (r *Repository) ReconcileIssue(ctx context.Context, issueIID int64, card *d
 					return compactErr
 				}
 			}
-			if _, shiftErr := tx.Exec(ctx, `
-				UPDATE issue_cache SET position = position + 1
-				WHERE list_key = $1 AND issue_iid <> $2
-			`, card.ListKey, issueIID); shiftErr != nil {
-				return shiftErr
+			if !exists || currentList != card.ListKey {
+				if _, shiftErr := tx.Exec(ctx, `
+					UPDATE issue_cache SET position = position + 1
+					WHERE list_key = $1 AND issue_iid <> $2
+				`, card.ListKey, issueIID); shiftErr != nil {
+					return shiftErr
+				}
 			}
 			_, upsertErr := tx.Exec(ctx, `
 				INSERT INTO issue_cache
 				    (issue_iid, gitlab_issue_id, title, description, web_url, list_key, position,
 				     team_key, start_date, due_date, labels, gitlab_status_name, sync_state, gitlab_updated_at,
 				     created_at, updated_at)
-				VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, COALESCE($10::text[], '{}'),
-				        $11, 'synced', $12, $13, $14)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11::text[], '{}'),
+				        $12, 'synced', $13, $14, $15)
 				ON CONFLICT (issue_iid) DO UPDATE
 				SET gitlab_issue_id = EXCLUDED.gitlab_issue_id,
 				    title = EXCLUDED.title,
 				    description = EXCLUDED.description,
 				    web_url = EXCLUDED.web_url,
 				    list_key = EXCLUDED.list_key,
-				    position = 0,
+				    position = EXCLUDED.position,
 				    team_key = EXCLUDED.team_key,
 				    start_date = EXCLUDED.start_date,
 				    due_date = EXCLUDED.due_date,
@@ -210,7 +215,7 @@ func (r *Repository) ReconcileIssue(ctx context.Context, issueIID int64, card *d
 				    created_at = EXCLUDED.created_at,
 				    updated_at = EXCLUDED.updated_at
 			`, card.IssueIID, card.GitLabIssueID, card.Title, card.Description, nullableString(card.WebURL),
-				card.ListKey, card.TeamKey, nullableDate(card.StartDate), nullableDate(card.DueDate), card.Labels,
+				card.ListKey, targetPosition, card.TeamKey, nullableDate(card.StartDate), nullableDate(card.DueDate), card.Labels,
 				card.GitLabStatusName, card.UpdatedAt, card.CreatedAt, reconciledAt)
 			if upsertErr != nil {
 				return upsertErr

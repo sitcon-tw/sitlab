@@ -147,6 +147,24 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 			}
 		}));
 	};
+	const replaceCardForOperation = (issueIid: number, operationId: string, card: BoardCard) => {
+		updateBootstrap((current) => ({
+			...current,
+			board: {
+				...current.board,
+				cards: current.board.cards.map((item) => (item.issueIid === issueIid && item.pendingOperationId === operationId ? card : item))
+			}
+		}));
+	};
+	const patchCardForOperation = (issueIid: number, operationId: string, patch: Partial<BoardCard>) => {
+		updateBootstrap((current) => ({
+			...current,
+			board: {
+				...current.board,
+				cards: current.board.cards.map((item) => (item.issueIid === issueIid && item.pendingOperationId === operationId ? { ...item, ...patch } : item))
+			}
+		}));
+	};
 
 	const runCardMutation = (card: BoardCard, patch: CardPatch, request: (operationId: string) => ReturnType<typeof updateTeam>) => {
 		const operationId = crypto.randomUUID();
@@ -163,11 +181,11 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 			request(operationId)
 				.then((result) => {
 					localRetries.current.delete(operationId);
-					replaceCard(card.issueIid, result.card);
+					replaceCardForOperation(card.issueIid, operationId, result.card);
 				})
 				.catch((cause: unknown) => {
 					localRetries.current.set(operationId, execute);
-					patchCard(card.issueIid, {
+					patchCardForOperation(card.issueIid, operationId, {
 						...patch,
 						syncState: "failed",
 						syncError: errorMessage(cause, "變更尚未同步，請重試。"),
@@ -208,11 +226,11 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 			createCard({ operationId, ...input })
 				.then((result) => {
 					localRetries.current.delete(operationId);
-					replaceCard(temporaryIid, result.card);
+					replaceCardForOperation(temporaryIid, operationId, result.card);
 				})
 				.catch((cause: unknown) => {
 					localRetries.current.set(operationId, execute);
-					patchCard(temporaryIid, {
+					patchCardForOperation(temporaryIid, operationId, {
 						syncState: "failed",
 						syncError: errorMessage(cause, "卡片尚未建立，請重試。"),
 						pendingOperationId: operationId
@@ -298,11 +316,11 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 			moveCard(card, operationId, listKey, position)
 				.then((result) => {
 					localRetries.current.delete(operationId);
-					replaceCard(card.issueIid, result.card);
+					replaceCardForOperation(card.issueIid, operationId, result.card);
 				})
 				.catch((cause: unknown) => {
 					localRetries.current.set(operationId, execute);
-					patchCard(card.issueIid, {
+					patchCardForOperation(card.issueIid, operationId, {
 						position,
 						listKey,
 						labels,
