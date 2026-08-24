@@ -87,7 +87,7 @@ teams:
     gitlab_label: "Team::行銷組"
     active: true
     members: []
-    leaders: [qiqii77]
+    leaders: [hyslchs]
 
   - key: general-coordinator
     name: 總召組
