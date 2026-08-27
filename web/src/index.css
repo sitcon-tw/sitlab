@@ -3,6 +3,7 @@
 	min-height: 100svh;
 }
 
+/* The MD3 ripple and state layers replace the platform tap highlight. */
 button,
 a,
 input,
@@ -11,37 +12,7 @@ textarea {
 	-webkit-tap-highlight-color: transparent;
 }
 
-.sb-button {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: 0.5rem;
-	min-height: 2.5rem;
-	padding: 0 1rem;
-	border: 1px solid transparent;
-	border-radius: 0.25rem;
-	font-weight: 750;
-	letter-spacing: 0;
-}
-
-.sb-button-primary {
-	color: var(--sb-on-brand);
-	background: var(--sb-brand);
-}
-
-.sb-button-primary:hover:not(:disabled) {
-	background: var(--sb-brand-hover);
-}
-
-.sb-button:disabled {
-	opacity: 0.48;
-}
-
-.sb-button:focus-visible {
-	outline: 2px solid var(--sb-focus);
-	outline-offset: 2px;
-}
-
+/* Startup error shell. The class names are asserted by the e2e suite. */
 .sb-startup-error {
 	display: grid;
 	width: min(100% - 2rem, 34rem);
@@ -49,21 +20,30 @@ textarea {
 	margin: 0 auto;
 	place-content: center;
 	justify-items: start;
+	gap: var(--md-space-2);
 }
 
 .sb-startup-error h1 {
 	margin: 0;
-	font-size: 1.75rem;
+	font-size: var(--md-sys-typescale-headline-medium-size);
+	font-weight: var(--md-sys-typescale-headline-medium-weight);
+	line-height: var(--md-sys-typescale-headline-medium-line-height);
+	letter-spacing: var(--md-sys-typescale-headline-medium-tracking);
 }
 
 .sb-startup-error > p:not(.sb-brand) {
-	margin: 0.5rem 0 1.5rem;
-	color: var(--sb-text-muted);
+	margin: 0 0 var(--md-space-4);
+	font-size: var(--md-sys-typescale-body-large-size);
+	line-height: var(--md-sys-typescale-body-large-line-height);
+	color: var(--md-sys-color-on-surface-variant);
+	letter-spacing: var(--md-sys-typescale-body-large-tracking);
 }
 
 .sb-brand {
-	margin: 0 0 0.5rem;
-	color: var(--sb-brand);
-	font-size: 0.75rem;
-	font-weight: 850;
+	margin: 0;
+	font-size: var(--md-sys-typescale-label-large-size);
+	font-weight: var(--md-sys-typescale-label-large-weight);
+	line-height: var(--md-sys-typescale-label-large-line-height);
+	color: var(--md-sys-color-primary);
+	letter-spacing: var(--md-sys-typescale-label-large-tracking);
 }

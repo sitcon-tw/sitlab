@@ -1,3 +1,4 @@
+import { Button } from "@project-template/ui";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
 interface AppErrorBoundaryProps {
@@ -27,9 +28,9 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 				<p className="sb-brand">SITCON / 2027</p>
 				<h1>看板畫面發生錯誤</h1>
 				<p>你的資料沒有遺失。請重新載入看板；如果問題持續發生，請將發生時間提供給維護者。</p>
-				<button type="button" className="sb-button sb-button-primary" onClick={() => window.location.reload()}>
+				<Button variant="filled" onClick={() => window.location.reload()}>
 					重新載入
-				</button>
+				</Button>
 			</main>
 		);
 	}

@@ -2,6 +2,7 @@ import { savePreferences } from "@/features/board/boardApi";
 import { activeMembers, type Bootstrap, type DirectoryTeam } from "@/features/board/model";
 import { Avatar } from "@/shared/Avatar";
 import { errorMessage } from "@/shared/api/client";
+import { Button } from "@project-template/ui";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
 import styles from "./OnboardingPage.module.css";
@@ -60,10 +61,16 @@ export function OnboardingPage({ bootstrap, updateBootstrap }: OnboardingPagePro
 				</div>
 				<footer className={styles.footer}>
 					{error ? <p role="alert">{error}</p> : <span />}
-					<button type="button" className="sb-button sb-button-primary" disabled={!selectedTeam || submitting} onClick={confirm}>
-						<Check size="1rem" aria-hidden="true" />
-						{submitting ? "儲存中..." : "確認主要組別"}
-					</button>
+					<Button
+						variant="filled"
+						disabled={!selectedTeam}
+						loading={submitting}
+						loadingLabel="儲存中"
+						leadingIcon={<Check size="1rem" aria-hidden="true" />}
+						onClick={confirm}
+					>
+						確認主要組別
+					</Button>
 				</footer>
 			</section>
 		</main>
@@ -90,7 +97,7 @@ function TeamChoice({
 		<article className={styles.team} data-selected={selected}>
 			<div className={styles.teamSummary}>
 				<button type="button" className={styles.teamSelect} role="radio" aria-checked={selected} onClick={onSelect}>
-					<span className={styles.radio}>{selected ? <Check size="0.75rem" aria-hidden="true" /> : null}</span>
+					<span className={styles.radio} aria-hidden="true" />
 					<span>
 						<strong>{team.name}</strong>
 						<small>{members.length} 人</small>

@@ -4,6 +4,7 @@ import { bootstrapQueryKey, refreshBootstrap } from "@/features/board/bootstrap"
 import type { Bootstrap } from "@/features/board/model";
 import { subscribeBootstrapEvents } from "@/features/board/realtime";
 import { OnboardingPage } from "@/features/onboarding/OnboardingPage";
+import { Button } from "@project-template/ui";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -83,9 +84,9 @@ function StartupError({ message }: { message: string }) {
 			<p className="sb-brand">SITCON / 2027</p>
 			<h1>無法開啟工作看板</h1>
 			<p>{message}</p>
-			<button type="button" className="sb-button sb-button-primary" onClick={() => window.location.reload()}>
+			<Button variant="filled" onClick={() => window.location.reload()}>
 				重新整理
-			</button>
+			</Button>
 		</main>
 	);
 }

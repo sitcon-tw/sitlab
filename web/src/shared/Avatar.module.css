@@ -4,12 +4,12 @@
 	flex: none;
 	place-items: center;
 	overflow: hidden;
-	color: var(--sb-avatar-text);
-	font-weight: 760;
+	color: var(--md-sys-color-on-primary-container);
+	font-weight: var(--md-sys-typescale-label-medium-weight);
 	line-height: 1;
-	background: var(--sb-avatar-bg);
-	border: 1px solid var(--sb-border-strong);
-	border-radius: 50%;
+	background: var(--md-sys-color-primary-container);
+	border: 1px solid var(--md-sys-color-outline-variant);
+	border-radius: var(--md-sys-shape-corner-full);
 }
 
 .avatar img {
@@ -19,7 +19,7 @@
 	height: 100%;
 	object-fit: cover;
 	opacity: 0;
-	transition: opacity var(--sb-motion-fast);
+	transition: opacity var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
 }
 
 .avatar img.loaded {
