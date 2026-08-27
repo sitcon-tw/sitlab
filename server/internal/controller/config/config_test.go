@@ -19,7 +19,8 @@ func TestLocalDefaultsUseFourteenDayRollingSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	if cfg.Session.TTL != 14*24*time.Hour || cfg.Directory.FilePath != LocalDirectoryPath || cfg.ServiceName != "sitcon-board-controller" ||
-		cfg.Sync.BoardInterval != 5*time.Second {
+		cfg.Sync.BoardInterval != 10*time.Second || cfg.Sync.BoardPresenceInterval != 5*time.Minute ||
+		cfg.Sync.BoardDeepInterval != time.Hour || cfg.Sync.BoardDeltaOverlap != 2*time.Minute {
 		t.Fatalf("config = %#v", cfg)
 	}
 }

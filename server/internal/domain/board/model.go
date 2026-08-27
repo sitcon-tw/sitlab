@@ -92,15 +92,32 @@ type Snapshot struct {
 // flight is stamped later than StartedAt and so survives. SyncedAt is the app's wall
 // clock and only stamps updated_at.
 type BoardObservation struct {
-	Lists []List
 	Cards []Card
-	// Retained are issues GitLab reported that could not be placed on a lane. They are
-	// neither written nor pruned, so a card stays visible as last known while someone
-	// fixes the issue in GitLab.
-	Retained  []int64
-	Revision  string
+	// Retained are issues GitLab reported but that this read did not carry a card for:
+	// either it could not be placed on a lane, or a presence read confirmed it exists
+	// without paying for its content. They are neither written nor pruned.
+	Retained []int64
+	// Removed are issues this read positively determined are no longer board cards.
+	// An incremental read has to say so explicitly: omitting an issue there means
+	// "unchanged", not "gone", so an issue that lost its Team:: label would otherwise
+	// linger until the next full sweep.
+	Removed []int64
+	// Complete marks a read that enumerated the whole project. Only a complete read
+	// may prune, because a partial one cannot tell "deleted" from "not mentioned".
+	Complete bool
+	// Watermark advances the incremental cursor to the newest GitLab timestamp this
+	// read observed. Nil leaves the cursor alone, which is what a sweep wants: it
+	// enumerates the project without establishing a new incremental boundary.
+	Watermark *time.Time
 	StartedAt time.Time
 	SyncedAt  time.Time
+}
+
+// SyncCursor is where the incremental board read left off.
+type SyncCursor struct {
+	// Watermark is GitLab's own newest updated_at that a successful read has observed.
+	// Nil means nothing has been read yet and the next read must be a full sweep.
+	Watermark *time.Time
 }
 
 type Mutation struct {
@@ -129,6 +146,14 @@ type CanonicalIssue struct {
 	GitLabStatusName      string
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
+}
+
+// IssueDigest is the cheap half of a GitLab issue: enough to tell whether the cache is
+// current without paying for description, labels, assignees and status widgets. A
+// presence sweep reads these for the whole project and refetches only what drifted.
+type IssueDigest struct {
+	IssueIID  int64
+	UpdatedAt time.Time
 }
 
 type IssueMutation struct {

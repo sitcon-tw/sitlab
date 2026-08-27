@@ -142,7 +142,14 @@ func New(ctx context.Context) (*Application, error) {
 func (a *Application) Run(ctx context.Context) error {
 	workerCtx, cancelWorkers := context.WithCancel(ctx)
 	defer cancelWorkers()
-	go a.Sync.Run(workerCtx, a.Config.Sync.DirectoryInterval, a.Config.Sync.BoardInterval)
+	go a.Sync.Run(workerCtx, appsync.Intervals{
+		Directory:     a.Config.Sync.DirectoryInterval,
+		BoardDelta:    a.Config.Sync.BoardInterval,
+		BoardPresence: a.Config.Sync.BoardPresenceInterval,
+		BoardDeep:     a.Config.Sync.BoardDeepInterval,
+		DeltaOverlap:  a.Config.Sync.BoardDeltaOverlap,
+		MaxBackoff:    a.Config.Sync.BoardMaxBackoff,
+	})
 	go a.Sync.RunOperations(workerCtx, a.Config.Sync.OperationInterval)
 	go a.Sync.RunWebhooks(workerCtx, a.Config.Sync.OperationInterval)
 	go a.Events.RunRevisionListener(workerCtx)

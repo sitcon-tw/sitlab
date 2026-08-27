@@ -2,13 +2,9 @@ package sync
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -39,6 +35,43 @@ type Service struct {
 	refresh   chan struct{}
 	webhook   chan struct{}
 	observer  WebhookObserver
+
+	// deltaOverlap widens each incremental read backwards so a row that committed
+	// before the watermark but only became visible after it is not lost. Run overrides
+	// the default from configuration.
+	deltaOverlap time.Duration
+}
+
+// Intervals paces the background reads. The three board tiers answer different
+// questions and so run at different rates: the delta keeps content fresh, the presence
+// sweep is the only thing that can notice a deletion, and the deep sweep is the
+// backstop for drift that changes nothing observable.
+type Intervals struct {
+	Directory     time.Duration
+	BoardDelta    time.Duration
+	BoardPresence time.Duration
+	BoardDeep     time.Duration
+	DeltaOverlap  time.Duration
+	MaxBackoff    time.Duration
+}
+
+// backoff holds a failing read off the wire instead of hammering GitLab every tick.
+type backoff struct {
+	failures int
+	until    time.Time
+	max      time.Duration
+}
+
+func (b *backoff) ready(now time.Time) bool { return !now.Before(b.until) }
+
+func (b *backoff) record(now time.Time, err error) {
+	if err == nil {
+		b.failures, b.until = 0, time.Time{}
+		return
+	}
+	b.failures++
+	delay := time.Second << min(b.failures-1, 8)
+	b.until = now.Add(min(delay, b.max))
 }
 
 type WebhookObserver interface {
@@ -49,6 +82,7 @@ func NewService(gitlab GitLab, directory DirectorySource, repo Repository, actor
 	return &Service{
 		gitlab: gitlab, directory: directory, repo: repo, actors: actors, log: log, now: time.Now, tracer: tracer,
 		refresh: make(chan struct{}, 1), webhook: make(chan struct{}, 1),
+		deltaOverlap: 2 * time.Minute,
 	}
 }
 
@@ -95,32 +129,131 @@ func (s *Service) RefreshDirectory(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) RefreshBoard(ctx context.Context) error {
-	ctx, span := s.tracer.Start(ctx, "sync.board")
+// RefreshBoardDelta reads only what GitLab changed since the last successful read.
+//
+// It walks UPDATED_ASC: updated_at only moves forward, so an issue edited mid-
+// pagination can only jump past the cursor, never behind it. Rows can repeat, which is
+// harmless because the merge no-ops on unchanged content.
+func (s *Service) RefreshBoardDelta(ctx context.Context) error {
+	ctx, span := s.tracer.Start(ctx, "sync.board.delta")
+	defer span.End()
+	cursor, err := s.repo.BoardCursor(ctx)
+	if err != nil {
+		return technical(span, "load board cursor", err)
+	}
+	if cursor.Watermark == nil {
+		// Nothing has been read yet, so there is no boundary to read forward from.
+		return s.RefreshBoardDeep(ctx)
+	}
+	// Overlap, even though updatedAfter is inclusive. Inclusivity only covers rows we
+	// could see; it does nothing for a row that committed at T but did not become
+	// visible until T+n, behind a long transaction or a lagging read replica. Without
+	// the window that row falls behind the watermark and is lost for good.
+	since := cursor.Watermark.Add(-s.deltaOverlap)
+	now := s.now().UTC()
+	issues, err := s.gitlab.Issues(ctx, IssueFilter{UpdatedAfter: &since, Order: IssueOrderUpdatedAsc})
+	if err != nil {
+		s.recordFailure(ctx, "board", now, err)
+		return technical(span, "read GitLab board delta", err)
+	}
+	watermark := *cursor.Watermark
+	for _, issue := range issues {
+		if issue.UpdatedAt.After(watermark) {
+			watermark = issue.UpdatedAt.UTC()
+		}
+	}
+	return s.applyIssues(ctx, span, boardRead{
+		issues: issues, removeUnmapped: true, watermark: &watermark, now: now,
+	})
+}
+
+// RefreshBoardPresence enumerates which issues still exist, without paying for their
+// content. It is the only thing that can notice a deletion: GitLab has no webhook for
+// one, and an incremental read can never observe an absence.
+func (s *Service) RefreshBoardPresence(ctx context.Context) error {
+	ctx, span := s.tracer.Start(ctx, "sync.board.presence")
 	defer span.End()
 	now := s.now().UTC()
-	// Read PostgreSQL's clock before the first GitLab page. A webhook that reconciles
-	// a card while this read is in flight stamps it later than this instant, which is
-	// how the merge tells "GitLab dropped it" from "we learned about it more recently
-	// than this read could see".
 	startedAt, err := s.repo.SweepStartedAt(ctx)
 	if err != nil {
-		return technical(span, "read board sweep start", err)
+		return technical(span, "read presence sweep start", err)
 	}
+	digests, err := s.gitlab.IssueDigests(ctx)
+	if err != nil {
+		s.recordFailure(ctx, "board", now, err)
+		return technical(span, "read GitLab issue digests", err)
+	}
+	present := make([]int64, 0, len(digests))
+	for _, digest := range digests {
+		present = append(present, digest.IssueIID)
+	}
+	// Every issue is Retained: this read confirms existence and nothing else, so it
+	// prunes what GitLab no longer lists and writes nothing. Content drift is the
+	// delta read's job, and the deep sweep's.
+	if err := s.repo.ApplyBoardObservation(ctx, board.BoardObservation{
+		Retained: present, Complete: true, StartedAt: startedAt, SyncedAt: now,
+	}); err != nil {
+		return technical(span, "apply board presence sweep", err)
+	}
+	return nil
+}
+
+// RefreshBoardDeep re-reads every issue in full. It is the backstop for drift that
+// changes nothing observable: a renamed Team:: label, a reconfigured lifecycle, a
+// webhook that was dead-lettered.
+//
+// It walks CREATED_ASC because created_at never changes, so a full enumeration under
+// concurrent edits yields neither skips nor duplicates.
+func (s *Service) RefreshBoardDeep(ctx context.Context) error {
+	ctx, span := s.tracer.Start(ctx, "sync.board.deep")
+	defer span.End()
+	now := s.now().UTC()
+	startedAt, err := s.repo.SweepStartedAt(ctx)
+	if err != nil {
+		return technical(span, "read deep sweep start", err)
+	}
+	issues, err := s.gitlab.Issues(ctx, IssueFilter{Order: IssueOrderCreatedAsc})
+	if err != nil {
+		s.recordFailure(ctx, "board", now, err)
+		return technical(span, "read GitLab board", err)
+	}
+	watermark := time.Time{}
+	for _, issue := range issues {
+		if issue.UpdatedAt.After(watermark) {
+			watermark = issue.UpdatedAt.UTC()
+		}
+	}
+	read := boardRead{issues: issues, complete: true, startedAt: startedAt, now: now}
+	if !watermark.IsZero() {
+		read.watermark = &watermark
+	}
+	return s.applyIssues(ctx, span, read)
+}
+
+type boardRead struct {
+	issues []GitLabIssue
+	// complete marks a read that enumerated the whole project.
+	complete bool
+	// removeUnmapped turns an issue that no longer carries an active Team:: label into
+	// an explicit deletion. A complete read does not need it -- omission already means
+	// gone -- but an incremental one does, where omission means unchanged.
+	removeUnmapped bool
+	watermark      *time.Time
+	startedAt      time.Time
+	now            time.Time
+}
+
+func (s *Service) applyIssues(ctx context.Context, span trace.Span, read boardRead) error {
 	directorySnapshot, err := s.repo.Snapshot(ctx)
 	if err != nil {
 		return technical(span, "load directory for board", err)
 	}
-	issues, err := s.gitlab.Issues(ctx)
-	if err != nil {
-		s.recordFailure(ctx, "board", now, err)
-		return technical(span, "load GitLab issues", err)
-	}
-	cards := make([]board.Card, 0, len(issues))
+	cards := make([]board.Card, 0, len(read.issues))
 	retained := make([]int64, 0)
+	removed := make([]int64, 0)
 	positions := make(map[string]int32)
-	for _, issue := range issues {
-		card, ok, mapErr := mapIssue(issue, directorySnapshot, DefaultBoardLists, positions)
+	for _, issue := range read.issues {
+		card, included, mapErr := mapIssue(issue, directorySnapshot, DefaultBoardLists, positions)
 		if mapErr != nil {
 			// One issue set to a status no lane maps to used to abort the whole
 			// refresh, so a single mis-set issue froze every card and showed the
@@ -129,22 +262,25 @@ func (s *Service) RefreshBoard(ctx context.Context) error {
 			// A lifecycle genuinely missing a required status is a different
 			// failure and still fails the GitLab read outright.
 			retained = append(retained, issue.IssueIID)
-			if quarantineErr := s.repo.QuarantineCard(ctx, issue.IssueIID, issue.UpdatedAt.UTC(), mapErr.Error(), now); quarantineErr != nil {
+			if quarantineErr := s.repo.QuarantineCard(ctx, issue.IssueIID, issue.UpdatedAt.UTC(), mapErr.Error(), read.now); quarantineErr != nil {
 				return technical(span, "quarantine unmapped GitLab issue", quarantineErr)
 			}
 			span.RecordError(mapErr)
 			continue
 		}
-		if !ok {
+		if !included {
+			if read.removeUnmapped {
+				removed = append(removed, issue.IssueIID)
+			}
 			continue
 		}
 		cards = append(cards, card)
 	}
-	if err := s.repo.ReplaceBoard(ctx, board.BoardObservation{
-		Lists: DefaultBoardLists, Cards: cards, Retained: retained,
-		Revision: boardRevision(issues), StartedAt: startedAt, SyncedAt: now,
+	if err := s.repo.ApplyBoardObservation(ctx, board.BoardObservation{
+		Cards: cards, Retained: retained, Removed: removed, Complete: read.complete,
+		Watermark: read.watermark, StartedAt: read.startedAt, SyncedAt: read.now,
 	}); err != nil {
-		return technical(span, "replace board snapshot", err)
+		return technical(span, "apply board observation", err)
 	}
 	return nil
 }
@@ -153,7 +289,10 @@ func (s *Service) InitialSync(ctx context.Context) error {
 	if err := s.RefreshDirectory(ctx); err != nil {
 		return err
 	}
-	return s.RefreshBoard(ctx)
+	if err := s.repo.EnsureBoardLists(ctx, DefaultBoardLists, s.now().UTC()); err != nil {
+		return err
+	}
+	return s.RefreshBoardDeep(ctx)
 }
 
 func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
@@ -355,17 +494,44 @@ func (s *Service) RunWebhooks(ctx context.Context, pollInterval time.Duration) {
 	}
 }
 
-func (s *Service) Run(ctx context.Context, directoryInterval, boardInterval time.Duration) {
-	if directoryInterval <= 0 {
-		directoryInterval = 5 * time.Minute
+func (s *Service) Run(ctx context.Context, intervals Intervals) {
+	if intervals.Directory <= 0 {
+		intervals.Directory = 5 * time.Minute
 	}
-	if boardInterval <= 0 {
-		boardInterval = 5 * time.Second
+	if intervals.BoardDelta <= 0 {
+		intervals.BoardDelta = 10 * time.Second
 	}
-	directoryTicker := time.NewTicker(directoryInterval)
-	boardTicker := time.NewTicker(boardInterval)
+	if intervals.BoardPresence <= 0 {
+		intervals.BoardPresence = 5 * time.Minute
+	}
+	if intervals.BoardDeep <= 0 {
+		intervals.BoardDeep = time.Hour
+	}
+	if intervals.MaxBackoff <= 0 {
+		intervals.MaxBackoff = 5 * time.Minute
+	}
+	if intervals.DeltaOverlap > 0 {
+		s.deltaOverlap = intervals.DeltaOverlap
+	}
+	directoryTicker := time.NewTicker(intervals.Directory)
+	deltaTicker := time.NewTicker(intervals.BoardDelta)
+	presenceTicker := time.NewTicker(intervals.BoardPresence)
+	deepTicker := time.NewTicker(intervals.BoardDeep)
 	defer directoryTicker.Stop()
-	defer boardTicker.Stop()
+	defer deltaTicker.Stop()
+	defer presenceTicker.Stop()
+	defer deepTicker.Stop()
+	// One gate for all three board tiers. They read the same GitLab project, so a
+	// failing delta should hold the sweeps back too rather than each tier discovering
+	// the outage on its own schedule.
+	board := &backoff{max: intervals.MaxBackoff}
+	run := func(read func(context.Context) error) {
+		now := s.now().UTC()
+		if !board.ready(now) {
+			return
+		}
+		board.record(now, read(ctx))
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -374,8 +540,12 @@ func (s *Service) Run(ctx context.Context, directoryInterval, boardInterval time
 			_ = s.InitialSync(ctx)
 		case <-directoryTicker.C:
 			_ = s.RefreshDirectory(ctx)
-		case <-boardTicker.C:
-			_ = s.RefreshBoard(ctx)
+		case <-deltaTicker.C:
+			run(s.RefreshBoardDelta)
+		case <-presenceTicker.C:
+			run(s.RefreshBoardPresence)
+		case <-deepTicker.C:
+			run(s.RefreshBoardDeep)
 		}
 	}
 }
@@ -430,43 +600,6 @@ func issueTeam(labels []string, teams []directory.Team) (directory.Team, bool) {
 		}
 	}
 	return directory.Team{}, false
-}
-
-func boardRevision(issues []GitLabIssue) string {
-	type revisionIssue struct {
-		IssueIID              int64
-		GitLabIssueID         int64
-		Title                 string
-		Description           string
-		WebURL                string
-		Labels                []string
-		AssigneeGitLabUserIDs []int64
-		StartDate             string
-		DueDate               string
-		State                 string
-		GitLabStatusName      string
-		CreatedAt             time.Time
-		UpdatedAt             time.Time
-	}
-	rows := make([]revisionIssue, 0, len(issues))
-	for _, issue := range issues {
-		labels := append([]string(nil), issue.Labels...)
-		assignees := append([]int64(nil), issue.AssigneeGitLabUserIDs...)
-		sort.Strings(labels)
-		slices.Sort(assignees)
-		rows = append(rows, revisionIssue{
-			IssueIID: issue.IssueIID, GitLabIssueID: issue.GitLabIssueID,
-			Title: issue.Title, Description: issue.Description, WebURL: issue.WebURL,
-			Labels: labels, AssigneeGitLabUserIDs: assignees,
-			StartDate: issue.StartDate, DueDate: issue.DueDate, State: issue.State,
-			GitLabStatusName: issue.GitLabStatusName,
-			CreatedAt:        issue.CreatedAt.UTC(), UpdatedAt: issue.UpdatedAt.UTC(),
-		})
-	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].IssueIID < rows[j].IssueIID })
-	payload, _ := json.Marshal(rows)
-	digest := sha256.Sum256(payload)
-	return hex.EncodeToString(digest[:])
 }
 
 func (s *Service) recordFailure(ctx context.Context, resource string, at time.Time, err error) {

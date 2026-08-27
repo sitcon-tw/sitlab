@@ -235,37 +235,17 @@ func (r *Repository) QuarantineCard(ctx context.Context, issueIID int64, gitLabU
 	return nil
 }
 
-func (r *Repository) ReplaceBoard(ctx context.Context, observation domainboard.BoardObservation) error {
-	lists, cards, revision, syncedAt := observation.Lists, observation.Cards, observation.Revision, observation.SyncedAt
+// EnsureBoardLists writes the fixed lane configuration. The lanes are compile-time
+// constants, so this runs at startup rather than on every board read.
+func (r *Repository) EnsureBoardLists(ctx context.Context, lists []domainboard.List, at time.Time) error {
 	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
-		var currentRevision string
-		var hadError bool
-		snapshotErr := tx.QueryRow(ctx, `
-			SELECT source_revision, last_error IS NOT NULL
-			FROM sync_snapshots
-			WHERE resource = 'board'
-		`).Scan(&currentRevision, &hadError)
-		if snapshotErr != nil && !errors.Is(snapshotErr, pgx.ErrNoRows) {
-			return snapshotErr
-		}
-		listsUnchanged, err := boardListsMatch(ctx, tx, lists)
+		unchanged, err := boardListsMatch(ctx, tx, lists)
 		if err != nil {
 			return err
 		}
-		if snapshotErr == nil && currentRevision == revision && listsUnchanged {
-			if _, err := tx.Exec(ctx, `
-				UPDATE sync_snapshots
-				SET last_success_at = $1, last_attempt_at = $1, last_error = NULL, updated_at = $1
-				WHERE resource = 'board'
-			`, syncedAt); err != nil {
-				return err
-			}
-			if hadError {
-				_, err = bumpBootstrapRevision(ctx, tx, syncedAt)
-			}
-			return err
+		if unchanged {
+			return nil
 		}
-
 		for _, list := range lists {
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO board_lists (key, display_name, gitlab_status_name, position, closed, color, updated_at)
@@ -277,35 +257,98 @@ func (r *Repository) ReplaceBoard(ctx context.Context, observation domainboard.B
 				    closed = EXCLUDED.closed,
 				    color = EXCLUDED.color,
 				    updated_at = EXCLUDED.updated_at
-			`, list.Key, list.Name, list.GitLabStatusName, list.Position, list.Closed, list.Color, syncedAt); err != nil {
+			`, list.Key, list.Name, list.GitLabStatusName, list.Position, list.Closed, list.Color, at); err != nil {
 				return err
 			}
 		}
-		observations := make([]cardObservation, 0, len(cards))
+		_, err = bumpBootstrapRevision(ctx, tx, at)
+		return err
+	})
+}
+
+// BoardCursor reports where the incremental read left off. The watermark is stored as
+// RFC3339Nano in sync_snapshots.source_revision, which used to hold a content hash of
+// the whole board.
+func (r *Repository) BoardCursor(ctx context.Context) (domainboard.SyncCursor, error) {
+	var raw string
+	err := postgres.Executor(ctx, r.pool).QueryRow(ctx, `
+		SELECT source_revision FROM sync_snapshots WHERE resource = 'board'
+	`).Scan(&raw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domainboard.SyncCursor{}, nil
+	}
+	if err != nil {
+		return domainboard.SyncCursor{}, fmt.Errorf("load board cursor: %w", err)
+	}
+	watermark, parseErr := time.Parse(time.RFC3339Nano, raw)
+	if parseErr != nil {
+		// A snapshot written before the cursor became a timestamp, or seeded by a
+		// test. Treat it as no cursor so the next read is a full sweep.
+		return domainboard.SyncCursor{}, nil
+	}
+	return domainboard.SyncCursor{Watermark: &watermark}, nil
+}
+
+// ApplyBoardObservation merges one GitLab read and records that the board sync is
+// healthy. It advances the incremental cursor only when the read established a new
+// boundary; a sweep enumerates the project without moving it.
+func (r *Repository) ApplyBoardObservation(ctx context.Context, observation domainboard.BoardObservation) error {
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		var hadError bool
+		snapshotErr := tx.QueryRow(ctx, `
+			SELECT last_error IS NOT NULL FROM sync_snapshots WHERE resource = 'board'
+		`).Scan(&hadError)
+		if snapshotErr != nil && !errors.Is(snapshotErr, pgx.ErrNoRows) {
+			return snapshotErr
+		}
+		cards := observation.Cards
+		observations := make([]cardObservation, 0, len(cards)+len(observation.Removed))
 		for index := range cards {
 			observations = append(observations, cardObservation{IssueIID: cards[index].IssueIID, Card: &cards[index]})
 		}
-		if _, err := applyCardObservations(ctx, tx, observationBatch{
-			Observations: observations, Complete: true, Retained: observation.Retained,
-			StartedAt: observation.StartedAt, ObservedAt: syncedAt,
-		}); err != nil {
-			return err
+		for _, issueIID := range observation.Removed {
+			observations = append(observations, cardObservation{IssueIID: issueIID})
 		}
-		_, err = tx.Exec(ctx, `
-			INSERT INTO sync_snapshots
-			    (resource, source_revision, last_success_at, last_attempt_at, last_error, updated_at)
-			VALUES ('board', $1, $2, $2, NULL, $2)
-			ON CONFLICT (resource) DO UPDATE
-			SET source_revision = EXCLUDED.source_revision,
-			    last_success_at = EXCLUDED.last_success_at,
-			    last_attempt_at = EXCLUDED.last_attempt_at,
-			    last_error = NULL,
-			    updated_at = EXCLUDED.updated_at
-		`, revision, syncedAt)
+		merge, err := applyCardObservations(ctx, tx, observationBatch{
+			Observations: observations, Complete: observation.Complete, Retained: observation.Retained,
+			StartedAt: observation.StartedAt, ObservedAt: observation.SyncedAt,
+		})
 		if err != nil {
 			return err
 		}
-		_, err = bumpBootstrapRevision(ctx, tx, syncedAt)
+		if observation.Watermark != nil {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO sync_snapshots
+				    (resource, source_revision, last_success_at, last_attempt_at, last_error, updated_at)
+				VALUES ('board', $1, $2, $2, NULL, $2)
+				ON CONFLICT (resource) DO UPDATE
+				SET source_revision = EXCLUDED.source_revision,
+				    last_success_at = EXCLUDED.last_success_at,
+				    last_attempt_at = EXCLUDED.last_attempt_at,
+				    last_error = NULL,
+				    updated_at = EXCLUDED.updated_at
+			`, observation.Watermark.UTC().Format(time.RFC3339Nano), observation.SyncedAt); err != nil {
+				return err
+			}
+		} else if _, err := tx.Exec(ctx, `
+			INSERT INTO sync_snapshots
+			    (resource, source_revision, last_success_at, last_attempt_at, last_error, updated_at)
+			VALUES ('board', '', $1, $1, NULL, $1)
+			ON CONFLICT (resource) DO UPDATE
+			SET last_success_at = EXCLUDED.last_success_at,
+			    last_attempt_at = EXCLUDED.last_attempt_at,
+			    last_error = NULL,
+			    updated_at = EXCLUDED.updated_at
+		`, observation.SyncedAt); err != nil {
+			return err
+		}
+		// A read that changed nothing must stay silent, or every poll wakes every
+		// browser. Clearing a previous failure is itself worth announcing, because it
+		// flips the board out of its offline indicator.
+		if !merge.touched() && !hadError {
+			return nil
+		}
+		_, err = bumpBootstrapRevision(ctx, tx, observation.SyncedAt)
 		return err
 	})
 }
@@ -429,6 +472,7 @@ func (r *Repository) CompleteOperation(ctx context.Context, pending domainboard.
 				    labels = COALESCE($6::text[], '{}'),
 				    gitlab_status_name = $7,
 				    gitlab_updated_at = $8,
+				    gitlab_observed_at = $11,
 				    created_at = $9,
 				    sync_state = CASE WHEN pending_operation_id = $10 THEN 'synced' ELSE sync_state END,
 				    sync_error = CASE WHEN pending_operation_id = $10 THEN NULL ELSE sync_error END,
@@ -453,6 +497,7 @@ func (r *Repository) CompleteOperation(ctx context.Context, pending domainboard.
 				    labels = CASE WHEN pending_operation_id = $4 THEN COALESCE($6::text[], '{}') ELSE labels END,
 				    gitlab_status_name = CASE WHEN pending_operation_id = $4 THEN $7 ELSE gitlab_status_name END,
 				    gitlab_updated_at = $8,
+				    gitlab_observed_at = $9,
 				    sync_state = CASE WHEN pending_operation_id = $4 THEN 'synced' ELSE sync_state END,
 				    sync_error = CASE WHEN pending_operation_id = $4 THEN NULL ELSE sync_error END,
 				    pending_operation_id = CASE WHEN pending_operation_id = $4 THEN NULL ELSE pending_operation_id END,

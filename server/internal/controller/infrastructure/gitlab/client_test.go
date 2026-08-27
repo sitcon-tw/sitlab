@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -75,7 +76,7 @@ func TestSnapshotEndpointsParseMembersAndIssues(t *testing.T) {
 	if err != nil || len(members) != 1 || members[0].GitLabUserID != 101 {
 		t.Fatalf("ProjectMembers() = %#v, %v", members, err)
 	}
-	issues, err := client.Issues(context.Background())
+	issues, err := client.Issues(context.Background(), sync.IssueFilter{})
 	if err != nil || len(issues) != 1 || len(issues[0].AssigneeGitLabUserIDs) != 2 || issues[0].Description != "工作拆解" || issues[0].StartDate != "2026-07-17" {
 		t.Fatalf("Issues() = %#v, %v", issues, err)
 	}
@@ -128,7 +129,7 @@ func TestInvisibleProjectIsAnErrorRatherThanAnEmptyBoard(t *testing.T) {
 		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", AccessToken: "project-token",
 	})
 
-	issues, err := client.Issues(context.Background())
+	issues, err := client.Issues(context.Background(), sync.IssueFilter{})
 	if err == nil {
 		t.Fatalf("Issues() = %#v, want an error so the snapshot merge never prunes a live board", issues)
 	}
@@ -170,7 +171,7 @@ func TestLifecycleStatusesAreCachedAndDroppedOnAFailedValidation(t *testing.T) {
 	client.now = func() time.Time { return clock }
 
 	for range 3 {
-		if _, err := client.Issues(context.Background()); err != nil {
+		if _, err := client.Issues(context.Background(), sync.IssueFilter{}); err != nil {
 			t.Fatalf("Issues() error = %v", err)
 		}
 	}
@@ -179,7 +180,7 @@ func TestLifecycleStatusesAreCachedAndDroppedOnAFailedValidation(t *testing.T) {
 	}
 
 	clock = clock.Add(lifecycleTTL)
-	if _, err := client.Issues(context.Background()); err != nil {
+	if _, err := client.Issues(context.Background(), sync.IssueFilter{}); err != nil {
 		t.Fatalf("Issues() error = %v", err)
 	}
 	if lifecycleCalls != 2 {
@@ -190,17 +191,111 @@ func TestLifecycleStatusesAreCachedAndDroppedOnAFailedValidation(t *testing.T) {
 	// who fixes it is picked up by the next poll instead of after the TTL.
 	lifecycleBody = partial
 	client.forgetLifecycle()
-	if _, err := client.Issues(context.Background()); err == nil {
+	if _, err := client.Issues(context.Background(), sync.IssueFilter{}); err == nil {
 		t.Fatal("Issues() = nil error for a lifecycle missing required statuses")
 	}
 	before := lifecycleCalls
 	lifecycleBody = full
-	if _, err := client.Issues(context.Background()); err != nil {
+	if _, err := client.Issues(context.Background(), sync.IssueFilter{}); err != nil {
 		t.Fatalf("Issues() error = %v", err)
 	}
 	if lifecycleCalls != before+1 {
 		t.Fatalf("lifecycle requests = %d, want %d: the failed lifecycle stayed cached", lifecycleCalls, before+1)
 	}
+}
+
+func TestIssueReadsSendTheFilterGitLabExpects(t *testing.T) {
+	t.Parallel()
+	lifecycle := `{"data":{"project":{"workItemTypes":{"nodes":[{"name":"Issue","widgetDefinitions":[{"allowedStatuses":[{"id":"status-1","name":"Waiting"},{"id":"status-2","name":"Inbox"},{"id":"status-3","name":"To do"},{"id":"status-4","name":"Doing"},{"id":"status-5","name":"Review"},{"id":"status-6","name":"Done"}]}]}]}}}}`
+	type sentRequest struct {
+		query     string
+		variables map[string]any
+	}
+	var seen []sentRequest
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		var payload struct {
+			Query     string         `json:"query"`
+			Variables map[string]any `json:"variables"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(payload.Query, "WorkItemLifecycle") {
+			return response(http.StatusOK, lifecycle), nil
+		}
+		seen = append(seen, sentRequest{query: payload.Query, variables: payload.Variables})
+		return response(http.StatusOK, `{"data":{"project":{"workItems":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}`), nil
+	})
+	client, _ := New(&http.Client{Transport: transport}, Config{
+		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", AccessToken: "project-token",
+	})
+
+	since := time.Date(2026, time.August, 18, 8, 30, 0, 0, time.UTC)
+	if _, err := client.Issues(context.Background(), sync.IssueFilter{UpdatedAfter: &since, Order: sync.IssueOrderUpdatedAsc}); err != nil {
+		t.Fatalf("Issues() error = %v", err)
+	}
+	if len(seen) != 1 {
+		t.Fatalf("requests = %d, want 1", len(seen))
+	}
+	if !strings.Contains(seen[0].query, "sort: UPDATED_ASC") {
+		t.Errorf("delta query did not sort UPDATED_ASC: %s", seen[0].query)
+	}
+	if got := seen[0].variables["updatedAfter"]; got != "2026-08-18T08:30:00Z" {
+		t.Errorf("updatedAfter variable = %v, want RFC3339 2026-08-18T08:30:00Z", got)
+	}
+
+	seen = nil
+	if _, err := client.IssueDigests(context.Background()); err != nil {
+		t.Fatalf("IssueDigests() error = %v", err)
+	}
+	if len(seen) != 1 {
+		t.Fatalf("digest requests = %d, want 1", len(seen))
+	}
+	// Widgets are what make a full-project read expensive; a presence sweep must not
+	// pay for them.
+	if strings.Contains(seen[0].query, "widgets") {
+		t.Errorf("digest query selected widgets: %s", seen[0].query)
+	}
+	if !strings.Contains(seen[0].query, "sort: CREATED_ASC") {
+		t.Errorf("digest query did not sort CREATED_ASC: %s", seen[0].query)
+	}
+	if _, sent := seen[0].variables["updatedAfter"]; sent {
+		t.Error("digest query sent a lower bound; it must enumerate the whole project")
+	}
+
+	seen = nil
+	if _, err := client.Issues(context.Background(), sync.IssueFilter{IIDs: []int64{7, 9}}); err != nil {
+		t.Fatalf("Issues(by iid) error = %v", err)
+	}
+	if got := toStrings(t, seen[0].variables["iids"]); !slices.Equal(got, []string{"7", "9"}) {
+		t.Errorf("iids variable = %v, want [7 9]", got)
+	}
+
+	// An explicitly empty set means "no issues", not "every issue".
+	seen = nil
+	if issues, err := client.Issues(context.Background(), sync.IssueFilter{IIDs: []int64{}}); err != nil || len(issues) != 0 {
+		t.Fatalf("Issues(no iids) = %#v, %v", issues, err)
+	}
+	if len(seen) != 0 {
+		t.Fatalf("an empty iid set still hit GitLab %d times", len(seen))
+	}
+}
+
+func toStrings(t *testing.T, value any) []string {
+	t.Helper()
+	raw, ok := value.([]any)
+	if !ok {
+		t.Fatalf("value %#v is not a list", value)
+	}
+	result := make([]string, 0, len(raw))
+	for _, item := range raw {
+		text, ok := item.(string)
+		if !ok {
+			t.Fatalf("item %#v is not a string", item)
+		}
+		result = append(result, text)
+	}
+	return result
 }
 
 func TestProjectLabelsAndCommentsUseExpectedCredentialsAndPagination(t *testing.T) {

@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"slices"
 	"testing"
@@ -29,35 +30,161 @@ func TestDefaultBoardListsMatchGitLabBoard(t *testing.T) {
 	}
 }
 
-func TestBoardRevisionIsOrderIndependentAndContentAddressed(t *testing.T) {
-	t.Parallel()
-	now := time.Date(2026, time.August, 22, 8, 0, 0, 0, time.UTC)
-	first := GitLabIssue{
-		IssueIID: 1, GitLabIssueID: 10, Title: "First", Labels: []string{"Backend", "Team::開發組"},
-		AssigneeGitLabUserIDs: []int64{202, 101}, GitLabStatusName: "Doing", UpdatedAt: now,
-	}
-	second := GitLabIssue{IssueIID: 2, GitLabIssueID: 20, Title: "Second", GitLabStatusName: "Review", UpdatedAt: now.Add(time.Second)}
+func developmentDirectory() directory.Snapshot {
+	return directory.Snapshot{Teams: []directory.Team{{
+		Key: "development", TitlePrefix: "[開發組]", GitLabLabel: "Team::開發組", Active: true,
+	}}}
+}
 
-	want := boardRevision([]GitLabIssue{first, second})
-	first.Labels = []string{"Team::開發組", "Backend"}
-	first.AssigneeGitLabUserIDs = []int64{101, 202}
-	if got := boardRevision([]GitLabIssue{second, first}); got != want {
-		t.Fatalf("boardRevision() changed with source ordering: got %q want %q", got, want)
+func TestDeltaReadsForwardFromGitLabsClockNotTheLocalOne(t *testing.T) {
+	t.Parallel()
+	watermark := time.Date(2026, time.August, 18, 8, 0, 0, 0, time.UTC)
+	newest := watermark.Add(7 * time.Minute)
+	gitlab := &gitLabFake{issues: []GitLabIssue{{
+		IssueIID: 11, GitLabIssueID: 110, Title: "[開發組] 工作",
+		Labels: []string{"Team::開發組"}, GitLabStatusName: "Doing", UpdatedAt: newest,
+	}}}
+	repo := &repoFake{directory: developmentDirectory(), watermark: &watermark}
+	service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
+	service.deltaOverlap = 2 * time.Minute
+	// A local clock hours away from GitLab's must not reach the boundary arithmetic.
+	service.now = func() time.Time { return watermark.Add(-9 * time.Hour) }
+
+	if err := service.RefreshBoardDelta(context.Background()); err != nil {
+		t.Fatalf("RefreshBoardDelta() error = %v", err)
 	}
-	second.GitLabStatusName = "Done"
-	if got := boardRevision([]GitLabIssue{first, second}); got == want {
-		t.Fatal("boardRevision() ignored a canonical status change")
+	if gitlab.lastFilter.UpdatedAfter == nil {
+		t.Fatal("delta read sent no lower bound; it would re-read the whole project every tick")
 	}
-	if boardRevision(nil) != boardRevision([]GitLabIssue{}) {
-		t.Fatal("boardRevision() must be stable for an empty board")
+	if want := watermark.Add(-2 * time.Minute); !gitlab.lastFilter.UpdatedAfter.Equal(want) {
+		t.Fatalf("updatedAfter = %v, want the stored watermark less the overlap %v", *gitlab.lastFilter.UpdatedAfter, want)
+	}
+	if gitlab.lastFilter.Order != IssueOrderUpdatedAsc {
+		t.Fatalf("delta order = %v, want UPDATED_ASC so a row edited mid-pagination cannot be skipped", gitlab.lastFilter.Order)
+	}
+	if repo.observation.Complete {
+		t.Fatal("a delta read must never be Complete, or it would prune every card it did not mention")
+	}
+	if repo.observation.Watermark == nil || !repo.observation.Watermark.Equal(newest) {
+		t.Fatalf("watermark = %v, want the newest GitLab timestamp observed %v", repo.observation.Watermark, newest)
+	}
+}
+
+func TestDeltaTreatsALostTeamLabelAsARemoval(t *testing.T) {
+	t.Parallel()
+	watermark := time.Date(2026, time.August, 18, 8, 0, 0, 0, time.UTC)
+	updated := watermark.Add(time.Minute)
+	gitlab := &gitLabFake{issues: []GitLabIssue{
+		// No active Team:: label: this issue is no longer a board card.
+		{IssueIID: 12, GitLabIssueID: 120, Title: "無組別", GitLabStatusName: "Doing", UpdatedAt: updated},
+		{IssueIID: 13, GitLabIssueID: 130, Title: "[開發組] 工作", Labels: []string{"Team::開發組"}, GitLabStatusName: "Doing", UpdatedAt: updated},
+	}}
+	repo := &repoFake{directory: developmentDirectory(), watermark: &watermark}
+	service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
+
+	if err := service.RefreshBoardDelta(context.Background()); err != nil {
+		t.Fatalf("RefreshBoardDelta() error = %v", err)
+	}
+	// A full read expresses "gone" by omission, but in a delta omission means
+	// "unchanged", so the removal has to be stated outright.
+	if len(repo.observation.Removed) != 1 || repo.observation.Removed[0] != 12 {
+		t.Fatalf("removed = %v, want [12]", repo.observation.Removed)
+	}
+	if len(repo.observation.Cards) != 1 || repo.observation.Cards[0].IssueIID != 13 {
+		t.Fatalf("cards = %#v, want only the issue that still carries a team label", repo.observation.Cards)
+	}
+}
+
+func TestDeepReadPrunesByOmissionRatherThanStatement(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 18, 8, 0, 0, 0, time.UTC)
+	gitlab := &gitLabFake{issues: []GitLabIssue{
+		{IssueIID: 14, GitLabIssueID: 140, Title: "無組別", GitLabStatusName: "Doing", UpdatedAt: now},
+	}}
+	repo := &repoFake{directory: developmentDirectory()}
+	service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
+
+	if err := service.RefreshBoardDeep(context.Background()); err != nil {
+		t.Fatalf("RefreshBoardDeep() error = %v", err)
+	}
+	if !repo.observation.Complete {
+		t.Fatal("a deep read must be Complete, or nothing would ever prune")
+	}
+	if len(repo.observation.Removed) != 0 {
+		t.Fatalf("removed = %v, want none: a complete read prunes by omission", repo.observation.Removed)
+	}
+	if gitlab.lastFilter.Order != IssueOrderCreatedAsc {
+		t.Fatalf("deep order = %v, want CREATED_ASC so a full pass cannot skip or repeat", gitlab.lastFilter.Order)
+	}
+}
+
+func TestPresenceSweepConfirmsExistenceWithoutWritingContent(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 18, 8, 0, 0, 0, time.UTC)
+	gitlab := &gitLabFake{issues: []GitLabIssue{
+		{IssueIID: 15, GitLabIssueID: 150, Title: "[開發組] 一", Labels: []string{"Team::開發組"}, GitLabStatusName: "Doing", UpdatedAt: now},
+		{IssueIID: 16, GitLabIssueID: 160, Title: "[開發組] 二", Labels: []string{"Team::開發組"}, GitLabStatusName: "Doing", UpdatedAt: now},
+	}}
+	repo := &repoFake{directory: developmentDirectory()}
+	service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
+
+	if err := service.RefreshBoardPresence(context.Background()); err != nil {
+		t.Fatalf("RefreshBoardPresence() error = %v", err)
+	}
+	if !repo.observation.Complete {
+		t.Fatal("a presence sweep must be Complete: noticing deletions is the whole point of it")
+	}
+	if len(repo.observation.Cards) != 0 {
+		t.Fatalf("cards = %#v, want none: a presence sweep confirms existence and nothing else", repo.observation.Cards)
+	}
+	if len(repo.observation.Retained) != 2 {
+		t.Fatalf("retained = %v, want both issues", repo.observation.Retained)
+	}
+	if repo.observation.Watermark != nil {
+		t.Fatal("a presence sweep read no content, so it must not move the incremental boundary")
+	}
+	if repo.observation.StartedAt.IsZero() {
+		t.Fatal("a pruning read needs the instant it began, or a concurrent reconcile looks prunable")
+	}
+}
+
+func TestBoardBackoffHoldsOffAfterFailureAndResetsOnSuccess(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 18, 8, 0, 0, 0, time.UTC)
+	gate := &backoff{max: time.Minute}
+	if !gate.ready(now) {
+		t.Fatal("a fresh gate must allow the first read")
+	}
+	gate.record(now, errors.New("gitlab unavailable"))
+	if gate.ready(now.Add(500 * time.Millisecond)) {
+		t.Fatal("gate opened immediately after a failure")
+	}
+	if !gate.ready(now.Add(2 * time.Second)) {
+		t.Fatal("gate stayed shut past its first delay")
+	}
+	gate.record(now, errors.New("still down"))
+	gate.record(now, errors.New("still down"))
+	first := gate.until
+	gate.record(now, errors.New("still down"))
+	if !gate.until.After(first) {
+		t.Fatal("repeated failures must widen the delay")
+	}
+	if gate.until.Sub(now) > time.Minute {
+		t.Fatalf("delay %v exceeded the configured maximum", gate.until.Sub(now))
+	}
+	gate.record(now, nil)
+	if !gate.ready(now) || gate.failures != 0 {
+		t.Fatal("a success must clear the gate")
 	}
 }
 
 type gitLabFake struct {
-	members []directory.GitLabMember
-	issues  []GitLabIssue
-	applied *IssueMutation
-	token   string
+	members    []directory.GitLabMember
+	issues     []GitLabIssue
+	applied    *IssueMutation
+	token      string
+	lastFilter IssueFilter
+	filters    []IssueFilter
 }
 
 type actorTokensFake struct{}
@@ -84,7 +211,30 @@ func (f *directorySourceFake) DirectoryFile(context.Context) (directory.File, st
 func (f *gitLabFake) ProjectMembers(context.Context) ([]directory.GitLabMember, error) {
 	return f.members, nil
 }
-func (f *gitLabFake) Issues(context.Context) ([]GitLabIssue, error) { return f.issues, nil }
+func (f *gitLabFake) Issues(_ context.Context, filter IssueFilter) ([]GitLabIssue, error) {
+	f.lastFilter = filter
+	f.filters = append(f.filters, filter)
+	if filter.UpdatedAfter == nil {
+		return f.issues, nil
+	}
+	// GitLab treats updatedAfter as inclusive, so a row exactly on the boundary comes
+	// back rather than being skipped.
+	matched := make([]GitLabIssue, 0, len(f.issues))
+	for _, issue := range f.issues {
+		if !issue.UpdatedAt.Before(*filter.UpdatedAfter) {
+			matched = append(matched, issue)
+		}
+	}
+	return matched, nil
+}
+
+func (f *gitLabFake) IssueDigests(context.Context) ([]board.IssueDigest, error) {
+	digests := make([]board.IssueDigest, 0, len(f.issues))
+	for _, issue := range f.issues {
+		digests = append(digests, board.IssueDigest{IssueIID: issue.IssueIID, UpdatedAt: issue.UpdatedAt})
+	}
+	return digests, nil
+}
 func (f *gitLabFake) Issue(_ context.Context, issueIID int64) (GitLabIssue, error) {
 	for _, issue := range f.issues {
 		if issue.IssueIID == issueIID {
@@ -113,8 +263,10 @@ type repoFake struct {
 	webhookCompleted bool
 	reconciled       *board.Card
 	observation      board.BoardObservation
+	observations     []board.BoardObservation
 	quarantined      []int64
 	sweepStartedAt   time.Time
+	watermark        *time.Time
 }
 
 func (f *repoFake) Snapshot(context.Context) (directory.Snapshot, error) { return f.directory, nil }
@@ -123,10 +275,15 @@ func (f *repoFake) ReplaceDirectory(_ context.Context, snapshot directory.Snapsh
 	f.directory = snapshot
 	return nil
 }
-func (f *repoFake) ReplaceBoard(_ context.Context, observation board.BoardObservation) error {
+func (f *repoFake) ApplyBoardObservation(_ context.Context, observation board.BoardObservation) error {
 	f.cards = observation.Cards
 	f.observation = observation
+	f.observations = append(f.observations, observation)
 	return nil
+}
+func (f *repoFake) EnsureBoardLists(context.Context, []board.List, time.Time) error { return nil }
+func (f *repoFake) BoardCursor(context.Context) (board.SyncCursor, error) {
+	return board.SyncCursor{Watermark: f.watermark}, nil
 }
 func (f *repoFake) SweepStartedAt(context.Context) (time.Time, error) {
 	if f.sweepStartedAt.IsZero() {
@@ -213,7 +370,7 @@ func TestRefreshBoardMapsNativeStatusesAndSkipsUnknownTeams(t *testing.T) {
 	}}
 	repo := &repoFake{directory: directory.Snapshot{Teams: []directory.Team{{Key: "development", TitlePrefix: "[開發組]", GitLabLabel: "Team::開發組", Active: true}}}}
 	service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
-	if err := service.RefreshBoard(context.Background()); err != nil {
+	if err := service.RefreshBoardDeep(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if len(repo.cards) != 4 || repo.cards[0].ListKey != "doing" || repo.cards[0].Title != "修正流程" || repo.cards[0].StartDate != "2026-07-17" ||
@@ -240,7 +397,7 @@ func TestUnmappedStatusQuarantinesOneCardWithoutFailingTheBatch(t *testing.T) {
 	}}}}
 	service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
 
-	if err := service.RefreshBoard(context.Background()); err != nil {
+	if err := service.RefreshBoardDeep(context.Background()); err != nil {
 		t.Fatalf("RefreshBoard() error = %v, want one bad issue not to fail the whole board", err)
 	}
 	if len(repo.cards) != 1 || repo.cards[0].IssueIID != 10 {
@@ -270,7 +427,7 @@ func TestRefreshBoardReadsTheSweepStartBeforeFetchingGitLab(t *testing.T) {
 		sweepStartedAt: time.Date(2026, time.August, 18, 7, 59, 0, 0, time.UTC),
 	}
 	service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
-	if err := service.RefreshBoard(context.Background()); err != nil {
+	if err := service.RefreshBoardDeep(context.Background()); err != nil {
 		t.Fatalf("RefreshBoard() error = %v", err)
 	}
 	if !repo.observation.StartedAt.Equal(repo.sweepStartedAt) {

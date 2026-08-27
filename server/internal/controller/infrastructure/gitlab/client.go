@@ -68,36 +68,92 @@ func (c *Client) ProjectMembers(ctx context.Context) ([]directory.GitLabMember, 
 	return result, nil
 }
 
-func (c *Client) Issues(ctx context.Context) ([]appsync.GitLabIssue, error) {
-	statuses, err := c.lifecycleStatuses(ctx)
+func (c *Client) Issues(ctx context.Context, filter appsync.IssueFilter) ([]appsync.GitLabIssue, error) {
+	if err := c.requireLifecycle(ctx); err != nil {
+		return nil, err
+	}
+	if filter.IIDs != nil && len(filter.IIDs) == 0 {
+		return nil, nil
+	}
+	sort := "UPDATED_ASC"
+	if filter.Order == appsync.IssueOrderCreatedAsc {
+		sort = "CREATED_ASC"
+	}
+	result := make([]appsync.GitLabIssue, 0)
+	err := c.pageWorkItems(ctx, workItemsQueryFor(sort, workItemFields), filter, func(data *workItemsData) {
+		for _, row := range data.Project.WorkItems.Nodes {
+			result = append(result, mapWorkItem(row))
+		}
+	})
 	if err != nil {
 		return nil, err
+	}
+	return result, nil
+}
+
+// IssueDigests enumerates the project by created_at, which never changes, so a full
+// pass under concurrent edits neither skips nor repeats an issue.
+func (c *Client) IssueDigests(ctx context.Context) ([]board.IssueDigest, error) {
+	if err := c.requireLifecycle(ctx); err != nil {
+		return nil, err
+	}
+	digests := make([]board.IssueDigest, 0)
+	err := c.pageWorkItems(ctx, workItemsQueryFor("CREATED_ASC", workItemDigestFields), appsync.IssueFilter{}, func(data *workItemsData) {
+		for _, row := range data.Project.WorkItems.Nodes {
+			iid, _ := strconv.ParseInt(row.IID, 10, 64)
+			digests = append(digests, board.IssueDigest{IssueIID: iid, UpdatedAt: row.UpdatedAt.UTC()})
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return digests, nil
+}
+
+func (c *Client) pageWorkItems(ctx context.Context, query string, filter appsync.IssueFilter, collect func(*workItemsData)) error {
+	variables := map[string]any{"fullPath": c.config.ProjectPath}
+	if len(filter.IIDs) > 0 {
+		iids := make([]string, 0, len(filter.IIDs))
+		for _, iid := range filter.IIDs {
+			iids = append(iids, strconv.FormatInt(iid, 10))
+		}
+		variables["iids"] = iids
+	}
+	if filter.UpdatedAfter != nil {
+		variables["updatedAfter"] = filter.UpdatedAfter.UTC().Format(time.RFC3339Nano)
+	}
+	var cursor *string
+	for {
+		variables["after"] = cursor
+		var data workItemsData
+		if err := c.graphQL(ctx, query, variables, c.config.AccessToken, "", &data); err != nil {
+			return err
+		}
+		collect(&data)
+		if !data.Project.WorkItems.PageInfo.HasNextPage {
+			return nil
+		}
+		cursor = data.Project.WorkItems.PageInfo.EndCursor
+	}
+}
+
+// requireLifecycle fails the read when the project lifecycle lacks a status the board
+// maps a lane to. That is a configuration error, distinct from a single issue sitting
+// on some other status, which the sync quarantines instead.
+func (c *Client) requireLifecycle(ctx context.Context) error {
+	statuses, err := c.lifecycleStatuses(ctx)
+	if err != nil {
+		return err
 	}
 	for _, required := range []string{"Waiting", "Inbox", "To do", "Doing", "Review", "Done"} {
 		if _, ok := statuses[strings.ToLower(required)]; !ok {
 			// Drop the cache so a corrected lifecycle is picked up by the next
 			// poll rather than after the TTL expires.
 			c.forgetLifecycle()
-			return nil, fmt.Errorf("GitLab lifecycle does not contain required status %q", required)
+			return fmt.Errorf("GitLab lifecycle does not contain required status %q", required)
 		}
 	}
-	result := make([]appsync.GitLabIssue, 0)
-	var cursor *string
-	for {
-		var data workItemsData
-		err := c.graphQL(ctx, workItemsQuery, map[string]any{"fullPath": c.config.ProjectPath, "after": cursor}, c.config.AccessToken, "", &data)
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range data.Project.WorkItems.Nodes {
-			result = append(result, mapWorkItem(row))
-		}
-		if !data.Project.WorkItems.PageInfo.HasNextPage {
-			break
-		}
-		cursor = data.Project.WorkItems.PageInfo.EndCursor
-	}
-	return result, nil
+	return nil
 }
 
 func (c *Client) Issue(ctx context.Context, issueIID int64) (appsync.GitLabIssue, error) {
@@ -609,14 +665,25 @@ const workItemFields = `
     ... on WorkItemWidgetDescription { description }
   }`
 
-const workItemsQuery = `query WorkItems($fullPath: ID!, $after: String) {
+// workItemsQueryFor builds a paged work-item read. sort is interpolated rather than
+// passed as a variable so the query depends on no enum type name; the value is chosen
+// from a closed set below, never from input.
+func workItemsQueryFor(sort, fields string) string {
+	return `query WorkItems($fullPath: ID!, $after: String, $iids: [String!], $updatedAfter: Time) {
   project(fullPath: $fullPath) {
-    workItems(first: 100, after: $after, types: [ISSUE], sort: UPDATED_DESC) {
+    workItems(first: 100, after: $after, iids: $iids, updatedAfter: $updatedAfter, types: [ISSUE], sort: ` + sort + `) {
       pageInfo { hasNextPage endCursor }
-      nodes {` + workItemFields + `}
+      nodes {` + fields + `}
     }
   }
 }`
+}
+
+// workItemDigestFields is deliberately widget-free. Selecting widgets is what makes a
+// full-project read expensive, and a presence sweep only needs to know what exists and
+// when it last moved.
+const workItemDigestFields = `
+  iid updatedAt`
 
 const workItemQuery = `query WorkItem($fullPath: ID!, $iids: [String!]) {
   project(fullPath: $fullPath) {

@@ -29,7 +29,11 @@ Configuration uses the `SITCON_BOARD_` prefix and is validated before the HTTP s
 | `SITCON_BOARD_GITLAB_GROUP_WEBHOOK_SIGNING_TOKEN`   | Production       | Separate GitLab-generated key for Group Member events.                   |
 | `SITCON_BOARD_DIRECTORY_FILE`                       | No               | Directory YAML path; the image sets `/app/board-directory.yml`.          |
 | `SITCON_BOARD_DIRECTORY_SYNC_INTERVAL`              | No               | Member and directory refresh; default `5m`.                              |
-| `SITCON_BOARD_BOARD_SYNC_INTERVAL`                  | No               | Work Item recovery refresh; default `5s`.                                |
+| `SITCON_BOARD_BOARD_SYNC_INTERVAL`                  | No               | Incremental Work Item read; default `10s`.                               |
+| `SITCON_BOARD_BOARD_PRESENCE_SWEEP_INTERVAL`        | No               | Read that notices deleted issues; default `5m`.                          |
+| `SITCON_BOARD_BOARD_DEEP_SWEEP_INTERVAL`            | No               | Full re-read for silent drift; default `1h`.                             |
+| `SITCON_BOARD_BOARD_DELTA_OVERLAP`                  | No               | Safety window on each incremental read; default `2m`.                    |
+| `SITCON_BOARD_BOARD_SYNC_MAX_BACKOFF`               | No               | Cap on the delay after a failed GitLab read; default `5m`.               |
 | `SITCON_BOARD_OPERATION_POLL_INTERVAL`              | No               | Durable worker poll; default `500ms`.                                    |
 | `SITCON_BOARD_REQUEST_TIMEOUT`                      | No               | HTTP request timeout; default `15s`.                                     |
 | `SITCON_BOARD_SHUTDOWN_TIMEOUT`                     | No               | Graceful shutdown budget; default `10s`.                                 |

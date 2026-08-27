@@ -67,7 +67,19 @@ type Directory struct {
 
 type Sync struct {
 	DirectoryInterval time.Duration
-	BoardInterval     time.Duration
+	// BoardInterval paces the incremental board read.
+	BoardInterval time.Duration
+	// BoardPresenceInterval paces the read that notices deletions. GitLab has no
+	// webhook for a deleted issue and an incremental read can never observe an
+	// absence, so nothing else can.
+	BoardPresenceInterval time.Duration
+	// BoardDeepInterval paces the full re-read that catches drift changing nothing
+	// observable, such as a renamed Team:: label.
+	BoardDeepInterval time.Duration
+	// BoardDeltaOverlap widens each incremental read backwards to cover a row that
+	// committed before the watermark but became visible after it.
+	BoardDeltaOverlap time.Duration
+	BoardMaxBackoff   time.Duration
 	OperationInterval time.Duration
 }
 
@@ -111,9 +123,13 @@ func Load() (Config, error) {
 		},
 		Directory: Directory{FilePath: value("DIRECTORY_FILE", LocalDirectoryPath)},
 		Sync: Sync{
-			DirectoryInterval: durationValue("DIRECTORY_SYNC_INTERVAL", 5*time.Minute),
-			BoardInterval:     durationValue("BOARD_SYNC_INTERVAL", 5*time.Second),
-			OperationInterval: durationValue("OPERATION_POLL_INTERVAL", 500*time.Millisecond),
+			DirectoryInterval:     durationValue("DIRECTORY_SYNC_INTERVAL", 5*time.Minute),
+			BoardInterval:         durationValue("BOARD_SYNC_INTERVAL", 10*time.Second),
+			BoardPresenceInterval: durationValue("BOARD_PRESENCE_SWEEP_INTERVAL", 5*time.Minute),
+			BoardDeepInterval:     durationValue("BOARD_DEEP_SWEEP_INTERVAL", time.Hour),
+			BoardDeltaOverlap:     durationValue("BOARD_DELTA_OVERLAP", 2*time.Minute),
+			BoardMaxBackoff:       durationValue("BOARD_SYNC_MAX_BACKOFF", 5*time.Minute),
+			OperationInterval:     durationValue("OPERATION_POLL_INTERVAL", 500*time.Millisecond),
 		},
 		Observability: Observability{OTLPTracesEndpoint: value("OTEL_TRACES_ENDPOINT", "")},
 	}
@@ -146,6 +162,17 @@ func (c Config) Validate() error {
 	}
 	if c.Session.TTL != SessionTTL {
 		return errors.New("session TTL must remain 14 days")
+	}
+	// The overlap has to cover at least one whole tick, or a row that appears between
+	// two reads can fall between the watermark and the window and be lost.
+	if c.Sync.BoardDeltaOverlap < c.Sync.BoardInterval {
+		return errors.New("SITCON_BOARD_BOARD_DELTA_OVERLAP must be at least SITCON_BOARD_BOARD_SYNC_INTERVAL")
+	}
+	if c.Sync.BoardPresenceInterval <= c.Sync.BoardInterval {
+		return errors.New("SITCON_BOARD_BOARD_PRESENCE_SWEEP_INTERVAL must exceed SITCON_BOARD_BOARD_SYNC_INTERVAL")
+	}
+	if c.Sync.BoardPresenceInterval <= 0 || c.Sync.BoardDeepInterval <= 0 || c.Sync.BoardMaxBackoff <= 0 {
+		return errors.New("board sweep intervals must be positive")
 	}
 	if c.Sync.DirectoryInterval <= 0 || c.Sync.BoardInterval <= 0 || c.Sync.OperationInterval <= 0 {
 		return errors.New("sync intervals must be positive")

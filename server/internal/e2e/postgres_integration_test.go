@@ -267,7 +267,15 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 		GitLabStatusName: "Waiting", SyncState: domainboard.OperationSynced,
 		CreatedAt: now, UpdatedAt: now.Add(2 * time.Minute),
 	}
-	if err := replaceBoard(t, ctx, store, []domainboard.Card{bystander}, "board-2", now.Add(2*time.Minute)); err != nil {
+	// StartedAt comes from the real clock here, not the fixture's. The card being
+	// pruned was written by ProcessOne, which stamps gitlab_observed_at from the
+	// service's own clock, and pruning compares the two. A sweep dated 2026-07-14
+	// would sit before that stamp and correctly decline to prune.
+	sweepStart := time.Now().UTC().Add(time.Millisecond)
+	if err := store.ApplyBoardObservation(ctx, domainboard.BoardObservation{
+		Cards: []domainboard.Card{bystander}, Complete: true,
+		StartedAt: sweepStart, SyncedAt: now.Add(2 * time.Minute),
+	}); err != nil {
 		t.Fatalf("replace board without completed card: %v", err)
 	}
 	if _, err := store.Card(ctx, bystander.IssueIID); err != nil {
@@ -348,7 +356,10 @@ func (operationDirectoryFake) DirectoryFile(context.Context) (domaindirectory.Fi
 func (*operationGitLabFake) ProjectMembers(context.Context) ([]domaindirectory.GitLabMember, error) {
 	return nil, nil
 }
-func (*operationGitLabFake) Issues(context.Context) ([]appsync.GitLabIssue, error) {
+func (*operationGitLabFake) Issues(context.Context, appsync.IssueFilter) ([]appsync.GitLabIssue, error) {
+	return nil, nil
+}
+func (*operationGitLabFake) IssueDigests(context.Context) ([]domainboard.IssueDigest, error) {
 	return nil, nil
 }
 func (*operationGitLabFake) Issue(context.Context, int64) (appsync.GitLabIssue, error) {
@@ -567,8 +578,8 @@ func verifySweepKeepsCardsObservedMidFetch(t *testing.T, ctx context.Context, po
 
 	// The read only ever saw 803: it was paging before the webhook landed.
 	stillReported := card(803, 8003, "Still reported", now.Add(12*time.Minute))
-	if err := store.ReplaceBoard(ctx, domainboard.BoardObservation{
-		Lists: appsync.DefaultBoardLists, Cards: []domainboard.Card{stillReported}, Revision: "board-sweep-1",
+	if err := store.ApplyBoardObservation(ctx, domainboard.BoardObservation{
+		Cards: []domainboard.Card{stillReported}, Complete: true,
 		StartedAt: sweepStartedAt, SyncedAt: now.Add(12 * time.Minute),
 	}); err != nil {
 		t.Fatalf("apply sweep: %v", err)
@@ -679,11 +690,18 @@ func verifySnapshotMerge(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	first := card(601, 6001, "First snapshot card", "doing", "Doing", now.Add(time.Minute))
 	second := card(602, 6002, "Second snapshot card", "doing", "Doing", now.Add(time.Minute))
 
+	// A read that reports exactly what the cache already holds must stay silent. This
+	// used to be satisfied by a content hash of the whole board short-circuiting the
+	// merge before it began; now the merge runs and the per-row value comparison is
+	// what keeps it quiet, so the fixture has to match the seeded rows value for
+	// value rather than merely hash to the same thing.
+	unchangedFirst := card(601, 6001, "First snapshot card", "doing", "Doing", now)
+	unchangedSecond := card(602, 6002, "Second snapshot card", "doing", "Doing", now)
 	revisionBefore, err := store.Revision(ctx)
 	if err != nil {
 		t.Fatalf("load revision before identical snapshot: %v", err)
 	}
-	if err := replaceBoard(t, ctx, store, []domainboard.Card{second, first}, "board-1", now.Add(time.Minute)); err != nil {
+	if err := replaceBoard(t, ctx, store, []domainboard.Card{unchangedSecond, unchangedFirst}, now.Add(time.Minute)); err != nil {
 		t.Fatalf("replace identical board snapshot: %v", err)
 	}
 	revisionAfter, err := store.Revision(ctx)
@@ -692,7 +710,7 @@ func verifySnapshotMerge(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	}
 	assertStoredOrder(t, ctx, pool, "doing", []int64{601, 602})
 
-	if err := replaceBoard(t, ctx, store, []domainboard.Card{second, first}, "board-merge-2", now.Add(2*time.Minute)); err != nil {
+	if err := replaceBoard(t, ctx, store, []domainboard.Card{second, first}, now.Add(2*time.Minute)); err != nil {
 		t.Fatalf("merge changed board snapshot: %v", err)
 	}
 	assertStoredOrder(t, ctx, pool, "doing", []int64{601, 602})
@@ -709,27 +727,21 @@ func verifySnapshotMerge(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	}
 	first.UpdatedAt = now.Add(2 * time.Minute)
 	second.UpdatedAt = now.Add(2 * time.Minute)
-	var revisionBeforeStaleMerge string
-	if err := pool.QueryRow(ctx, `SELECT source_revision FROM sync_snapshots WHERE resource = 'board'`).Scan(&revisionBeforeStaleMerge); err != nil {
-		t.Fatalf("load revision before stale merge: %v", err)
-	}
-	if err := replaceBoard(t, ctx, store, []domainboard.Card{second, first}, "board-merge-3", now.Add(3*time.Minute)); err != nil {
+	watermarkBeforeStaleMerge := boardWatermark(t, ctx, pool)
+	if err := replaceBoard(t, ctx, store, []domainboard.Card{second, first}, now.Add(3*time.Minute)); err != nil {
 		t.Fatalf("merge stale board snapshot: %v", err)
 	}
 	if stored, err := store.Card(ctx, 601); err != nil || stored.ListKey != "review" || stored.Position != 0 {
 		t.Fatalf("stale snapshot overwrote completed move: card %#v, error %v", stored, err)
 	}
 
-	if err := replaceBoard(t, ctx, store, []domainboard.Card{second}, "board-merge-4", now.Add(3*time.Minute)); err != nil {
+	if err := replaceBoard(t, ctx, store, []domainboard.Card{second}, now.Add(3*time.Minute)); err != nil {
 		t.Fatalf("merge stale snapshot missing a recently updated card: %v", err)
 	}
 	if _, err := store.Card(ctx, 601); err != nil {
 		t.Fatalf("stale snapshot deleted a recently updated card: %v", err)
 	}
-	var revisionAfterStaleMerge string
-	if err := pool.QueryRow(ctx, `SELECT source_revision FROM sync_snapshots WHERE resource = 'board'`).Scan(&revisionAfterStaleMerge); err != nil {
-		t.Fatalf("load revision after stale merge: %v", err)
-	}
+	watermarkAfterStaleMerge := boardWatermark(t, ctx, pool)
 	// This assertion used to demand the opposite: a merge that skipped any row stored
 	// the *old* revision so the next poll would redo the whole board. Because the
 	// revision was a content hash of the whole board, one skipped row made the hash a
@@ -740,11 +752,11 @@ func verifySnapshotMerge(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	// superseded when the operation worker completes it, and a row we already hold
 	// newer data for needs no repair at all. So the cursor advances and the treadmill
 	// is gone.
-	if revisionAfterStaleMerge == revisionBeforeStaleMerge {
-		t.Fatalf("stale merge revision stayed at %q; a skipped row must not hold back the cursor", revisionAfterStaleMerge)
+	if watermarkAfterStaleMerge == watermarkBeforeStaleMerge {
+		t.Fatalf("cursor stayed at %q; a row skipped as stale must not hold it back", watermarkAfterStaleMerge)
 	}
-	if revisionAfterStaleMerge != "board-merge-4" {
-		t.Fatalf("stale merge revision = %q, want the revision this read actually saw", revisionAfterStaleMerge)
+	if parsed, err := time.Parse(time.RFC3339Nano, watermarkAfterStaleMerge); err != nil || !parsed.Equal(now.Add(3*time.Minute)) {
+		t.Fatalf("cursor = %q (%v), want the boundary this read reached", watermarkAfterStaleMerge, err)
 	}
 
 	second.UpdatedAt = now.Add(5 * time.Minute)
@@ -763,12 +775,23 @@ func verifySnapshotMerge(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 // than PostgreSQL's real clock because these fixtures live at a fixed date in the
 // past; a real now() would sit after every seeded gitlab_observed_at and make every
 // card look prunable.
-func replaceBoard(t *testing.T, ctx context.Context, store *pgsitcon.Repository, cards []domainboard.Card, revision string, syncedAt time.Time) error {
+func replaceBoard(t *testing.T, ctx context.Context, store *pgsitcon.Repository, cards []domainboard.Card, syncedAt time.Time) error {
 	t.Helper()
-	return store.ReplaceBoard(ctx, domainboard.BoardObservation{
-		Lists: appsync.DefaultBoardLists, Cards: cards, Revision: revision,
+	return store.ApplyBoardObservation(ctx, domainboard.BoardObservation{
+		Cards: cards, Complete: true, Watermark: &syncedAt,
 		StartedAt: syncedAt.Add(-time.Second), SyncedAt: syncedAt,
 	})
+}
+
+// boardWatermark reads the incremental cursor, which is stored as RFC3339Nano where a
+// content hash of the whole board used to live.
+func boardWatermark(t *testing.T, ctx context.Context, pool *pgxpool.Pool) string {
+	t.Helper()
+	var raw string
+	if err := pool.QueryRow(ctx, `SELECT source_revision FROM sync_snapshots WHERE resource = 'board'`).Scan(&raw); err != nil {
+		t.Fatalf("load board watermark: %v", err)
+	}
+	return raw
 }
 
 func assertStoredOrder(t *testing.T, ctx context.Context, pool *pgxpool.Pool, listKey string, want []int64) {
