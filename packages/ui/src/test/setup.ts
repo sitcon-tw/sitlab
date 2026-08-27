@@ -4,6 +4,17 @@ import { afterEach } from "vitest";
 
 afterEach(cleanup);
 
+// jsdom has no ResizeObserver; the MD3 tab indicator observes its list.
+class TestResizeObserver implements ResizeObserver {
+	disconnect() {}
+
+	observe() {}
+
+	unobserve() {}
+}
+
+globalThis.ResizeObserver = TestResizeObserver;
+
 Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
 	configurable: true,
 	value: () => null

@@ -128,9 +128,7 @@
 .md-menu-item:focus-visible,
 .md-checkbox:focus-visible,
 .md-radio:focus-visible,
-.md-input:focus-visible,
-.md-select:focus-visible,
-.md-textarea:focus-visible,
+.md-field__input:focus-visible,
 .md-tab:focus-visible {
 	outline: 3px solid var(--md-sys-color-secondary);
 	outline-offset: 2px;
@@ -998,326 +996,665 @@
 	}
 }
 
-/* ---------------------------------------------------------------------------
- * Carried forward from the pre-MD3 stylesheet, renamed only. These components
- * are converted to Material Design 3 in the next phase (A3). They still read
- * legacy --pt-* aliases, which resolve to --md-sys-* roles.
- * --------------------------------------------------------------------------- */
+/* --- Outlined text field -------------------------------------------------
+ *
+ * The floating label rides on :focus-within and :placeholder-shown, so the
+ * component needs no JavaScript and no controlled-value coupling. The notch is
+ * a <fieldset>/<legend>; the legend's own box is what opens the gap in the
+ * border, so the outline never has to know the label's width.
+ */
 
 .md-field {
 	display: grid;
-	gap: var(--pt-space-2);
+	gap: var(--md-space-1);
 }
-.md-field__label {
-	color: var(--pt-text);
-	font-size: 0.875rem;
-	font-weight: 650;
+
+.md-field__box {
+	position: relative;
+	display: flex;
+	align-items: center;
+	min-height: 3.5rem;
 }
-.md-field__optional {
-	color: var(--pt-text-subtle);
-	font-weight: 400;
-}
-.md-field__description {
-	color: var(--pt-text-muted);
-	font-size: 0.8125rem;
-}
-.md-field__error {
-	color: var(--pt-danger);
-	font-size: 0.8125rem;
-}
-.md-input,
-.md-select,
-.md-textarea {
+
+.md-field__input {
 	width: 100%;
-	min-height: var(--pt-control-md);
-	padding: var(--pt-space-2) var(--pt-space-3);
-	color: var(--pt-text);
-	background: var(--pt-surface);
-	border: 1px solid var(--pt-border);
-	border-radius: var(--pt-radius-sm);
-	letter-spacing: 0;
+	min-width: 0;
+	padding: var(--md-space-4);
+	font-family: var(--md-sys-typescale-body-large-font);
+	font-size: var(--md-sys-typescale-body-large-size);
+	line-height: var(--md-sys-typescale-body-large-line-height);
+	color: var(--md-sys-color-on-surface);
+	letter-spacing: var(--md-sys-typescale-body-large-tracking);
+	background: none;
+	/* Zero border: the fieldset outline is the only visible edge. The focus
+	 * indicator is shared with every other primitive, so it is not removed here. */
+	border: 0;
+	border-radius: var(--md-sys-shape-corner-extra-small);
 }
-.md-textarea {
+
+.md-field__input--textarea {
 	min-height: 7rem;
 	resize: vertical;
 }
-.md-input::placeholder,
-.md-textarea::placeholder {
-	color: var(--pt-text-subtle);
+
+.md-field--textarea .md-field__box {
+	align-items: stretch;
 }
-.md-input[aria-invalid="true"],
-.md-select[aria-invalid="true"],
-.md-textarea[aria-invalid="true"] {
-	border-color: var(--pt-danger);
+
+.md-field__input--select {
+	padding-inline-end: var(--md-space-8);
+	appearance: none;
 }
+
+/* MD3 trailing dropdown affordance, drawn with borders so no asset is needed. */
+.md-field--select .md-field__box::after {
+	position: absolute;
+	right: var(--md-space-4);
+	width: 0.5rem;
+	height: 0.5rem;
+	pointer-events: none;
+	content: "";
+	border-right: 2px solid var(--md-sys-color-on-surface-variant);
+	border-bottom: 2px solid var(--md-sys-color-on-surface-variant);
+	transform: translateY(-25%) rotate(45deg);
+}
+
+/* Placeholder text is only meaningful once the label has floated out of its way. */
+.md-field__input::placeholder {
+	color: var(--md-sys-color-on-surface-variant);
+	opacity: 0;
+}
+
+.md-field:focus-within .md-field__input::placeholder {
+	opacity: 1;
+}
+
+.md-field__label {
+	position: absolute;
+	top: 50%;
+	left: var(--md-space-4);
+	max-width: calc(100% - var(--md-space-8));
+	overflow: hidden;
+	font-size: var(--md-sys-typescale-body-large-size);
+	line-height: var(--md-sys-typescale-body-large-line-height);
+	color: var(--md-sys-color-on-surface-variant);
+	text-overflow: ellipsis;
+	letter-spacing: var(--md-sys-typescale-body-large-tracking);
+	white-space: nowrap;
+	pointer-events: none;
+	transform: translateY(-50%);
+	transform-origin: left center;
+	transition:
+		transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+		color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+		font-size var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+
+.md-field--textarea .md-field__label {
+	top: var(--md-space-4);
+	transform: none;
+}
+
+.md-field:focus-within .md-field__label,
+.md-field:has(.md-field__input:not(:placeholder-shown)) .md-field__label,
+.md-field[data-floating="true"] .md-field__label {
+	font-size: var(--md-sys-typescale-body-small-size);
+	line-height: var(--md-sys-typescale-body-small-line-height);
+	letter-spacing: var(--md-sys-typescale-body-small-tracking);
+	transform: translateY(-1.75rem);
+}
+
+.md-field--textarea:focus-within .md-field__label,
+.md-field--textarea:has(.md-field__input:not(:placeholder-shown)) .md-field__label {
+	transform: translateY(-1rem);
+}
+
+.md-field:focus-within .md-field__label {
+	color: var(--md-sys-color-primary);
+}
+
+.md-field[data-invalid="true"] .md-field__label {
+	color: var(--md-sys-color-error);
+}
+
+.md-field__outline {
+	position: absolute;
+	inset: 0;
+	min-width: 0;
+	padding: 0;
+	margin: 0;
+	pointer-events: none;
+	border: 1px solid var(--md-sys-color-outline);
+	border-radius: var(--md-sys-shape-corner-extra-small);
+	transition:
+		border-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+		border-width var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+}
+
+.md-field:hover .md-field__outline {
+	border-color: var(--md-sys-color-on-surface);
+}
+
+.md-field:focus-within .md-field__outline {
+	border-color: var(--md-sys-color-primary);
+	border-width: 2px;
+}
+
+.md-field[data-invalid="true"] .md-field__outline {
+	border-color: var(--md-sys-color-error);
+}
+
+/* The legend's box is the notch. Collapsed to zero width until the label floats. */
+.md-field__notch {
+	max-width: 0;
+	height: 0.6875rem;
+	padding: 0;
+	margin-inline-start: var(--md-space-3);
+	font-size: var(--md-sys-typescale-body-small-size);
+	line-height: var(--md-sys-typescale-body-small-line-height);
+	letter-spacing: var(--md-sys-typescale-body-small-tracking);
+	visibility: hidden;
+	transition: max-width var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+
+.md-field__notch > span {
+	display: inline-block;
+	padding-inline: var(--md-space-1);
+}
+
+.md-field:focus-within .md-field__notch,
+.md-field:has(.md-field__input:not(:placeholder-shown)) .md-field__notch,
+.md-field[data-floating="true"] .md-field__notch {
+	max-width: 100%;
+}
+
+.md-field__optional {
+	color: var(--md-sys-color-on-surface-variant);
+}
+
+.md-field__supporting {
+	padding-inline: var(--md-space-4);
+	margin: 0;
+	font-size: var(--md-sys-typescale-body-small-size);
+	line-height: var(--md-sys-typescale-body-small-line-height);
+	color: var(--md-sys-color-on-surface-variant);
+	letter-spacing: var(--md-sys-typescale-body-small-tracking);
+}
+
+.md-field__supporting--error {
+	color: var(--md-sys-color-error);
+}
+
+.md-field__input:disabled {
+	color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
+}
+
+.md-field:has(.md-field__input:disabled) .md-field__outline {
+	border-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+}
+
+.md-field:has(.md-field__input:disabled) .md-field__label {
+	color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
+}
+
+/* --- Card (Panel) --------------------------------------------------------- */
 
 .md-panel {
-	color: var(--pt-text);
-	background: var(--pt-surface);
-	border: 1px solid var(--pt-border);
-	border-radius: var(--pt-radius-md);
-}
-.md-panel--padded {
-	padding: var(--pt-space-5);
-}
-.md-panel__header {
-	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: var(--pt-space-4);
-	padding: var(--pt-space-4) var(--pt-space-5);
-	border-bottom: 1px solid var(--pt-border);
-}
-.md-panel__title {
-	margin: 0;
-	font-size: 1rem;
-	font-weight: 700;
-	letter-spacing: 0;
-}
-.md-panel__description {
-	margin: var(--pt-space-1) 0 0;
-	color: var(--pt-text-muted);
-	font-size: 0.875rem;
-}
-.md-panel__body {
-	padding: var(--pt-space-5);
+	display: block;
+	overflow: hidden;
+	background: var(--md-sys-color-surface-container-low);
+	border-radius: var(--md-sys-shape-corner-medium);
+	box-shadow: var(--md-sys-elevation-level1);
 }
 
-.md-page-shell {
-	width: min(100%, var(--pt-content-max));
-	margin: 0 auto;
-	padding: var(--pt-space-6);
+.md-panel--filled {
+	background: var(--md-sys-color-surface-container-highest);
+	box-shadow: var(--md-sys-elevation-level0);
 }
-.md-page-shell__header {
+
+.md-panel--outlined {
+	background: var(--md-sys-color-surface);
+	border: 1px solid var(--md-sys-color-outline-variant);
+	box-shadow: var(--md-sys-elevation-level0);
+}
+
+.md-panel--padded {
+	padding: var(--md-space-4);
+}
+
+.md-panel__header {
 	display: flex;
+	gap: var(--md-space-4);
 	align-items: flex-start;
 	justify-content: space-between;
-	gap: var(--pt-space-4);
-	margin-bottom: var(--pt-space-6);
+	padding: var(--md-space-4);
 }
+
+.md-panel__title {
+	margin: 0;
+	font-size: var(--md-sys-typescale-title-medium-size);
+	font-weight: var(--md-sys-typescale-title-medium-weight);
+	line-height: var(--md-sys-typescale-title-medium-line-height);
+	color: var(--md-sys-color-on-surface);
+	letter-spacing: var(--md-sys-typescale-title-medium-tracking);
+}
+
+.md-panel__description {
+	margin: var(--md-space-1) 0 0;
+	font-size: var(--md-sys-typescale-body-medium-size);
+	line-height: var(--md-sys-typescale-body-medium-line-height);
+	color: var(--md-sys-color-on-surface-variant);
+	letter-spacing: var(--md-sys-typescale-body-medium-tracking);
+}
+
+.md-panel__body {
+	padding: var(--md-space-4);
+	border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+/* --- Top app bar ---------------------------------------------------------- */
+
+.md-top-app-bar {
+	display: flex;
+	gap: var(--md-space-3);
+	align-items: center;
+	height: 4rem;
+	padding-inline: var(--md-space-4);
+	color: var(--md-sys-color-on-surface);
+	background: var(--md-sys-color-surface);
+	box-shadow: var(--md-sys-elevation-level0);
+	transition:
+		background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+		box-shadow var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+
+.md-top-app-bar[data-scrolled="true"] {
+	background: var(--md-sys-color-surface-container);
+	box-shadow: var(--md-sys-elevation-level2);
+}
+
+.md-top-app-bar__headline {
+	flex: 1 1 auto;
+	min-width: 0;
+	margin: 0;
+	overflow: hidden;
+	font-size: var(--md-sys-typescale-title-large-size);
+	font-weight: var(--md-sys-typescale-title-large-weight);
+	line-height: var(--md-sys-typescale-title-large-line-height);
+	text-overflow: ellipsis;
+	letter-spacing: var(--md-sys-typescale-title-large-tracking);
+	white-space: nowrap;
+}
+
+.md-top-app-bar__leading,
+.md-top-app-bar__trailing {
+	display: flex;
+	flex: 0 0 auto;
+	gap: var(--md-space-2);
+	align-items: center;
+}
+
+/* --- Page shell ----------------------------------------------------------- */
+
+.md-page-shell {
+	display: grid;
+	gap: var(--md-space-6);
+	width: 100%;
+	max-width: var(--md-content-max);
+	padding: var(--md-space-8);
+	margin-inline: auto;
+}
+
+.md-page-shell__header {
+	display: flex;
+	gap: var(--md-space-4);
+	align-items: flex-end;
+	justify-content: space-between;
+}
+
 .md-page-shell__title {
 	margin: 0;
-	font-size: 2rem;
-	line-height: 1.2;
-	letter-spacing: 0;
+	font-size: var(--md-sys-typescale-headline-medium-size);
+	font-weight: var(--md-sys-typescale-headline-medium-weight);
+	line-height: var(--md-sys-typescale-headline-medium-line-height);
+	letter-spacing: var(--md-sys-typescale-headline-medium-tracking);
 }
+
 .md-page-shell__description {
-	max-width: 46rem;
-	margin: var(--pt-space-2) 0 0;
-	color: var(--pt-text-muted);
+	margin: var(--md-space-2) 0 0;
+	font-size: var(--md-sys-typescale-body-large-size);
+	line-height: var(--md-sys-typescale-body-large-line-height);
+	color: var(--md-sys-color-on-surface-variant);
+	letter-spacing: var(--md-sys-typescale-body-large-tracking);
 }
+
 .md-page-shell__actions {
 	display: flex;
-	flex-wrap: wrap;
-	gap: var(--pt-space-2);
+	gap: var(--md-space-2);
+	align-items: center;
 }
+
+/* --- Empty state ---------------------------------------------------------- */
 
 .md-empty-state {
 	display: grid;
-	justify-items: center;
-	gap: var(--pt-space-3);
-	padding: var(--pt-space-8) var(--pt-space-5);
-	color: var(--pt-text-muted);
+	gap: var(--md-space-2);
+	place-items: center;
+	padding: var(--md-space-8) var(--md-space-4);
 	text-align: center;
 }
+
 .md-empty-state__icon {
-	color: var(--pt-text-subtle);
+	color: var(--md-sys-color-on-surface-variant);
 }
+
 .md-empty-state__title {
 	margin: 0;
-	color: var(--pt-text);
-	font-size: 1rem;
+	font-size: var(--md-sys-typescale-title-medium-size);
+	font-weight: var(--md-sys-typescale-title-medium-weight);
+	line-height: var(--md-sys-typescale-title-medium-line-height);
+	letter-spacing: var(--md-sys-typescale-title-medium-tracking);
 }
+
 .md-empty-state__description {
-	max-width: 28rem;
+	max-width: 32rem;
 	margin: 0;
+	font-size: var(--md-sys-typescale-body-medium-size);
+	line-height: var(--md-sys-typescale-body-medium-line-height);
+	color: var(--md-sys-color-on-surface-variant);
+	letter-spacing: var(--md-sys-typescale-body-medium-tracking);
 }
 
 .md-spinner-layout {
 	display: grid;
 	place-items: center;
 	min-height: 12rem;
-	color: var(--pt-text-muted);
 }
+
+/* --- Data table ----------------------------------------------------------- */
 
 .md-data-table-wrap {
 	width: 100%;
 	overflow-x: auto;
 }
+
 .md-data-table {
 	width: 100%;
 	border-collapse: collapse;
-	font-size: 0.875rem;
 }
+
 .md-data-table th {
-	padding: var(--pt-space-3) var(--pt-space-4);
-	color: var(--pt-text-muted);
-	background: var(--pt-surface-subtle);
-	border-bottom: 1px solid var(--pt-border);
-	font-weight: 650;
-	text-align: left;
+	height: 3.5rem;
+	padding: 0 var(--md-space-4);
+	font-size: var(--md-sys-typescale-label-large-size);
+	font-weight: var(--md-sys-typescale-label-large-weight);
+	line-height: var(--md-sys-typescale-label-large-line-height);
+	color: var(--md-sys-color-on-surface-variant);
+	text-align: start;
+	letter-spacing: var(--md-sys-typescale-label-large-tracking);
 	white-space: nowrap;
+	border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
+
 .md-data-table td {
-	padding: var(--pt-space-3) var(--pt-space-4);
-	border-bottom: 1px solid var(--pt-border);
-	vertical-align: middle;
+	height: 3.5rem;
+	padding: 0 var(--md-space-4);
+	font-size: var(--md-sys-typescale-body-medium-size);
+	line-height: var(--md-sys-typescale-body-medium-line-height);
+	color: var(--md-sys-color-on-surface);
+	letter-spacing: var(--md-sys-typescale-body-medium-tracking);
+	border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
+
 .md-data-table tbody tr:last-child td {
 	border-bottom: 0;
 }
+
 .md-data-table tbody tr[data-clickable="true"]:hover {
-	background: var(--pt-surface-hover);
+	background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
 }
 
+/* --- Tabs ----------------------------------------------------------------
+ *
+ * Primary tabs. The indicator slides because the list carries measured
+ * --md-tab-indicator-{left,width} custom properties; see Tabs.tsx.
+ */
+
 .md-tabs__list {
+	position: relative;
 	display: flex;
-	gap: var(--pt-space-1);
 	overflow-x: auto;
-	border-bottom: 1px solid var(--pt-border);
+	border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
+
+.md-tabs__list::after {
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	width: var(--md-tab-indicator-width, 0);
+	height: 0.1875rem;
+	background: var(--md-sys-color-primary);
+	border-radius: var(--md-sys-shape-corner-full) var(--md-sys-shape-corner-full) 0 0;
+	transition:
+		transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-decelerate),
+		width var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-decelerate);
+	transform: translateX(var(--md-tab-indicator-left, 0));
+	content: "";
+}
+
 .md-tab {
-	min-height: var(--pt-control-md);
-	padding: 0 var(--pt-space-3);
-	color: var(--pt-text-muted);
-	background: transparent;
-	border: 0;
-	border-bottom: 2px solid transparent;
-	font-weight: 650;
+	position: relative;
+	display: inline-flex;
+	flex: 0 0 auto;
+	gap: var(--md-space-2);
+	align-items: center;
+	justify-content: center;
+	min-height: 3rem;
+	padding: 0 var(--md-space-4);
+	overflow: hidden;
+	font-family: var(--md-sys-typescale-title-small-font);
+	font-size: var(--md-sys-typescale-title-small-size);
+	font-weight: var(--md-sys-typescale-title-small-weight);
+	line-height: var(--md-sys-typescale-title-small-line-height);
+	color: var(--md-sys-color-on-surface-variant);
+	letter-spacing: var(--md-sys-typescale-title-small-tracking);
 	white-space: nowrap;
+	background: none;
+	border: 0;
+	isolation: isolate;
 }
+
 .md-tab[data-state="active"] {
-	color: var(--pt-text);
-	border-bottom-color: var(--pt-primary);
+	color: var(--md-sys-color-primary);
 }
+
+.md-tab:disabled {
+	color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
+	cursor: not-allowed;
+}
+
 .md-tabs__content {
-	padding-top: var(--pt-space-4);
+	padding-top: var(--md-space-4);
 }
+
+/* --- Dialog and side sheet ------------------------------------------------ */
 
 .md-overlay {
 	position: fixed;
 	inset: 0;
 	z-index: 50;
-	background: var(--pt-overlay);
-	animation: md-fade-in var(--pt-transition);
+	background: color-mix(in srgb, var(--md-sys-color-scrim) 32%, transparent);
+	animation: md-fade-in var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
 }
-.md-dialog,
-.md-drawer {
-	position: fixed;
-	z-index: 51;
-	color: var(--pt-text);
-	background: var(--pt-surface-raised);
-	border: 1px solid var(--pt-border);
-	box-shadow: var(--pt-shadow-overlay);
-}
+
 .md-dialog {
+	position: fixed;
 	top: 50%;
 	left: 50%;
+	z-index: 51;
 	width: min(calc(100vw - 2rem), 32rem);
 	max-height: calc(100svh - 2rem);
 	overflow-y: auto;
-	border-radius: var(--pt-radius-md);
+	color: var(--md-sys-color-on-surface);
+	background: var(--md-sys-color-surface-container-high);
+	border-radius: var(--md-sys-shape-corner-extra-large);
+	box-shadow: var(--md-sys-elevation-level3);
 	transform: translate(-50%, -50%);
 }
+
+/* Modal side sheet: the card detail and member panels are detail surfaces, not
+ * navigation. Only the leading edge is rounded. */
 .md-drawer {
+	position: fixed;
 	top: 0;
 	right: 0;
+	z-index: 51;
 	width: min(100vw, 34rem);
 	height: 100svh;
 	overflow-y: auto;
-	border-width: 0 0 0 1px;
+	color: var(--md-sys-color-on-surface);
+	background: var(--md-sys-color-surface-container-low);
+	border-start-start-radius: var(--md-sys-shape-corner-large);
+	border-end-start-radius: var(--md-sys-shape-corner-large);
+	box-shadow: var(--md-sys-elevation-level1);
 }
+
 .md-dialog__header {
 	display: flex;
+	gap: var(--md-space-4);
 	align-items: flex-start;
 	justify-content: space-between;
-	gap: var(--pt-space-4);
-	padding: var(--pt-space-5);
-	border-bottom: 1px solid var(--pt-border);
+	padding: var(--md-space-6);
 }
+
+.md-drawer .md-dialog__header {
+	border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
 .md-dialog__title {
 	margin: 0;
-	font-size: 1.125rem;
-	line-height: 1.3;
-	letter-spacing: 0;
+	font-size: var(--md-sys-typescale-headline-small-size);
+	font-weight: var(--md-sys-typescale-headline-small-weight);
+	line-height: var(--md-sys-typescale-headline-small-line-height);
+	color: var(--md-sys-color-on-surface);
+	letter-spacing: var(--md-sys-typescale-headline-small-tracking);
 }
+
 .md-dialog__description {
-	margin: var(--pt-space-1) 0 0;
-	color: var(--pt-text-muted);
-	font-size: 0.875rem;
+	margin: var(--md-space-2) 0 0;
+	font-size: var(--md-sys-typescale-body-medium-size);
+	line-height: var(--md-sys-typescale-body-medium-line-height);
+	color: var(--md-sys-color-on-surface-variant);
+	letter-spacing: var(--md-sys-typescale-body-medium-tracking);
 }
+
 .md-dialog__body {
-	padding: var(--pt-space-5);
+	padding: 0 var(--md-space-6) var(--md-space-6);
 }
+
 .md-dialog__footer {
 	display: flex;
-	flex-wrap: wrap;
+	gap: var(--md-space-2);
 	justify-content: flex-end;
-	gap: var(--pt-space-2);
-	padding: var(--pt-space-4) var(--pt-space-5);
-	border-top: 1px solid var(--pt-border);
+	padding: 0 var(--md-space-6) var(--md-space-6);
 }
+
 .md-alert-dialog {
 	width: min(calc(100vw - 2rem), 28rem);
 }
+
 @keyframes md-fade-in {
 	from {
 		opacity: 0;
 	}
 }
 
+/* --- Snackbar ------------------------------------------------------------
+ *
+ * Documented deviation: MD3 shows one snackbar at a time. The board needs to
+ * surface several failures at once, so the region stacks. See design.md.
+ */
+
 .md-toast-region {
 	position: fixed;
-	right: var(--pt-space-4);
-	bottom: var(--pt-space-4);
+	right: var(--md-space-4);
+	bottom: var(--md-space-4);
 	z-index: 70;
 	display: grid;
-	gap: var(--pt-space-2);
-	width: min(calc(100vw - 2rem), 24rem);
+	gap: var(--md-space-2);
+	width: min(calc(100vw - 2rem), 21.5rem);
 }
+
 .md-toast {
-	padding: var(--pt-space-4);
-	color: var(--pt-text);
-	background: var(--pt-surface-raised);
-	border: 1px solid var(--pt-border-strong);
-	border-left: 0.25rem solid var(--pt-info);
-	border-radius: var(--pt-radius-sm);
-	box-shadow: var(--pt-shadow-overlay);
+	display: flex;
+	gap: var(--md-space-4);
+	align-items: center;
+	min-height: 3rem;
+	padding: var(--md-space-3) var(--md-space-4);
+	color: var(--md-sys-color-inverse-on-surface);
+	background: var(--md-sys-color-inverse-surface);
+	border-radius: var(--md-sys-shape-corner-extra-small);
+	box-shadow: var(--md-sys-elevation-level3);
 }
-.md-toast--success {
-	border-left-color: var(--pt-success);
+
+.md-toast__text {
+	flex: 1 1 auto;
+	min-width: 0;
 }
-.md-toast--danger {
-	border-left-color: var(--pt-danger);
-}
+
 .md-toast__title {
 	margin: 0;
-	font-size: 0.875rem;
+	font-size: var(--md-sys-typescale-body-medium-size);
+	font-weight: var(--md-sys-typescale-body-medium-weight);
+	line-height: var(--md-sys-typescale-body-medium-line-height);
+	letter-spacing: var(--md-sys-typescale-body-medium-tracking);
 }
+
 .md-toast__description {
-	margin: var(--pt-space-1) 0 0;
-	color: var(--pt-text-muted);
-	font-size: 0.8125rem;
+	margin: var(--md-space-1) 0 0;
+	font-size: var(--md-sys-typescale-body-small-size);
+	line-height: var(--md-sys-typescale-body-small-line-height);
+	color: color-mix(in srgb, var(--md-sys-color-inverse-on-surface) 80%, transparent);
+	letter-spacing: var(--md-sys-typescale-body-small-tracking);
+}
+
+/* The action label uses inverse-primary so it reads against the inverse surface. */
+.md-toast__action .md-button {
+	color: var(--md-sys-color-inverse-primary);
+}
+
+.md-toast--danger {
+	color: var(--md-sys-color-on-error-container);
+	background: var(--md-sys-color-error-container);
+}
+
+.md-toast--danger .md-toast__description {
+	color: color-mix(in srgb, var(--md-sys-color-on-error-container) 80%, transparent);
+}
+
+.md-toast--danger .md-toast__action .md-button {
+	color: var(--md-sys-color-error);
 }
 
 @media (max-width: 38rem) {
 	.md-page-shell {
-		padding: var(--pt-space-4);
+		padding: var(--md-space-4);
 	}
+
 	.md-page-shell__title {
-		font-size: 1.5rem;
+		font-size: var(--md-sys-typescale-headline-small-size);
+		line-height: var(--md-sys-typescale-headline-small-line-height);
 	}
+
 	.md-page-shell__header {
-		align-items: stretch;
 		flex-direction: column;
+		align-items: stretch;
 	}
+
 	.md-page-shell__actions > * {
 		flex: 1 1 auto;
 	}
-	.md-panel__header,
-	.md-panel__body {
-		padding: var(--pt-space-4);
-	}
+
 	.md-dialog {
 		width: calc(100vw - 1rem);
 		max-height: calc(100svh - 1rem);

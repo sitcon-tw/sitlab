@@ -312,7 +312,7 @@
 	--pt-control-sm: 2rem;
 	--pt-control-md: 2.5rem;
 	--pt-control-lg: 3rem;
-	--pt-content-max: 90rem;
+	--md-content-max: 90rem;
 	--pt-transition: var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
 	--sb-motion-fast: var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
 

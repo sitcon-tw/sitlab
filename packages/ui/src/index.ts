@@ -17,7 +17,7 @@ export type { IconButtonProps, IconButtonVariant } from "./components/IconButton
 export { PageShell } from "./components/PageShell";
 export type { PageShellProps } from "./components/PageShell";
 export { Panel } from "./components/Panel";
-export type { PanelProps } from "./components/Panel";
+export type { PanelProps, PanelVariant } from "./components/Panel";
 export { LinearProgress } from "./components/Progress";
 export type { LinearProgressProps } from "./components/Progress";
 export { SegmentedButton } from "./components/SegmentedButton";
@@ -28,5 +28,7 @@ export { Tabs } from "./components/Tabs";
 export type { TabItem, TabsProps } from "./components/Tabs";
 export { ToastRegion } from "./components/Toast";
 export type { ToastMessage, ToastRegionProps, ToastTone } from "./components/Toast";
+export { TopAppBar } from "./components/TopAppBar";
+export type { TopAppBarProps } from "./components/TopAppBar";
 export { useRipple } from "./lib/useRipple";
 export type { RippleBinding } from "./lib/useRipple";

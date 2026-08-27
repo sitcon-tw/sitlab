@@ -1,17 +1,24 @@
 import type { HTMLAttributes, ReactNode } from "react";
 import { classNames } from "../lib/classNames";
 
+export type PanelVariant = "elevated" | "filled" | "outlined";
+
 export interface PanelProps extends HTMLAttributes<HTMLElement> {
 	title?: string;
 	description?: string;
 	actions?: ReactNode;
 	padded?: boolean;
+	variant?: PanelVariant;
 }
 
-export function Panel({ title, description, actions, padded = false, className, children, ...props }: PanelProps) {
+/** Material Design 3 card. */
+export function Panel({ title, description, actions, padded = false, variant = "elevated", className, children, ...props }: PanelProps) {
 	const hasHeader = Boolean(title || description || actions);
 	return (
-		<section className={classNames("md-panel", padded && !hasHeader && "md-panel--padded", className)} {...props}>
+		<section
+			className={classNames("md-panel", variant !== "elevated" && `md-panel--${variant}`, padded && !hasHeader && "md-panel--padded", className)}
+			{...props}
+		>
 			{hasHeader ? (
 				<header className="md-panel__header">
 					<div>
