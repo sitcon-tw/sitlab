@@ -129,102 +129,18 @@ func webhookBackoff(attempt int32) time.Duration {
 	return min(delay, time.Minute)
 }
 
+// ReconcileIssue merges one canonical GitLab issue, or its absence, into the cache.
+// A nil card means GitLab no longer reports it as a board card. It shares
+// applyCardObservations with the periodic board snapshot so the two cannot drift on
+// how they preserve lane order or protect a local mutation in flight.
 func (r *Repository) ReconcileIssue(ctx context.Context, issueIID int64, card *domainboard.Card, reconciledAt time.Time) (bool, error) {
 	changed := false
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
-		var currentState domainboard.OperationState
-		var currentList string
-		var currentPosition int32
-		var currentGitLabUpdatedAt *time.Time
-		err := tx.QueryRow(ctx, `
-			SELECT sync_state, list_key, position, gitlab_updated_at
-			FROM issue_cache
-			WHERE issue_iid = $1
-			FOR UPDATE
-		`, issueIID).Scan(&currentState, &currentList, &currentPosition, &currentGitLabUpdatedAt)
-		exists := err == nil
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		merge, err := applyCardObservations(ctx, tx, []cardObservation{{IssueIID: issueIID, Card: card}}, false, reconciledAt)
+		if err != nil {
 			return err
 		}
-		if exists && currentState != domainboard.OperationSynced {
-			return nil
-		}
-		if card == nil {
-			if !exists {
-				return nil
-			}
-			command, deleteErr := tx.Exec(ctx, `DELETE FROM issue_cache WHERE issue_iid = $1 AND sync_state = 'synced'`, issueIID)
-			if deleteErr != nil {
-				return deleteErr
-			}
-			changed = command.RowsAffected() > 0
-			if changed {
-				if _, compactErr := tx.Exec(ctx, `
-					UPDATE issue_cache SET position = position - 1
-					WHERE list_key = $1 AND position > $2
-				`, currentList, currentPosition); compactErr != nil {
-					return compactErr
-				}
-			}
-		} else {
-			if currentGitLabUpdatedAt != nil && currentGitLabUpdatedAt.After(card.UpdatedAt) {
-				return nil
-			}
-			targetPosition := int32(0)
-			if exists && currentList == card.ListKey {
-				targetPosition = currentPosition
-			} else if exists {
-				if _, compactErr := tx.Exec(ctx, `
-					UPDATE issue_cache SET position = position - 1
-					WHERE list_key = $1 AND position > $2 AND issue_iid <> $3
-				`, currentList, currentPosition, issueIID); compactErr != nil {
-					return compactErr
-				}
-			}
-			if !exists || currentList != card.ListKey {
-				if _, shiftErr := tx.Exec(ctx, `
-					UPDATE issue_cache SET position = position + 1
-					WHERE list_key = $1 AND issue_iid <> $2
-				`, card.ListKey, issueIID); shiftErr != nil {
-					return shiftErr
-				}
-			}
-			_, upsertErr := tx.Exec(ctx, `
-				INSERT INTO issue_cache
-				    (issue_iid, gitlab_issue_id, title, description, web_url, list_key, position,
-				     team_key, start_date, due_date, labels, gitlab_status_name, sync_state, gitlab_updated_at,
-				     created_at, updated_at)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11::text[], '{}'),
-				        $12, 'synced', $13, $14, $15)
-				ON CONFLICT (issue_iid) DO UPDATE
-				SET gitlab_issue_id = EXCLUDED.gitlab_issue_id,
-				    title = EXCLUDED.title,
-				    description = EXCLUDED.description,
-				    web_url = EXCLUDED.web_url,
-				    list_key = EXCLUDED.list_key,
-				    position = EXCLUDED.position,
-				    team_key = EXCLUDED.team_key,
-				    start_date = EXCLUDED.start_date,
-				    due_date = EXCLUDED.due_date,
-				    labels = EXCLUDED.labels,
-				    gitlab_status_name = EXCLUDED.gitlab_status_name,
-				    sync_state = 'synced',
-				    sync_error = NULL,
-				    pending_operation_id = NULL,
-				    gitlab_updated_at = EXCLUDED.gitlab_updated_at,
-				    created_at = EXCLUDED.created_at,
-				    updated_at = EXCLUDED.updated_at
-			`, card.IssueIID, card.GitLabIssueID, card.Title, card.Description, nullableString(card.WebURL),
-				card.ListKey, targetPosition, card.TeamKey, nullableDate(card.StartDate), nullableDate(card.DueDate), card.Labels,
-				card.GitLabStatusName, card.UpdatedAt, card.CreatedAt, reconciledAt)
-			if upsertErr != nil {
-				return upsertErr
-			}
-			if err := replaceCardAssignees(ctx, tx, issueIID, card.AssigneeGitLabUserIDs); err != nil {
-				return err
-			}
-			changed = true
-		}
+		changed = merge.touched()
 		if !changed {
 			return nil
 		}

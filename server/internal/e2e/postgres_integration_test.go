@@ -111,6 +111,7 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	seedSnapshots(t, ctx, pool, now)
 	verifyCardReordering(t, ctx, pool, store, user.ID, now)
 	verifySnapshotMerge(t, ctx, pool, store, now)
+	verifyUnaffectedLanesAreNotRewritten(t, ctx, pool, store, now)
 
 	listenerCtx, stopListener := context.WithCancel(ctx)
 	updates, unsubscribe := store.SubscribeRevisions()
@@ -453,6 +454,73 @@ func verifyCardReordering(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	if result.Card.Position != 0 || !slices.Equal(issueIIDs, []int64{503, 501, 502}) || !slices.Equal(positions, []int32{0, 1, 2}) {
 		t.Fatalf("reordered cards = ids %v positions %v result %#v", issueIIDs, positions, result.Card)
 	}
+}
+
+// verifyUnaffectedLanesAreNotRewritten pins the guarantee that a merge renumbers only
+// the lanes whose order actually moved. xmin changes on any row rewrite, so comparing
+// it before and after proves the untouched lane was never written, not merely that it
+// ended up with the same values.
+func verifyUnaffectedLanesAreNotRewritten(t *testing.T, ctx context.Context, pool *pgxpool.Pool, store *pgsitcon.Repository, now time.Time) {
+	t.Helper()
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO issue_cache
+		    (issue_iid, gitlab_issue_id, title, description, list_key, position, team_key,
+		     labels, gitlab_status_name, sync_state, gitlab_updated_at, created_at, updated_at)
+		VALUES
+		    (701, 7001, 'Touched lane card', '', 'doing', 0, 'development', '{}', 'Doing', 'synced', $1, $1, $1),
+		    (702, 7002, 'Quiet lane card one', '', 'review', 0, 'development', '{}', 'Review', 'synced', $1, $1, $1),
+		    (703, 7003, 'Quiet lane card two', '', 'review', 1, 'development', '{}', 'Review', 'synced', $1, $1, $1)
+	`, now); err != nil {
+		t.Fatalf("seed lane isolation fixtures: %v", err)
+	}
+	defer func() {
+		if _, err := pool.Exec(ctx, `DELETE FROM issue_cache WHERE issue_iid = ANY($1::bigint[])`, []int64{701, 702, 703}); err != nil {
+			t.Fatalf("clean lane isolation fixtures: %v", err)
+		}
+	}()
+
+	quietBefore := laneRowVersions(t, ctx, pool, "review")
+	card := func(issueIID, gitLabIssueID int64, title, listKey, status string, updatedAt time.Time) domainboard.Card {
+		return domainboard.Card{
+			IssueIID: issueIID, GitLabIssueID: &gitLabIssueID, Title: title, ListKey: listKey, TeamKey: "development",
+			GitLabStatusName: status, SyncState: domainboard.OperationSynced, CreatedAt: now, UpdatedAt: updatedAt,
+		}
+	}
+	renamed := card(701, 7001, "Touched lane card renamed", "doing", "Doing", now.Add(3*time.Minute))
+	if _, err := store.ReconcileIssue(ctx, 701, &renamed, now.Add(3*time.Minute)); err != nil {
+		t.Fatalf("reconcile issue in the touched lane: %v", err)
+	}
+
+	quietAfter := laneRowVersions(t, ctx, pool, "review")
+	for issueIID, before := range quietBefore {
+		if quietAfter[issueIID] != before {
+			t.Fatalf("card %d in the untouched review lane was rewritten (xmin %s -> %s)", issueIID, before, quietAfter[issueIID])
+		}
+	}
+	assertStoredOrder(t, ctx, pool, "review", []int64{702, 703})
+	assertStoredOrder(t, ctx, pool, "doing", []int64{701})
+}
+
+func laneRowVersions(t *testing.T, ctx context.Context, pool *pgxpool.Pool, listKey string) map[int64]string {
+	t.Helper()
+	rows, err := pool.Query(ctx, `SELECT issue_iid, xmin::text FROM issue_cache WHERE list_key = $1`, listKey)
+	if err != nil {
+		t.Fatalf("read lane row versions: %v", err)
+	}
+	defer rows.Close()
+	versions := make(map[int64]string)
+	for rows.Next() {
+		var issueIID int64
+		var version string
+		if err := rows.Scan(&issueIID, &version); err != nil {
+			t.Fatalf("scan lane row version: %v", err)
+		}
+		versions[issueIID] = version
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate lane row versions: %v", err)
+	}
+	return versions
 }
 
 func verifySnapshotMerge(t *testing.T, ctx context.Context, pool *pgxpool.Pool, store *pgsitcon.Repository, now time.Time) {
