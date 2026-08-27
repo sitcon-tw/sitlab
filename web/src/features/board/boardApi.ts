@@ -1,5 +1,5 @@
 import { api, expectData, getCsrfToken } from "@/shared/api/client";
-import type { BoardCard, CardComment, ProjectLabel } from "./model";
+import type { BoardCard, CardComment } from "./model";
 
 const demo = import.meta.env.VITE_SITCON_DEMO === "true";
 
@@ -85,11 +85,6 @@ export async function updateStartDate(card: BoardCard, operationId: string, star
 	);
 }
 
-export async function listProjectLabels(): Promise<ProjectLabel[]> {
-	if (demo) return demoLabels;
-	return expectData(await api.GET("/labels")).labels;
-}
-
 export async function updateLabels(card: BoardCard, operationId: string, labels: string[]) {
 	if (demo) return demoMutation(card, { labels }, operationId);
 	return expectData(
@@ -164,13 +159,6 @@ export async function savePreferences(defaultTeamKey: string) {
 export async function logout() {
 	await api.POST("/auth/logout", { params: { header: { "X-CSRF-Token": await getCsrfToken() } } });
 }
-
-const demoLabels: ProjectLabel[] = [
-	{ id: 1, name: "Team::開發組", color: "#0E8A16", textColor: "#FFFFFF", description: "開發組" },
-	{ id: 2, name: "Team::設計組", color: "#B60205", textColor: "#FFFFFF", description: "設計組" },
-	{ id: 3, name: "Priority::High", color: "#D73A4A", textColor: "#FFFFFF", description: "優先處理" },
-	{ id: 4, name: "Backend", color: "#1D76DB", textColor: "#FFFFFF", description: null }
-];
 
 const demoComments: Record<number, CardComment[]> = {
 	127: [

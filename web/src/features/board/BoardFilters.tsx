@@ -1,8 +1,9 @@
 import { Dialog } from "@project-template/ui";
-import { ArrowUpDown, Check, ChevronDown, Filter, Search, UsersRound, X } from "lucide-react";
+import { ArrowUpDown, Check, ChevronDown, Filter, Search, Settings, UsersRound, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import styles from "./BoardPage.module.css";
 import { GroupedMemberList } from "./GroupedMemberList";
+import { LabelManagerDialog } from "./LabelManagerDialog";
 import { activeMembers, filterDirectoryMembers, type BoardSortMode, type Bootstrap, type DirectoryMember, type ProjectLabel } from "./model";
 import { TagSwatch } from "./TagSwatch";
 import { useProjectLabels } from "./useProjectLabels";
@@ -72,7 +73,7 @@ export function BoardFilters({
 				</select>
 			</label>
 			<MemberFilter bootstrap={bootstrap} value={memberIds} onChange={onMemberIdsChange} />
-			<LabelFilter value={labels} onChange={onLabelsChange} />
+			<LabelFilter value={labels} onChange={onLabelsChange} bootstrap={bootstrap} />
 			<span className={styles.filterResult} role="status" aria-live="polite">
 				{visibleCount} / {totalCount} 張卡片
 			</span>
@@ -92,8 +93,9 @@ export function BoardFilters({
 	);
 }
 
-function LabelFilter({ value, onChange }: { value: string[]; onChange: (labels: string[]) => void }) {
+function LabelFilter({ value, onChange, bootstrap }: { value: string[]; onChange: (labels: string[]) => void; bootstrap: Bootstrap }) {
 	const [open, setOpen] = useState(false);
+	const [managerOpen, setManagerOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const labelsQuery = useProjectLabels();
 	const normalizedQuery = query.trim().toLocaleLowerCase("zh-Hant");
@@ -119,6 +121,10 @@ function LabelFilter({ value, onChange }: { value: string[]; onChange: (labels: 
 				<span>{value.length ? `Labels ${value.length}` : "所有 Labels"}</span>
 				<ChevronDown size="0.875rem" aria-hidden="true" />
 			</button>
+			<button type="button" className={styles.filterManageLabels} aria-label="管理 Labels" title="管理 Labels" onClick={() => setManagerOpen(true)}>
+				<Settings size="0.875rem" aria-hidden="true" />
+			</button>
+			<LabelManagerDialog open={managerOpen} onOpenChange={setManagerOpen} bootstrap={bootstrap} />
 			<Dialog open={open} onOpenChange={changeOpen} title="篩選 Label" description="卡片必須包含所有選取的 Labels">
 				<div className={styles.pickerSearch}>
 					<Search size="1rem" aria-hidden="true" />

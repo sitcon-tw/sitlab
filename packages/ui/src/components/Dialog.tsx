@@ -74,17 +74,29 @@ export interface ConfirmDialogProps {
 	title: string;
 	description: string;
 	confirmLabel: string;
+	/** Defaults to "Cancel"; set it when the surrounding UI is not in English. */
+	cancelLabel?: string;
 	onConfirm: () => void;
 	busy?: boolean;
 	destructive?: boolean;
 }
 
-export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel, onConfirm, busy = false, destructive = false }: ConfirmDialogProps) {
+export function ConfirmDialog({
+	open,
+	onOpenChange,
+	title,
+	description,
+	confirmLabel,
+	cancelLabel = "Cancel",
+	onConfirm,
+	busy = false,
+	destructive = false
+}: ConfirmDialogProps) {
 	return (
 		<AlertDialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
 			<AlertDialogPrimitive.Portal>
 				<AlertDialogPrimitive.Overlay className="md-overlay" />
-				<AlertDialogPrimitive.Content className="md-dialog pt-alert-dialog">
+				<AlertDialogPrimitive.Content className="md-dialog md-alert-dialog">
 					<div className="md-dialog__header">
 						<div>
 							<AlertDialogPrimitive.Title className="md-dialog__title">{title}</AlertDialogPrimitive.Title>
@@ -93,7 +105,7 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
 					</div>
 					<div className="md-dialog__footer">
 						<AlertDialogPrimitive.Cancel asChild>
-							<Button variant="text">Cancel</Button>
+							<Button variant="text">{cancelLabel}</Button>
 						</AlertDialogPrimitive.Cancel>
 						<AlertDialogPrimitive.Action asChild>
 							<Button variant="text" tone={destructive ? "error" : "primary"} loading={busy} onClick={onConfirm}>

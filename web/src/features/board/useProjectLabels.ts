@@ -1,6 +1,6 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { listProjectLabels } from "./boardApi";
+import { listProjectLabels } from "./labelsApi";
 import type { ProjectLabel } from "./model";
 
 export const projectLabelsQueryKey = ["sitcon", "project-labels"] as const;

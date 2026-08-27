@@ -8,7 +8,6 @@ import {
 	createCard,
 	createComment,
 	listComments,
-	listProjectLabels,
 	moveCard,
 	retryOperation,
 	updateAssignee,
@@ -19,13 +18,20 @@ import {
 	updateTeam
 } from "./boardApi";
 import { BoardPage } from "./BoardPage";
+import { listProjectLabels } from "./labelsApi";
 import type { BoardCard, Bootstrap, CardMutation } from "./model";
+
+vi.mock("./labelsApi", () => ({
+	listProjectLabels: vi.fn(),
+	createProjectLabel: vi.fn(),
+	updateProjectLabel: vi.fn(),
+	deleteProjectLabel: vi.fn()
+}));
 
 vi.mock("./boardApi", () => ({
 	createCard: vi.fn(),
 	createComment: vi.fn(),
 	listComments: vi.fn(),
-	listProjectLabels: vi.fn(),
 	logout: vi.fn(),
 	moveCard: vi.fn(),
 	retryOperation: vi.fn(),

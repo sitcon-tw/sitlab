@@ -21,6 +21,7 @@ import {
 	RefreshCw,
 	Save,
 	Send,
+	Settings,
 	SquareTerminal,
 	Users,
 	X
@@ -48,6 +49,7 @@ import { BoardFilters } from "./BoardFilters";
 import { planCardMove } from "./boardOrder";
 import styles from "./BoardPage.module.css";
 import { CardLabels } from "./CardLabels";
+import { LabelManagerDialog } from "./LabelManagerDialog";
 import { canonicalClientLabels, isDeprecatedLabel } from "./labels";
 import { MembersDrawer } from "./MembersDrawer";
 import {
@@ -111,14 +113,27 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 	const [undo, setUndo] = useState<{ cardIid: number; assigneeIds: number[]; assigneeNames: string[] } | null>(null);
 	const localRetries = useRef(new Map<string, () => void>());
 	const save = useFieldSaveState();
+	const labelsQuery = useProjectLabels();
 	const labelMetadata = useProjectLabelMap();
+
+	// Label filters are AND-combined, so one that matches nothing hides the whole
+	// board. Renaming or deleting a label strands exactly such a filter, and so
+	// does an old bookmark. Ignore a filter once the catalog has loaded and no
+	// card carries the name either, which is when it provably matches nothing.
+	// The user's selection is left alone — this only stops the board going blank.
+	const appliedLabels = (() => {
+		if (!labelsQuery.isSuccess) return filterLabels;
+		const known = new Set(labelsQuery.data.map((label) => label.name));
+		for (const card of bootstrap.board.cards) for (const label of card.labels) known.add(label);
+		return filterLabels.filter((label) => known.has(label));
+	})();
 	const nextTemporaryIid = useRef(-1);
 	const cards = bootstrap.board.cards;
 	const filteredCards = cards.filter(
 		(card) =>
 			(!filterTeamKey || card.teamKey === filterTeamKey) &&
 			(filterMemberIds.length === 0 || card.assigneeGitLabUserIds.some((id) => filterMemberIds.includes(id))) &&
-			filterLabels.every((label) => card.labels.includes(label))
+			appliedLabels.every((label) => card.labels.includes(label))
 	);
 	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
 	const orderedCards = lists.flatMap((list) => filteredCards.filter((card) => card.listKey === list.key).sort((a, b) => compareBoardCards(a, b, sortMode)));
@@ -1147,6 +1162,8 @@ function CardTags({
 	save: FieldSave | undefined;
 }) {
 	const [query, setQuery] = useState("");
+	const [managerOpen, setManagerOpen] = useState(false);
+	const [managerSeed, setManagerSeed] = useState("");
 	const picker = useRef<HTMLDetailsElement>(null);
 	const labelsQuery = useProjectLabels();
 	const teamLabels = new Set(bootstrap.teams.filter((team) => team.active).map((team) => team.gitLabLabel));
@@ -1174,58 +1191,86 @@ function CardTags({
 	const remove = (label: string) => {
 		onChange(card.labels.filter((current) => current !== label));
 	};
+	// Dialogs open as siblings of the popover, never nested inside it.
+	const openManager = (seed: string) => {
+		setManagerSeed(seed);
+		setManagerOpen(true);
+		if (picker.current) picker.current.open = false;
+	};
 
 	return (
-		<section className={styles.detailTags} aria-labelledby="card-labels-heading">
-			<header>
-				<h3 id="card-labels-heading">Labels</h3>
-				<SaveIndicator save={save} name="Labels" />
-				<details className={styles.tagPicker} ref={picker}>
-					<summary aria-label="新增 Label" title="新增 Label">
-						<Plus size="0.875rem" aria-hidden="true" /> 新增
-					</summary>
-					<div className={styles.tagMenu}>
-						<input aria-label="搜尋 Label" value={query} onChange={(event) => setQuery(event.target.value)} />
-						<div role="listbox" aria-label="可用 Labels">
-							{available.map((label) => (
-								<button key={label.name} type="button" role="option" aria-selected="false" onClick={() => add(label.name)}>
-									<TagSwatch label={label} />
-									<span>{label.name}</span>
+		<>
+			<section className={styles.detailTags} aria-labelledby="card-labels-heading">
+				<header>
+					<h3 id="card-labels-heading">Labels</h3>
+					<SaveIndicator save={save} name="Labels" />
+					<details className={styles.tagPicker} ref={picker}>
+						<summary aria-label="新增 Label" title="新增 Label">
+							<Plus size="0.875rem" aria-hidden="true" /> 新增
+						</summary>
+						<div className={styles.tagMenu}>
+							<input aria-label="搜尋 Label" value={query} onChange={(event) => setQuery(event.target.value)} />
+							<div role="listbox" aria-label="可用 Labels">
+								{available.map((label) => (
+									<button key={label.name} type="button" role="option" aria-selected="false" onClick={() => add(label.name)}>
+										<TagSwatch label={label} />
+										<span>{label.name}</span>
+									</button>
+								))}
+								{labelsQuery.isLoading ? <p role="status">載入中...</p> : null}
+								{labelsQuery.isError ? (
+									<button type="button" onClick={() => void labelsQuery.refetch()}>
+										<RefreshCw size="0.8125rem" aria-hidden="true" /> 重新載入
+									</button>
+								) : null}
+								{labelsQuery.isSuccess && available.length === 0 ? <p>沒有可用的 Label</p> : null}
+							</div>
+							<div className={styles.tagMenuFooter}>
+								{normalizedQuery && !(labelsQuery.data ?? []).some((label) => label.name === query.trim()) ? (
+									<button type="button" onClick={() => openManager(query.trim())}>
+										<Plus size="0.8125rem" aria-hidden="true" /> 建立「{query.trim()}」
+									</button>
+								) : null}
+								<button type="button" onClick={() => openManager("")}>
+									<Settings size="0.8125rem" aria-hidden="true" /> 管理 Labels
 								</button>
-							))}
-							{labelsQuery.isLoading ? <p role="status">載入中...</p> : null}
-							{labelsQuery.isError ? (
-								<button type="button" onClick={() => void labelsQuery.refetch()}>
-									<RefreshCw size="0.8125rem" aria-hidden="true" /> 重新載入
-								</button>
-							) : null}
-							{labelsQuery.isSuccess && available.length === 0 ? <p>沒有可用的 Label</p> : null}
+							</div>
 						</div>
-					</div>
-				</details>
-			</header>
-			<div className={styles.tagList}>
-				{card.labels.map((label) => {
-					const locked = scope(label) === "team" && selectedTeamCount <= 1;
-					return (
-						<span className={styles.tagChip} key={label}>
-							<TagSwatch label={labelMetadata.get(label)} />
-							<span>{label}</span>
-							<button
-								type="button"
-								aria-label={`移除 Label ${label}`}
-								title={locked ? "Team Tag 必須保留一個" : `移除 ${label}`}
-								disabled={locked}
-								onClick={() => remove(label)}
-							>
-								<X size="0.75rem" aria-hidden="true" />
-							</button>
-						</span>
-					);
-				})}
-				{card.labels.length === 0 ? <span className={styles.emptyTags}>尚無 Label</span> : null}
-			</div>
-		</section>
+					</details>
+				</header>
+				<div className={styles.tagList}>
+					{card.labels.map((label) => {
+						const locked = scope(label) === "team" && selectedTeamCount <= 1;
+						return (
+							<span className={styles.tagChip} key={label}>
+								<TagSwatch label={labelMetadata.get(label)} />
+								<span>{label}</span>
+								<button
+									type="button"
+									aria-label={`移除 Label ${label}`}
+									title={locked ? "Team Tag 必須保留一個" : `移除 ${label}`}
+									disabled={locked}
+									onClick={() => remove(label)}
+								>
+									<X size="0.75rem" aria-hidden="true" />
+								</button>
+							</span>
+						);
+					})}
+					{card.labels.length === 0 ? <span className={styles.emptyTags}>尚無 Label</span> : null}
+				</div>
+			</section>
+			<LabelManagerDialog
+				open={managerOpen}
+				onOpenChange={setManagerOpen}
+				bootstrap={bootstrap}
+				initialName={managerSeed}
+				onCreated={(label) => {
+					add(label.name);
+					setManagerOpen(false);
+				}}
+			/>
+		</>
 	);
 }
 
