@@ -1,5 +1,5 @@
-import { Dialog } from "@project-template/ui";
-import { ArrowUpDown, Check, ChevronDown, Filter, Search, Settings, UsersRound, X } from "lucide-react";
+import { Chip, Dialog, IconButton, Menu, MenuItem, SelectField } from "@project-template/ui";
+import { Check, ChevronDown, Search, Settings, UsersRound, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import styles from "./BoardPage.module.css";
 import { GroupedMemberList } from "./GroupedMemberList";
@@ -42,53 +42,58 @@ export function BoardFilters({
 
 	return (
 		<section className={styles.filters} aria-label="篩選看板">
-			<label className={styles.sortControl}>
-				<span>
-					<ArrowUpDown size="0.9375rem" aria-hidden="true" />
-					<strong>Sort by</strong>
-				</span>
-				<select aria-label="排序方式" value={sortMode} onChange={(event) => onSortModeChange(event.target.value as BoardSortMode)}>
-					<option value="manual">手動順序</option>
-					<option value="due-asc">Due date：近到遠</option>
-					<option value="due-desc">Due date：遠到近</option>
-					<option value="start-asc">Start date：近到遠</option>
-					<option value="start-desc">Start date：遠到近</option>
-					<option value="updated-desc">Updated time：新到舊</option>
-					<option value="updated-asc">Updated time：舊到新</option>
-				</select>
-			</label>
-			<div className={styles.filterHeading}>
-				<Filter size="0.9375rem" aria-hidden="true" />
-				<strong>篩選</strong>
-			</div>
-			<label className={styles.filterTeam}>
-				<span className={styles.srOnly}>篩選組別</span>
-				<select aria-label="篩選組別" value={teamKey} onChange={(event) => onTeamChange(event.target.value)}>
-					<option value="">所有組別</option>
-					{teams.map((team) => (
-						<option key={team.key} value={team.key}>
-							{team.name}
-						</option>
-					))}
-				</select>
-			</label>
+			<SelectField
+				dense
+				className={styles.sortControl}
+				label="排序方式"
+				value={sortMode}
+				onChange={(event) => onSortModeChange(event.target.value as BoardSortMode)}
+				options={[
+					{ value: "manual", label: "手動順序" },
+					{ value: "due-asc", label: "Due date：近到遠" },
+					{ value: "due-desc", label: "Due date：遠到近" },
+					{ value: "start-asc", label: "Start date：近到遠" },
+					{ value: "start-desc", label: "Start date：遠到近" },
+					{ value: "updated-desc", label: "Updated time：新到舊" },
+					{ value: "updated-asc", label: "Updated time：舊到新" }
+				]}
+			/>
+			<Menu
+				label="篩選組別"
+				trigger={
+					<Chip
+						variant="filter"
+						selected={Boolean(teamKey)}
+						label={teams.find((team) => team.key === teamKey)?.name ?? "所有組別"}
+						aria-label="篩選組別"
+						trailing={<ChevronDown size="1.125rem" aria-hidden="true" />}
+					/>
+				}
+			>
+				<MenuItem selected={teamKey === ""} onSelect={() => onTeamChange("")}>
+					所有組別
+				</MenuItem>
+				{teams.map((team) => (
+					<MenuItem key={team.key} selected={teamKey === team.key} onSelect={() => onTeamChange(team.key)}>
+						{team.name}
+					</MenuItem>
+				))}
+			</Menu>
 			<MemberFilter bootstrap={bootstrap} value={memberIds} onChange={onMemberIdsChange} />
 			<LabelFilter value={labels} onChange={onLabelsChange} bootstrap={bootstrap} />
 			<span className={styles.filterResult} role="status" aria-live="polite">
 				{visibleCount} / {totalCount} 張卡片
 			</span>
-			<button
-				type="button"
+			<IconButton
 				className={styles.clearFilters}
 				data-visible={active}
 				disabled={!active}
 				aria-hidden={!active}
-				aria-label="清除篩選"
+				label="清除篩選"
 				title="清除篩選"
+				icon={<X size="1.25rem" aria-hidden="true" />}
 				onClick={onClear}
-			>
-				<X size="1rem" aria-hidden="true" />
-			</button>
+			/>
 		</section>
 	);
 }
@@ -111,19 +116,23 @@ function LabelFilter({ value, onChange, bootstrap }: { value: string[]; onChange
 
 	return (
 		<>
-			<button
-				type="button"
+			<Chip
 				className={styles.filterLabels}
+				variant="filter"
+				selected={value.length > 0}
+				label={value.length ? `Labels ${value.length}` : "所有 Labels"}
 				aria-label="篩選 Label"
 				title={value.length ? value.join("、") : "所有 Labels"}
+				trailing={<ChevronDown size="1.125rem" aria-hidden="true" />}
 				onClick={() => setOpen(true)}
-			>
-				<span>{value.length ? `Labels ${value.length}` : "所有 Labels"}</span>
-				<ChevronDown size="0.875rem" aria-hidden="true" />
-			</button>
-			<button type="button" className={styles.filterManageLabels} aria-label="管理 Labels" title="管理 Labels" onClick={() => setManagerOpen(true)}>
-				<Settings size="0.875rem" aria-hidden="true" />
-			</button>
+			/>
+			<IconButton
+				className={styles.filterManageLabels}
+				label="管理 Labels"
+				title="管理 Labels"
+				icon={<Settings size="1.25rem" aria-hidden="true" />}
+				onClick={() => setManagerOpen(true)}
+			/>
 			<LabelManagerDialog open={managerOpen} onOpenChange={setManagerOpen} bootstrap={bootstrap} />
 			<Dialog open={open} onOpenChange={changeOpen} title="篩選 Label" description="卡片必須包含所有選取的 Labels">
 				<div className={styles.pickerSearch}>
@@ -207,17 +216,17 @@ function MemberFilter({ bootstrap, value, onChange }: { bootstrap: Bootstrap; va
 	};
 	return (
 		<>
-			<button
-				type="button"
+			<Chip
 				className={styles.filterPeople}
+				variant="filter"
+				selected={selected.length > 0}
+				label={memberFilterLabel(selected)}
 				aria-label="篩選負責人"
 				title={selected.length ? selected.map((member) => member.displayName).join("、") : "所有人"}
+				leading={<UsersRound size="1.125rem" aria-hidden="true" />}
+				trailing={<ChevronDown size="1.125rem" aria-hidden="true" />}
 				onClick={() => setOpen(true)}
-			>
-				<UsersRound size="0.9375rem" aria-hidden="true" />
-				<span>{memberFilterLabel(selected)}</span>
-				<ChevronDown size="0.875rem" aria-hidden="true" />
-			</button>
+			/>
 			<Dialog open={open} onOpenChange={changeOpen} title="篩選負責人" description="可複選專案成員">
 				<div className={styles.pickerSearch}>
 					<Search size="1rem" aria-hidden="true" />

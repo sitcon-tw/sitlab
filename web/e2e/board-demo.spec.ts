@@ -65,7 +65,9 @@ test.describe("SITCON Board demo visual audit", () => {
 		await page.setViewportSize({ width: 608, height: 800 });
 		await page.goto("/");
 
-		await page.getByLabel("篩選組別").selectOption("design");
+		// The team filter is a Material filter chip opening a menu.
+		await page.getByRole("button", { name: "篩選組別" }).click();
+		await page.getByRole("menuitemcheckbox", { name: "設計組" }).click();
 		await expect(page.getByRole("heading", { name: "[設計組] 製作工作人員識別證" })).toBeVisible();
 		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeHidden();
 
@@ -122,12 +124,13 @@ test.describe("SITCON Board demo visual audit", () => {
 	test("shared filters and sorting survive reload", async ({ page }) => {
 		await page.goto("/?team=development&member=114&label=Backend&sort=due-desc");
 
-		await expect(page.getByLabel("篩選組別")).toHaveValue("development");
+		// The team filter is a Material filter chip; sort stays an outlined select.
+		await expect(page.getByRole("button", { name: "篩選組別" })).toContainText("開發組");
 		await expect(page.getByLabel("排序方式")).toHaveValue("due-desc");
 		await expect(page.getByRole("button", { name: "篩選 Label" })).toContainText("Labels 1");
 		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 		await page.reload();
-		await expect(page.getByLabel("篩選組別")).toHaveValue("development");
+		await expect(page.getByRole("button", { name: "篩選組別" })).toContainText("開發組");
 		await expect(page.getByLabel("排序方式")).toHaveValue("due-desc");
 		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 	});

@@ -641,6 +641,13 @@
 	content: "";
 }
 
+/* A badge on an icon button anchors to its top trailing corner. */
+.md-icon-button .md-badge {
+	position: absolute;
+	top: 0.375rem;
+	right: 0.375rem;
+}
+
 .md-icon-button--standard {
 	color: var(--md-sys-color-on-surface-variant);
 }
@@ -1062,6 +1069,39 @@
 	 * indicator is shared with every other primitive, so it is not removed here. */
 	border: 0;
 	border-radius: var(--md-sys-shape-corner-extra-small);
+}
+
+/* Material's density scale (-2) for chrome that sits above dense data. The
+ * board's quick-create and filter rows use this; dialogs stay at 56dp. */
+.md-field.md-field--dense .md-field__box {
+	min-height: 3rem;
+}
+
+.md-field.md-field--dense .md-field__input {
+	padding: var(--md-space-2) var(--md-space-3);
+	font-size: var(--md-sys-typescale-body-medium-size);
+	line-height: var(--md-sys-typescale-body-medium-line-height);
+	letter-spacing: var(--md-sys-typescale-body-medium-tracking);
+}
+
+.md-field.md-field--dense .md-field__label {
+	left: var(--md-space-3);
+	font-size: var(--md-sys-typescale-body-medium-size);
+	line-height: var(--md-sys-typescale-body-medium-line-height);
+}
+
+.md-field.md-field--dense:focus-within .md-field__label,
+.md-field.md-field--dense:has(.md-field__input:not(:placeholder-shown)) .md-field__label,
+.md-field.md-field--dense[data-floating="true"] .md-field__label {
+	transform: translateY(-1.5rem);
+}
+
+.md-field.md-field--dense .md-field__input--select {
+	padding-inline-end: var(--md-space-6);
+}
+
+.md-field.md-field--dense.md-field--select .md-field__box::after {
+	right: var(--md-space-3);
 }
 
 .md-field__input--textarea {

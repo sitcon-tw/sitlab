@@ -1,15 +1,31 @@
 import { clearCsrfToken, errorMessage } from "@/shared/api/client";
 import { Avatar } from "@/shared/Avatar";
+import { SitconLogo } from "@/shared/SitconLogo";
 import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { DragDropProvider, DragOverlay, PointerSensor, useDroppable } from "@dnd-kit/react";
 import { useSortable } from "@dnd-kit/react/sortable";
-import { Dialog, Drawer, SegmentedButton, StaticChip } from "@project-template/ui";
+import {
+	Badge,
+	Button,
+	Dialog,
+	Drawer,
+	IconButton,
+	Menu,
+	MenuDivider,
+	MenuItem,
+	SegmentedButton,
+	SelectField,
+	StaticChip,
+	TextAreaField,
+	TextField,
+	ToastRegion,
+	TopAppBar
+} from "@project-template/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	ArrowDown,
 	ArrowUp,
 	Check,
-	ChevronDown,
 	ChevronLeft,
 	ChevronRight,
 	CloudOff,
@@ -420,15 +436,22 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 			<main className={styles.main}>
 				<QuickCreate bootstrap={bootstrap} onCreate={handleCreate} />
 				{undo ? (
-					<div className={styles.undo} role="status">
-						<span>已清除不屬於新組別的 Assignee：{undo.assigneeNames.join("、")}</span>
-						<button type="button" onClick={restoreAssignee}>
-							復原
-						</button>
-						<button type="button" aria-label="關閉提示" onClick={() => setUndo(null)}>
-							×
-						</button>
-					</div>
+					<ToastRegion
+						messages={[
+							{
+								id: "assignee-undo",
+								title: `已清除不屬於新組別的 Assignee：${undo.assigneeNames.join("、")}`,
+								action: (
+									<>
+										<Button variant="text" onClick={restoreAssignee}>
+											復原
+										</Button>
+										<IconButton label="關閉提示" size="sm" icon={<X size="1.125rem" aria-hidden="true" />} onClick={() => setUndo(null)} />
+									</>
+								)
+							}
+						]}
+					/>
 				) : null}
 				<BoardFilters
 					bootstrap={bootstrap}
@@ -516,6 +539,14 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 
 function BoardHeader({ bootstrap, backgroundOffline, onMembers }: { bootstrap: Bootstrap; backgroundOffline: boolean; onMembers: () => void }) {
 	const offline = backgroundOffline || bootstrap.sync.state === "offline";
+	const [scrolled, setScrolled] = useState(false);
+	useEffect(() => {
+		const onScroll = () => setScrolled(window.scrollY > 0);
+		onScroll();
+		window.addEventListener("scroll", onScroll, { passive: true });
+		return () => window.removeEventListener("scroll", onScroll);
+	}, []);
+
 	const handleLogout = async () => {
 		try {
 			await logout();
@@ -526,43 +557,50 @@ function BoardHeader({ bootstrap, backgroundOffline, onMembers }: { bootstrap: B
 	};
 
 	return (
-		<header className={styles.topbar}>
-			<div className={styles.product}>
-				<img src="/sitcon-white.svg" alt="SITCON" />
-				<span>2027 · Board</span>
-			</div>
-			<nav className={styles.headerActions} aria-label="看板工具">
-				<button type="button" className={styles.headerButton} aria-label="成員" title="查看籌備團隊" onClick={onMembers}>
-					<Users size="1rem" aria-hidden="true" />
-					<span>成員</span>
-				</button>
-				{offline ? (
-					<span className={styles.sync} data-state="offline" title={bootstrap.sync.message ?? `最後同步：${formatDateTime(bootstrap.sync.lastSuccessAt)}`}>
-						<CloudOff size="0.9375rem" aria-hidden="true" />
-						<span>離線</span>
-						<span className={styles.syncAge}>· {relativeAge(bootstrap.sync.lastSuccessAt)}</span>
-					</span>
-				) : null}
-				<details className={styles.account}>
-					<summary aria-label="開啟帳號選單">
-						<Avatar name={bootstrap.me.displayName} src={bootstrap.me.avatarUrl} />
-						<ChevronDown size="0.875rem" aria-hidden="true" />
-					</summary>
-					<div className={styles.accountMenu}>
-						<div>
-							<strong>{bootstrap.me.displayName}</strong>
-							<span>@{bootstrap.me.username}</span>
-						</div>
-						<a href={bootstrap.me.profileUrl} target="_blank" rel="noreferrer">
-							<ExternalLink size="0.875rem" aria-hidden="true" /> GitLab 個人頁
-						</a>
-						<button type="button" onClick={() => void handleLogout()}>
-							<LogOut size="0.875rem" aria-hidden="true" /> 登出
-						</button>
-					</div>
-				</details>
-			</nav>
-		</header>
+		<TopAppBar
+			className={styles.topbar}
+			scrolled={scrolled}
+			headline={
+				<span className={styles.product}>
+					<SitconLogo className={styles.logo} />
+					<span>2027 · Board</span>
+				</span>
+			}
+			trailing={
+				<>
+					<Button variant="text" leadingIcon={<Users size="1.125rem" aria-hidden="true" />} title="查看籌備團隊" onClick={onMembers}>
+						成員
+					</Button>
+					{offline ? (
+						<StaticChip
+							variant="assist"
+							label={`離線 · ${relativeAge(bootstrap.sync.lastSuccessAt)}`}
+							leading={<CloudOff size="1.125rem" aria-hidden="true" />}
+							title={bootstrap.sync.message ?? `最後同步：${formatDateTime(bootstrap.sync.lastSuccessAt)}`}
+						/>
+					) : null}
+					<Menu
+						label="帳號選單"
+						align="end"
+						trigger={<IconButton label="開啟帳號選單" variant="standard" icon={<Avatar name={bootstrap.me.displayName} src={bootstrap.me.avatarUrl} />} />}
+					>
+						<MenuItem disabled>
+							{bootstrap.me.displayName} · @{bootstrap.me.username}
+						</MenuItem>
+						<MenuDivider />
+						<MenuItem
+							leading={<ExternalLink size="1.125rem" aria-hidden="true" />}
+							onSelect={() => window.open(bootstrap.me.profileUrl, "_blank", "noreferrer")}
+						>
+							GitLab 個人頁
+						</MenuItem>
+						<MenuItem leading={<LogOut size="1.125rem" aria-hidden="true" />} onSelect={() => void handleLogout()}>
+							登出
+						</MenuItem>
+					</Menu>
+				</>
+			}
+		/>
 	);
 }
 
@@ -652,99 +690,84 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 				]}
 			/>
 			{mode === "single" ? (
-				<>
-					<label className={styles.srOnly} htmlFor="quick-team">
-						新卡片組別
-					</label>
-					<select id="quick-team" className={styles.quickTeam} value={teamKey} onChange={(event) => changeTeam(event.target.value)}>
-						{teams.map((team) => (
-							<option key={team.key} value={team.key}>
-								{team.name}
-							</option>
-						))}
-					</select>
-				</>
+				<SelectField
+					dense
+					id="quick-team"
+					className={styles.quickTeam}
+					label="新卡片組別"
+					value={teamKey}
+					onChange={(event) => changeTeam(event.target.value)}
+					options={teams.map((team) => ({ value: team.key, label: team.name }))}
+				/>
 			) : (
-				<span className={styles.bulkTarget}>{leaderTargets.length ? `${leaderTargets.length} 組` : "尚未設定組長"}</span>
+				<StaticChip className={styles.bulkTarget} label={leaderTargets.length ? `${leaderTargets.length} 組` : "尚未設定組長"} />
 			)}
-			<label className={styles.srOnly} htmlFor="quick-title">
-				卡片標題
-			</label>
-			<input
+			<TextField
+				dense
 				id="quick-title"
+				className={styles.quickTitle}
+				label="卡片標題"
 				value={title}
 				maxLength={255}
 				onChange={(event) => setTitle(event.target.value)}
-				placeholder="輸入新卡片標題..."
 				autoComplete="off"
 			/>
 			{mode === "single" ? (
 				<AssigneePicker bootstrap={bootstrap} teamKey={teamKey} value={assignees} onChange={setAssignees} label="選擇新卡片 Assignee" />
 			) : (
-				<span className={styles.bulkAssignees}>{leaderCount ? `${leaderCount} 人` : "等待名單"}</span>
+				<StaticChip className={styles.bulkAssignees} label={leaderCount ? `${leaderCount} 人` : "等待名單"} />
 			)}
-			<label className={styles.dateControl} title="新卡片期限">
-				<span className={styles.srOnly}>期限</span>
-				<input type="date" value={dueDate} aria-label="新卡片期限" onChange={(event) => setDueDate(event.target.value)} />
-			</label>
+			<TextField dense type="date" className={styles.dateControl} label="新卡片期限" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
 			<Dialog
 				open={moreOpen}
 				onOpenChange={changeMoreOpen}
 				title="更多建卡選項"
 				trigger={
-					<button
-						type="button"
+					<IconButton
 						className={styles.quickMoreButton}
-						data-active={moreActive}
-						aria-label="更多建卡選項"
+						variant="standard"
+						label="更多建卡選項"
 						title={`更多建卡選項：${selectedListName}${description.trim() ? "，已填寫 Description" : ""}${labels.length ? `，${labels.length} 個 Labels` : ""}`}
-					>
-						<Ellipsis size="1.125rem" aria-hidden="true" />
-					</button>
+						icon={
+							<>
+								<Ellipsis size="1.5rem" aria-hidden="true" />
+								{/* MD3 anchors a badge inside the icon button, not beside it. */}
+								{moreActive ? <Badge dot aria-hidden="true" /> : null}
+							</>
+						}
+					/>
 				}
 				footer={
 					<>
-						<button type="button" className={styles.quickMoreCancel} onClick={() => setMoreOpen(false)}>
+						<Button variant="text" onClick={() => setMoreOpen(false)}>
 							取消
-						</button>
-						<button type="button" className={styles.quickMoreApply} onClick={applyMoreOptions}>
+						</Button>
+						<Button variant="filled" onClick={applyMoreOptions}>
 							套用
-						</button>
+						</Button>
 					</>
 				}
 			>
 				<div className={styles.quickMoreFields}>
-					<label>
-						<span>Status</span>
-						<select aria-label="新卡片 Status" value={draftListKey} onChange={(event) => setDraftListKey(event.target.value)}>
-							{lists.map((list) => (
-								<option key={list.key} value={list.key}>
-									{list.name}
-								</option>
-							))}
-						</select>
-					</label>
-					<label>
-						<span>Description</span>
-						<textarea
-							aria-label="新卡片 Description"
-							value={draftDescription}
-							onChange={(event) => setDraftDescription(event.target.value)}
-							placeholder="輸入卡片描述..."
-						/>
-					</label>
+					<SelectField
+						label="新卡片 Status"
+						value={draftListKey}
+						onChange={(event) => setDraftListKey(event.target.value)}
+						options={lists.map((list) => ({ value: list.key, label: list.name }))}
+					/>
+					<TextAreaField label="新卡片 Description" rows={5} value={draftDescription} onChange={(event) => setDraftDescription(event.target.value)} />
 					<QuickCreateLabels bootstrap={bootstrap} value={draftLabels} onChange={setDraftLabels} />
 				</div>
 			</Dialog>
-			<button
+			<IconButton
 				type="submit"
+				variant="filled"
 				className={styles.createButton}
 				disabled={!title.trim() || !listKey || (mode === "leaders" && leaderTargets.length === 0)}
-				aria-label={mode === "leaders" ? "為所有組長建立卡片" : "建立卡片"}
+				label={mode === "leaders" ? "為所有組長建立卡片" : "建立卡片"}
 				title={mode === "leaders" ? "為所有組長建立卡片" : "建立卡片"}
-			>
-				<Plus size="1.125rem" aria-hidden="true" />
-			</button>
+				icon={<Plus size="1.5rem" aria-hidden="true" />}
+			/>
 			{mode === "single" && clearedAssignees.length ? (
 				<p className={styles.quickNotice} role="status">
 					已清除不屬於此組別的 Assignee

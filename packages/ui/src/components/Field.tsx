@@ -6,6 +6,8 @@ interface FieldMetaProps {
 	description?: string | undefined;
 	error?: string | undefined;
 	optional?: boolean | undefined;
+	/** Material density -2 (48dp) for chrome above dense data. Dialogs stay 56dp. */
+	dense?: boolean | undefined;
 }
 
 /**
@@ -26,6 +28,7 @@ function FieldFrame({
 	description,
 	error,
 	optional,
+	dense,
 	floating,
 	className,
 	children
@@ -36,7 +39,11 @@ function FieldFrame({
 		</>
 	);
 	return (
-		<div className={classNames("md-field", className)} data-invalid={error ? true : undefined} data-floating={floating || undefined}>
+		<div
+			className={classNames("md-field", dense && "md-field--dense", className)}
+			data-invalid={error ? true : undefined}
+			data-floating={floating || undefined}
+		>
 			<div className="md-field__box">
 				{children}
 				<label className="md-field__label" htmlFor={id}>
@@ -73,6 +80,7 @@ export function TextField({
 	description,
 	error,
 	optional,
+	dense,
 	id: explicitId,
 	className,
 	placeholder,
@@ -82,7 +90,7 @@ export function TextField({
 	const generatedId = useId();
 	const id = explicitId ?? generatedId;
 	return (
-		<FieldFrame id={id} label={label} description={description} error={error} optional={optional} className={className}>
+		<FieldFrame id={id} label={label} description={description} error={error} optional={optional} dense={dense} className={className}>
 			<input
 				id={id}
 				className="md-field__input"
@@ -105,6 +113,7 @@ export function TextAreaField({
 	description,
 	error,
 	optional,
+	dense,
 	id: explicitId,
 	className,
 	placeholder,
@@ -114,7 +123,15 @@ export function TextAreaField({
 	const generatedId = useId();
 	const id = explicitId ?? generatedId;
 	return (
-		<FieldFrame id={id} label={label} description={description} error={error} optional={optional} className={classNames("md-field--textarea", className)}>
+		<FieldFrame
+			id={id}
+			label={label}
+			description={description}
+			error={error}
+			optional={optional}
+			dense={dense}
+			className={classNames("md-field--textarea", className)}
+		>
 			<textarea
 				id={id}
 				className="md-field__input md-field__input--textarea"
@@ -150,6 +167,7 @@ export function SelectField({
 	description,
 	error,
 	optional,
+	dense,
 	options,
 	id: explicitId,
 	className,
@@ -165,6 +183,7 @@ export function SelectField({
 			description={description}
 			error={error}
 			optional={optional}
+			dense={dense}
 			floating
 			className={classNames("md-field--select", className)}
 		>

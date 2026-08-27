@@ -54,6 +54,12 @@ function Harness({ initial = demoBootstrap }: { initial?: Bootstrap }) {
 	);
 }
 
+/** The team filter is a Material filter chip; pick a team through its menu. */
+async function chooseTeamFilter(user: ReturnType<typeof userEvent.setup>, name: string) {
+	await user.click(screen.getByRole("button", { name: "篩選組別" }));
+	await user.click(await screen.findByRole("menuitemcheckbox", { name }));
+}
+
 function mutationResult(card: BoardCard, operationId: string, patch: Partial<BoardCard>): CardMutation {
 	return {
 		card: { ...card, ...patch, syncState: "synced", syncError: null, pendingOperationId: null },
@@ -201,7 +207,7 @@ describe("SITCON Board interactions", () => {
 		const user = userEvent.setup();
 		render(<Harness />);
 
-		await user.selectOptions(screen.getByLabelText("篩選組別"), "design");
+		await chooseTeamFilter(user, "設計組");
 
 		const filters = screen.getByRole("region", { name: "篩選看板" });
 		expect(within(filters).getByRole("status")).toHaveTextContent("1 / 7 張卡片");
@@ -212,7 +218,7 @@ describe("SITCON Board interactions", () => {
 
 		await user.click(within(filters).getByRole("button", { name: "清除篩選" }));
 
-		expect(screen.getByLabelText("篩選組別")).toHaveValue("");
+		expect(screen.getByRole("button", { name: "篩選組別" })).toHaveTextContent("所有組別");
 		expect(within(filters).getByRole("status")).toHaveTextContent("7 / 7 張卡片");
 		expect(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 	});
@@ -222,7 +228,7 @@ describe("SITCON Board interactions", () => {
 		const user = userEvent.setup();
 		render(<Harness />);
 
-		expect(screen.getByLabelText("篩選組別")).toHaveValue("development");
+		expect(screen.getByRole("button", { name: "篩選組別" })).toHaveTextContent("開發組");
 		expect(screen.getByLabelText("排序方式")).toHaveValue("due-desc");
 		expect(screen.getByRole("button", { name: "篩選 Label" })).toHaveTextContent("Labels 1");
 		expect(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
@@ -274,7 +280,7 @@ describe("SITCON Board interactions", () => {
 		expect(screen.queryByRole("heading", { name: "[設計組] 製作工作人員識別證" })).not.toBeInTheDocument();
 		expect(within(screen.getByRole("region", { name: "篩選看板" })).getByRole("status")).toHaveTextContent("2 / 7 張卡片");
 
-		await user.selectOptions(screen.getByLabelText("篩選組別"), "development");
+		await chooseTeamFilter(user, "開發組");
 
 		expect(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 		expect(screen.queryByRole("heading", { name: "[行政組] 整理志工行前通知" })).not.toBeInTheDocument();
@@ -349,7 +355,7 @@ describe("SITCON Board interactions", () => {
 		await user.selectOptions(screen.getByLabelText("排序方式"), "due-desc");
 		expect(titles()).toEqual(["[場務組] 盤點會場網路設備", "[設計組] 製作工作人員識別證"]);
 
-		await user.selectOptions(screen.getByLabelText("篩選組別"), "design");
+		await chooseTeamFilter(user, "設計組");
 		await user.click(screen.getByRole("button", { name: "清除篩選" }));
 		expect(screen.getByLabelText("排序方式")).toHaveValue("due-desc");
 		expect(titles()).toEqual(["[場務組] 盤點會場網路設備", "[設計組] 製作工作人員識別證"]);
