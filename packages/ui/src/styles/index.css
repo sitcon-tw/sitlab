@@ -1,2 +1,6 @@
+/* Roboto is Material Design's typeface. Self-hosted rather than loaded from a
+ * CDN: this is an internal tool and must not make third-party requests. The
+ * variable font covers the only two weights Material uses, 400 and 500. */
+@import "@fontsource-variable/roboto";
 @import "./tokens.css";
 @import "./md3.css";

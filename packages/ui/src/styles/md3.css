@@ -1137,7 +1137,8 @@
 
 .md-field:focus-within .md-field__outline {
 	border-color: var(--md-sys-color-primary);
-	border-width: 2px;
+	/* Material's outlined text field focuses at 3px, not 2px. */
+	border-width: 3px;
 }
 
 .md-field[data-invalid="true"] .md-field__outline {
