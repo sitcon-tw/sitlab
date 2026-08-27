@@ -11,13 +11,13 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
-		"./styles": "./dist/styles/tokens.css"
+		"./styles": "./dist/styles/index.css"
 	},
 	"files": [
 		"dist"
 	],
 	"scripts": {
-		"build": "tsc -p tsconfig.build.json && mkdir -p dist/styles && cp src/styles/tokens.css dist/styles/tokens.css",
+		"build": "tsc -p tsconfig.build.json && mkdir -p dist/styles && cp src/styles/*.css dist/styles/",
 		"build:storybook": "storybook build",
 		"generate:tokens": "node --import ./scripts/register-resolve.mjs scripts/generate-tokens.mjs",
 		"lint": "eslint .",

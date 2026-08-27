@@ -18,9 +18,9 @@ export interface DataTableProps<Row> {
 export function DataTable<Row>({ rows, columns, getRowKey, label, empty }: DataTableProps<Row>) {
 	if (rows.length === 0 && empty) return <>{empty}</>;
 	return (
-		<div className="pt-data-table-wrap">
-			<table className="pt-data-table">
-				<caption className="pt-sr-only">{label}</caption>
+		<div className="md-data-table-wrap">
+			<table className="md-data-table">
+				<caption className="md-sr-only">{label}</caption>
 				<thead>
 					<tr>
 						{columns.map((column) => (

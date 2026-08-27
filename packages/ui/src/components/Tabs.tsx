@@ -25,15 +25,15 @@ export function Tabs({ items, defaultValue, value, onValueChange, label }: TabsP
 	};
 	return (
 		<RadixTabs.Root {...rootProps}>
-			<RadixTabs.List className="pt-tabs__list" aria-label={label}>
+			<RadixTabs.List className="md-tabs__list" aria-label={label}>
 				{items.map((item) => (
-					<RadixTabs.Trigger className="pt-tab" key={item.value} value={item.value} disabled={item.disabled}>
+					<RadixTabs.Trigger className="md-tab" key={item.value} value={item.value} disabled={item.disabled}>
 						{item.label}
 					</RadixTabs.Trigger>
 				))}
 			</RadixTabs.List>
 			{items.map((item) => (
-				<RadixTabs.Content className="pt-tabs__content" key={item.value} value={item.value}>
+				<RadixTabs.Content className="md-tabs__content" key={item.value} value={item.value}>
 					{item.content}
 				</RadixTabs.Content>
 			))}

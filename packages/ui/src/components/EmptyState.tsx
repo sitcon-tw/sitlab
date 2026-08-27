@@ -9,14 +9,14 @@ export interface EmptyStateProps {
 
 export function EmptyState({ title, description, icon, action }: EmptyStateProps) {
 	return (
-		<div className="pt-empty-state">
+		<div className="md-empty-state">
 			{icon ? (
-				<div className="pt-empty-state__icon" aria-hidden="true">
+				<div className="md-empty-state__icon" aria-hidden="true">
 					{icon}
 				</div>
 			) : null}
-			<h3 className="pt-empty-state__title">{title}</h3>
-			<p className="pt-empty-state__description">{description}</p>
+			<h3 className="md-empty-state__title">{title}</h3>
+			<p className="md-empty-state__description">{description}</p>
 			{action}
 		</div>
 	);

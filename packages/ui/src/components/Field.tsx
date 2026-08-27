@@ -12,18 +12,18 @@ function FieldFrame({ id, label, description, error, optional, children }: Field
 	const descriptionId = description ? `${id}-description` : undefined;
 	const errorId = error ? `${id}-error` : undefined;
 	return (
-		<div className="pt-field">
-			<label className="pt-field__label" htmlFor={id}>
-				{label} {optional ? <span className="pt-field__optional">(optional)</span> : null}
+		<div className="md-field">
+			<label className="md-field__label" htmlFor={id}>
+				{label} {optional ? <span className="md-field__optional">(optional)</span> : null}
 			</label>
 			{children}
 			{description ? (
-				<p className="pt-field__description" id={descriptionId}>
+				<p className="md-field__description" id={descriptionId}>
 					{description}
 				</p>
 			) : null}
 			{error ? (
-				<p className="pt-field__error" id={errorId}>
+				<p className="md-field__error" id={errorId}>
 					{error}
 				</p>
 			) : null}
@@ -44,7 +44,7 @@ export function TextField({ label, description, error, optional, id: explicitId,
 		<FieldFrame id={id} label={label} description={description} error={error} optional={optional}>
 			<input
 				id={id}
-				className={classNames("pt-input", className)}
+				className={classNames("md-input", className)}
 				aria-invalid={error ? true : undefined}
 				aria-describedby={describedBy(id, description, error, ariaDescribedBy)}
 				{...props}
@@ -71,7 +71,7 @@ export function TextAreaField({
 		<FieldFrame id={id} label={label} description={description} error={error} optional={optional}>
 			<textarea
 				id={id}
-				className={classNames("pt-textarea", className)}
+				className={classNames("md-textarea", className)}
 				aria-invalid={error ? true : undefined}
 				aria-describedby={describedBy(id, description, error, ariaDescribedBy)}
 				{...props}
@@ -106,7 +106,7 @@ export function SelectField({
 		<FieldFrame id={id} label={label} description={description} error={error} optional={optional}>
 			<select
 				id={id}
-				className={classNames("pt-select", className)}
+				className={classNames("md-select", className)}
 				aria-invalid={error ? true : undefined}
 				aria-describedby={describedBy(id, description, error, ariaDescribedBy)}
 				{...props}

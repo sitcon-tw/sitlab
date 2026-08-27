@@ -1174,7 +1174,7 @@
 	border: 1px solid var(--sb-border);
 }
 
-:global(.pt-drawer):has(.cardDetail) {
+:global(.md-drawer):has(.cardDetail) {
 	width: min(calc(100vw - 3rem), 46rem);
 }
 
@@ -2096,7 +2096,7 @@
 }
 
 @media (max-width: 30rem) {
-	:global(.pt-drawer):has(.cardDetail) {
+	:global(.md-drawer):has(.cardDetail) {
 		width: 100vw;
 	}
 

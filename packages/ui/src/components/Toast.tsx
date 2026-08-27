@@ -15,11 +15,11 @@ export interface ToastRegionProps {
 
 export function ToastRegion({ messages }: ToastRegionProps) {
 	return (
-		<div className="pt-toast-region" aria-label="Notifications">
+		<div className="md-toast-region" aria-label="Notifications">
 			{messages.map((message) => (
-				<div className={classNames("pt-toast", `pt-toast--${message.tone ?? "info"}`)} key={message.id} role={message.tone === "danger" ? "alert" : "status"}>
-					<h2 className="pt-toast__title">{message.title}</h2>
-					{message.description ? <p className="pt-toast__description">{message.description}</p> : null}
+				<div className={classNames("md-toast", `md-toast--${message.tone ?? "info"}`)} key={message.id} role={message.tone === "danger" ? "alert" : "status"}>
+					<h2 className="md-toast__title">{message.title}</h2>
+					{message.description ? <p className="md-toast__description">{message.description}</p> : null}
 					{message.action}
 				</div>
 			))}

@@ -1,0 +1,1325 @@
+/* Material Design 3 primitive components.
+ *
+ * This file must never contain a concrete color. Every value comes from a
+ * --md-sys-* token in tokens.css, or from color-mix() over one. See
+ * scripts/check-frontend-style.mjs.
+ */
+
+.md-sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}
+
+/* --- Type scale ---------------------------------------------------------- */
+
+.md-typescale-display-large,
+.md-typescale-display-medium,
+.md-typescale-display-small,
+.md-typescale-headline-large,
+.md-typescale-headline-medium,
+.md-typescale-headline-small,
+.md-typescale-title-large,
+.md-typescale-title-medium,
+.md-typescale-title-small,
+.md-typescale-body-large,
+.md-typescale-body-medium,
+.md-typescale-body-small,
+.md-typescale-label-large,
+.md-typescale-label-medium,
+.md-typescale-label-small {
+	margin: 0;
+	font-family: var(--md-ref-typeface-plain);
+}
+
+/* --- State layer ---------------------------------------------------------
+ *
+ * MD3 defines the state layer as the surface's own *content* color at a fixed
+ * opacity. `background-color: currentColor` expresses that without a token per
+ * variant: a filled button's currentColor is on-primary, an outlined button's
+ * is primary, a card's is on-surface.
+ *
+ * `isolation: isolate` creates a stacking context so `z-index: -1` paints above
+ * the host's own background but below its label. `overflow: hidden` clips the
+ * ripple to the host's border radius.
+ */
+
+.md-state-layer {
+	position: relative;
+	isolation: isolate;
+	overflow: hidden;
+}
+
+.md-state-layer::before {
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background-color: currentColor;
+	border-radius: inherit;
+	opacity: 0;
+	transition: opacity var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+	pointer-events: none;
+	content: "";
+}
+
+.md-state-layer:hover:not(:disabled)::before {
+	opacity: var(--md-sys-state-hover-opacity);
+}
+
+.md-state-layer:focus-visible::before {
+	opacity: var(--md-sys-state-focus-opacity);
+}
+
+.md-state-layer[data-dragging="true"]::before {
+	opacity: var(--md-sys-state-dragged-opacity);
+}
+
+/* No :active layer while the ripple is live. MD3 uses the ripple *instead of* a
+ * flat pressed layer; stacking both reads as a visible double-darkening. The
+ * pressed layer comes back under prefers-reduced-motion, at the end of this file. */
+
+/* --- Ripple --------------------------------------------------------------
+ *
+ * Nodes are owned by React (see lib/useRipple.tsx) so there is no appendChild
+ * racing reconciliation. This is a single-phase 500ms expand-and-fade rather
+ * than MD3's two-phase expand + release-fade; the simplification is recorded in
+ * design.md.
+ */
+
+.md-ripple {
+	position: absolute;
+	z-index: -1;
+	background-color: currentColor;
+	border-radius: 50%;
+	animation: md-ripple-expand var(--md-sys-motion-duration-long2) var(--md-sys-motion-easing-emphasized-decelerate) forwards;
+	pointer-events: none;
+}
+
+@keyframes md-ripple-expand {
+	from {
+		opacity: var(--md-sys-state-pressed-opacity);
+		transform: scale(0);
+	}
+
+	to {
+		opacity: 0;
+		transform: scale(1);
+	}
+}
+
+/* --- Focus indicator -----------------------------------------------------
+ *
+ * MD3 replaces the old ring with a 3dp secondary outline at a 2dp offset. It is
+ * applied here rather than per-component so no interactive primitive can miss it.
+ */
+
+.md-button:focus-visible,
+.md-icon-button:focus-visible,
+.md-chip__button:focus-visible,
+.md-chip__remove:focus-visible,
+.md-segmented-button__segment:focus-visible,
+.md-list-item:focus-visible,
+.md-menu-item:focus-visible,
+.md-checkbox:focus-visible,
+.md-radio:focus-visible,
+.md-input:focus-visible,
+.md-select:focus-visible,
+.md-textarea:focus-visible,
+.md-tab:focus-visible {
+	outline: 3px solid var(--md-sys-color-secondary);
+	outline-offset: 2px;
+}
+
+/* --- Divider -------------------------------------------------------------- */
+
+.md-divider {
+	height: 1px;
+	background: var(--md-sys-color-outline-variant);
+	border: 0;
+}
+
+.md-divider--inset {
+	margin-inline-start: var(--md-space-4);
+}
+
+/* --- List ----------------------------------------------------------------
+ *
+ * CSS only, no React component: the member picker, tag menu, and account menu
+ * host list rows on a <button>, a <label>, and an <a> respectively.
+ */
+
+.md-list {
+	display: flex;
+	flex-direction: column;
+	padding: var(--md-space-2) 0;
+	margin: 0;
+	list-style: none;
+}
+
+.md-list-item {
+	display: flex;
+	gap: var(--md-space-4);
+	align-items: center;
+	width: 100%;
+	min-height: 3.5rem;
+	padding: var(--md-space-2) var(--md-space-4);
+	color: var(--md-sys-color-on-surface);
+	text-align: start;
+	background: none;
+	border: 0;
+}
+
+.md-list-item--two-line {
+	min-height: 4.5rem;
+}
+
+.md-list-item__leading {
+	display: grid;
+	flex: 0 0 auto;
+	place-items: center;
+	width: 2.5rem;
+	height: 2.5rem;
+	color: var(--md-sys-color-on-surface-variant);
+}
+
+.md-list-item__text {
+	display: grid;
+	flex: 1 1 auto;
+	gap: var(--md-space-1);
+	min-width: 0;
+}
+
+.md-list-item__headline {
+	margin: 0;
+	font-size: var(--md-sys-typescale-body-large-size);
+	font-weight: var(--md-sys-typescale-body-large-weight);
+	line-height: var(--md-sys-typescale-body-large-line-height);
+	letter-spacing: var(--md-sys-typescale-body-large-tracking);
+}
+
+.md-list-item__supporting {
+	margin: 0;
+	overflow: hidden;
+	font-size: var(--md-sys-typescale-body-medium-size);
+	line-height: var(--md-sys-typescale-body-medium-line-height);
+	color: var(--md-sys-color-on-surface-variant);
+	text-overflow: ellipsis;
+	letter-spacing: var(--md-sys-typescale-body-medium-tracking);
+	white-space: nowrap;
+}
+
+.md-list-item__trailing {
+	flex: 0 0 auto;
+	color: var(--md-sys-color-on-surface-variant);
+}
+
+/* --- Selection controls --------------------------------------------------
+ *
+ * These style the *native* input. BoardPage.test.tsx queries getByRole("checkbox")
+ * with toBePartiallyChecked, and OnboardingPage.test.tsx queries getByRole("radio");
+ * replacing them with div-based widgets would break both and lose native
+ * behavior on mobile.
+ */
+
+.md-checkbox,
+.md-radio {
+	position: relative;
+	display: grid;
+	flex: 0 0 auto;
+	place-items: center;
+	width: 1.125rem;
+	height: 1.125rem;
+	margin: 0;
+	appearance: none;
+	background: none;
+	border: 2px solid var(--md-sys-color-on-surface-variant);
+	transition:
+		background-color var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard),
+		border-color var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+}
+
+.md-checkbox {
+	border-radius: var(--md-sys-shape-corner-extra-small);
+}
+
+.md-radio {
+	width: 1.25rem;
+	height: 1.25rem;
+	border-radius: var(--md-sys-shape-corner-full);
+}
+
+/* 40dp state-layer target without changing layout. */
+.md-checkbox::after,
+.md-radio::after {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 2.5rem;
+	height: 2.5rem;
+	background-color: currentColor;
+	border-radius: var(--md-sys-shape-corner-full);
+	opacity: 0;
+	transition: opacity var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+	transform: translate(-50%, -50%);
+	content: "";
+}
+
+.md-checkbox:hover:not(:disabled)::after,
+.md-radio:hover:not(:disabled)::after {
+	opacity: var(--md-sys-state-hover-opacity);
+}
+
+.md-checkbox:checked,
+.md-checkbox:indeterminate {
+	background: var(--md-sys-color-primary);
+	border-color: var(--md-sys-color-primary);
+}
+
+.md-checkbox:checked::before,
+.md-checkbox:indeterminate::before {
+	width: 0.625rem;
+	height: 0.3125rem;
+	border: 2px solid var(--md-sys-color-on-primary);
+	border-top: 0;
+	border-right: 0;
+	transform: rotate(-45deg) translate(1px, -1px);
+	content: "";
+}
+
+.md-checkbox:indeterminate::before {
+	width: 0.625rem;
+	height: 0;
+	border-bottom-width: 2px;
+	transform: none;
+}
+
+.md-radio:checked {
+	border-color: var(--md-sys-color-primary);
+}
+
+.md-radio:checked::before {
+	width: 0.625rem;
+	height: 0.625rem;
+	background: var(--md-sys-color-primary);
+	border-radius: var(--md-sys-shape-corner-full);
+	content: "";
+}
+
+.md-checkbox:disabled,
+.md-radio:disabled {
+	border-color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
+}
+
+/* --- Menu ----------------------------------------------------------------- */
+
+.md-menu {
+	min-width: 7rem;
+	padding: var(--md-space-2) 0;
+	background: var(--md-sys-color-surface-container);
+	border-radius: var(--md-sys-shape-corner-extra-small);
+	box-shadow: var(--md-sys-elevation-level2);
+}
+
+.md-menu-item {
+	display: flex;
+	gap: var(--md-space-3);
+	align-items: center;
+	width: 100%;
+	min-height: 3rem;
+	padding: 0 var(--md-space-3);
+	font-size: var(--md-sys-typescale-label-large-size);
+	font-weight: var(--md-sys-typescale-label-large-weight);
+	line-height: var(--md-sys-typescale-label-large-line-height);
+	color: var(--md-sys-color-on-surface);
+	text-align: start;
+	letter-spacing: var(--md-sys-typescale-label-large-tracking);
+	background: none;
+	border: 0;
+}
+
+.md-typescale-display-large {
+	font-size: var(--md-sys-typescale-display-large-size);
+	font-weight: var(--md-sys-typescale-display-large-weight);
+	line-height: var(--md-sys-typescale-display-large-line-height);
+	letter-spacing: var(--md-sys-typescale-display-large-tracking);
+}
+
+.md-typescale-display-medium {
+	font-size: var(--md-sys-typescale-display-medium-size);
+	font-weight: var(--md-sys-typescale-display-medium-weight);
+	line-height: var(--md-sys-typescale-display-medium-line-height);
+	letter-spacing: var(--md-sys-typescale-display-medium-tracking);
+}
+
+.md-typescale-display-small {
+	font-size: var(--md-sys-typescale-display-small-size);
+	font-weight: var(--md-sys-typescale-display-small-weight);
+	line-height: var(--md-sys-typescale-display-small-line-height);
+	letter-spacing: var(--md-sys-typescale-display-small-tracking);
+}
+
+.md-typescale-headline-large {
+	font-size: var(--md-sys-typescale-headline-large-size);
+	font-weight: var(--md-sys-typescale-headline-large-weight);
+	line-height: var(--md-sys-typescale-headline-large-line-height);
+	letter-spacing: var(--md-sys-typescale-headline-large-tracking);
+}
+
+.md-typescale-headline-medium {
+	font-size: var(--md-sys-typescale-headline-medium-size);
+	font-weight: var(--md-sys-typescale-headline-medium-weight);
+	line-height: var(--md-sys-typescale-headline-medium-line-height);
+	letter-spacing: var(--md-sys-typescale-headline-medium-tracking);
+}
+
+.md-typescale-headline-small {
+	font-size: var(--md-sys-typescale-headline-small-size);
+	font-weight: var(--md-sys-typescale-headline-small-weight);
+	line-height: var(--md-sys-typescale-headline-small-line-height);
+	letter-spacing: var(--md-sys-typescale-headline-small-tracking);
+}
+
+.md-typescale-title-large {
+	font-size: var(--md-sys-typescale-title-large-size);
+	font-weight: var(--md-sys-typescale-title-large-weight);
+	line-height: var(--md-sys-typescale-title-large-line-height);
+	letter-spacing: var(--md-sys-typescale-title-large-tracking);
+}
+
+.md-typescale-title-medium {
+	font-size: var(--md-sys-typescale-title-medium-size);
+	font-weight: var(--md-sys-typescale-title-medium-weight);
+	line-height: var(--md-sys-typescale-title-medium-line-height);
+	letter-spacing: var(--md-sys-typescale-title-medium-tracking);
+}
+
+.md-typescale-title-small {
+	font-size: var(--md-sys-typescale-title-small-size);
+	font-weight: var(--md-sys-typescale-title-small-weight);
+	line-height: var(--md-sys-typescale-title-small-line-height);
+	letter-spacing: var(--md-sys-typescale-title-small-tracking);
+}
+
+.md-typescale-body-large {
+	font-size: var(--md-sys-typescale-body-large-size);
+	font-weight: var(--md-sys-typescale-body-large-weight);
+	line-height: var(--md-sys-typescale-body-large-line-height);
+	letter-spacing: var(--md-sys-typescale-body-large-tracking);
+}
+
+.md-typescale-body-medium {
+	font-size: var(--md-sys-typescale-body-medium-size);
+	font-weight: var(--md-sys-typescale-body-medium-weight);
+	line-height: var(--md-sys-typescale-body-medium-line-height);
+	letter-spacing: var(--md-sys-typescale-body-medium-tracking);
+}
+
+.md-typescale-body-small {
+	font-size: var(--md-sys-typescale-body-small-size);
+	font-weight: var(--md-sys-typescale-body-small-weight);
+	line-height: var(--md-sys-typescale-body-small-line-height);
+	letter-spacing: var(--md-sys-typescale-body-small-tracking);
+}
+
+.md-typescale-label-large {
+	font-size: var(--md-sys-typescale-label-large-size);
+	font-weight: var(--md-sys-typescale-label-large-weight);
+	line-height: var(--md-sys-typescale-label-large-line-height);
+	letter-spacing: var(--md-sys-typescale-label-large-tracking);
+}
+
+.md-typescale-label-medium {
+	font-size: var(--md-sys-typescale-label-medium-size);
+	font-weight: var(--md-sys-typescale-label-medium-weight);
+	line-height: var(--md-sys-typescale-label-medium-line-height);
+	letter-spacing: var(--md-sys-typescale-label-medium-tracking);
+}
+
+.md-typescale-label-small {
+	font-size: var(--md-sys-typescale-label-small-size);
+	font-weight: var(--md-sys-typescale-label-small-weight);
+	line-height: var(--md-sys-typescale-label-small-line-height);
+	letter-spacing: var(--md-sys-typescale-label-small-tracking);
+}
+/* --- Common buttons ------------------------------------------------------- */
+
+.md-button {
+	position: relative;
+	display: inline-flex;
+	gap: var(--md-space-2);
+	align-items: center;
+	justify-content: center;
+	min-height: 2.5rem;
+	padding: 0 var(--md-space-6);
+	overflow: hidden;
+	font-family: var(--md-sys-typescale-label-large-font);
+	font-size: var(--md-sys-typescale-label-large-size);
+	font-weight: var(--md-sys-typescale-label-large-weight);
+	line-height: var(--md-sys-typescale-label-large-line-height);
+	letter-spacing: var(--md-sys-typescale-label-large-tracking);
+	white-space: nowrap;
+	border: none;
+	border-radius: var(--md-sys-shape-corner-full);
+	isolation: isolate;
+	transition:
+		box-shadow var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+		background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+		border-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+
+.md-button:has(.md-button__icon:first-child) {
+	padding-inline: var(--md-space-4) var(--md-space-6);
+}
+
+.md-button__icon {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	width: 1.125rem;
+	height: 1.125rem;
+}
+
+.md-button--filled {
+	color: var(--md-sys-color-on-primary);
+	background-color: var(--md-sys-color-primary);
+	box-shadow: var(--md-sys-elevation-level0);
+}
+
+.md-button--filled:hover:not(:disabled) {
+	box-shadow: var(--md-sys-elevation-level1);
+}
+
+.md-button--tonal {
+	color: var(--md-sys-color-on-secondary-container);
+	background-color: var(--md-sys-color-secondary-container);
+	box-shadow: var(--md-sys-elevation-level0);
+}
+
+.md-button--tonal:hover:not(:disabled) {
+	box-shadow: var(--md-sys-elevation-level1);
+}
+
+.md-button--elevated {
+	color: var(--md-sys-color-primary);
+	background-color: var(--md-sys-color-surface-container-low);
+	box-shadow: var(--md-sys-elevation-level1);
+}
+
+.md-button--elevated:hover:not(:disabled) {
+	box-shadow: var(--md-sys-elevation-level2);
+}
+
+.md-button--outlined {
+	color: var(--md-sys-color-primary);
+	background-color: transparent;
+	border: 1px solid var(--md-sys-color-outline);
+}
+
+.md-button--outlined:focus-visible:not(:disabled) {
+	border-color: var(--md-sys-color-primary);
+}
+
+.md-button--text {
+	padding-inline: var(--md-space-3);
+	color: var(--md-sys-color-primary);
+	background-color: transparent;
+}
+
+.md-button--text:has(.md-button__icon:first-child) {
+	padding-inline: var(--md-space-3) var(--md-space-4);
+}
+
+/* Error tone. Filled swaps the container; the rest only swap the label. */
+.md-button--error {
+	color: var(--md-sys-color-error);
+}
+
+.md-button--filled.md-button--error {
+	color: var(--md-sys-color-on-error);
+	background-color: var(--md-sys-color-error);
+}
+
+.md-button--tonal.md-button--error {
+	color: var(--md-sys-color-on-error-container);
+	background-color: var(--md-sys-color-error-container);
+}
+
+.md-button--sm {
+	min-height: 2rem;
+	padding-inline: var(--md-space-4);
+	font-size: var(--md-sys-typescale-label-medium-size);
+	letter-spacing: var(--md-sys-typescale-label-medium-tracking);
+}
+
+.md-button--lg {
+	min-height: 3rem;
+}
+
+/* MD3 disables per part: 38% content, 12% container, both over on-surface. A
+ * blanket opacity would also fade the focus outline and the shadow. */
+.md-button:disabled {
+	color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
+	cursor: not-allowed;
+	box-shadow: var(--md-sys-elevation-level0);
+}
+
+.md-button--filled:disabled,
+.md-button--tonal:disabled,
+.md-button--elevated:disabled {
+	background-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+}
+
+.md-button--outlined:disabled {
+	border-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+}
+
+/* --- Icon button ---------------------------------------------------------- */
+
+.md-icon-button {
+	position: relative;
+	display: inline-grid;
+	flex: 0 0 auto;
+	place-items: center;
+	width: 2.5rem;
+	height: 2.5rem;
+	padding: 0;
+	overflow: hidden;
+	background: none;
+	border: none;
+	border-radius: var(--md-sys-shape-corner-full);
+	isolation: isolate;
+	transition:
+		background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+		border-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+
+/* 48dp touch target that does not affect layout. Growing the box instead would
+ * push the board past the viewport at 320px. */
+.md-icon-button::after {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 3rem;
+	height: 3rem;
+	transform: translate(-50%, -50%);
+	content: "";
+}
+
+.md-icon-button--standard {
+	color: var(--md-sys-color-on-surface-variant);
+}
+
+.md-icon-button--filled {
+	color: var(--md-sys-color-on-primary);
+	background-color: var(--md-sys-color-primary);
+}
+
+.md-icon-button--tonal {
+	color: var(--md-sys-color-on-secondary-container);
+	background-color: var(--md-sys-color-secondary-container);
+}
+
+.md-icon-button--outlined {
+	color: var(--md-sys-color-on-surface-variant);
+	border: 1px solid var(--md-sys-color-outline);
+}
+
+.md-icon-button--error {
+	color: var(--md-sys-color-error);
+}
+
+.md-icon-button--filled.md-icon-button--error {
+	color: var(--md-sys-color-on-error);
+	background-color: var(--md-sys-color-error);
+}
+
+.md-icon-button[aria-pressed="true"].md-icon-button--standard {
+	color: var(--md-sys-color-primary);
+}
+
+.md-icon-button--sm {
+	width: 2rem;
+	height: 2rem;
+}
+
+.md-icon-button:disabled {
+	color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
+	cursor: not-allowed;
+}
+
+.md-icon-button--filled:disabled,
+.md-icon-button--tonal:disabled {
+	background-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+}
+
+.md-icon-button--outlined:disabled {
+	border-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+}
+
+/* --- Chip ----------------------------------------------------------------- */
+
+.md-chip {
+	position: relative;
+	display: inline-flex;
+	gap: var(--md-space-2);
+	align-items: center;
+	min-height: 2rem;
+	max-width: 100%;
+	padding: 0 var(--md-space-3);
+	overflow: hidden;
+	font-family: var(--md-sys-typescale-label-large-font);
+	font-size: var(--md-sys-typescale-label-large-size);
+	font-weight: var(--md-sys-typescale-label-large-weight);
+	line-height: var(--md-sys-typescale-label-large-line-height);
+	color: var(--md-sys-color-on-surface-variant);
+	letter-spacing: var(--md-sys-typescale-label-large-tracking);
+	background: none;
+	border: 1px solid var(--md-sys-color-outline);
+	border-radius: var(--md-sys-shape-corner-small);
+	isolation: isolate;
+	transition:
+		background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+		border-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+		box-shadow var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+
+.md-chip__button {
+	display: inline-flex;
+	gap: var(--md-space-2);
+	align-items: center;
+	min-width: 0;
+	padding: 0;
+	font: inherit;
+	color: inherit;
+	letter-spacing: inherit;
+	background: none;
+	border: 0;
+}
+
+.md-chip__button:disabled {
+	color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
+	cursor: not-allowed;
+}
+
+.md-chip:has(.md-chip__button:disabled) {
+	border-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+}
+
+.md-chip__label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.md-chip__leading,
+.md-chip__trailing {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 1.125rem;
+	height: 1.125rem;
+}
+
+/* Input chips lead with an 24dp avatar or swatch and sit tighter on that side. */
+.md-chip--input {
+	padding-inline-start: var(--md-space-2);
+}
+
+.md-chip--suggestion,
+.md-chip--assist {
+	border-color: var(--md-sys-color-outline);
+}
+
+.md-chip--elevated {
+	background-color: var(--md-sys-color-surface-container-low);
+	border-color: transparent;
+	box-shadow: var(--md-sys-elevation-level1);
+}
+
+.md-chip[data-selected="true"] {
+	color: var(--md-sys-color-on-secondary-container);
+	background-color: var(--md-sys-color-secondary-container);
+	border-color: transparent;
+}
+
+.md-chip--elevated[data-selected="true"] {
+	box-shadow: var(--md-sys-elevation-level1);
+}
+
+/* The remove affordance is its own button, so it needs its own state layer and
+ * cannot inherit the chip's overflow clip for a ripple. */
+.md-chip__remove {
+	display: grid;
+	flex: 0 0 auto;
+	place-items: center;
+	width: 1.125rem;
+	height: 1.125rem;
+	padding: 0;
+	color: inherit;
+	background: none;
+	border: 0;
+	border-radius: var(--md-sys-shape-corner-full);
+}
+
+.md-chip__remove:hover:not(:disabled) {
+	background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.md-chip__remove:disabled {
+	cursor: not-allowed;
+	opacity: var(--md-sys-state-disabled-content-opacity);
+}
+
+/* --- Segmented button ----------------------------------------------------- */
+
+.md-segmented-button {
+	display: inline-flex;
+	max-width: 100%;
+	overflow: hidden;
+	border: 1px solid var(--md-sys-color-outline);
+	border-radius: var(--md-sys-shape-corner-full);
+}
+
+.md-segmented-button__segment {
+	position: relative;
+	display: inline-flex;
+	gap: var(--md-space-2);
+	align-items: center;
+	justify-content: center;
+	min-height: 2.5rem;
+	padding: 0 var(--md-space-3);
+	overflow: hidden;
+	font-family: var(--md-sys-typescale-label-large-font);
+	font-size: var(--md-sys-typescale-label-large-size);
+	font-weight: var(--md-sys-typescale-label-large-weight);
+	line-height: var(--md-sys-typescale-label-large-line-height);
+	color: var(--md-sys-color-on-surface);
+	letter-spacing: var(--md-sys-typescale-label-large-tracking);
+	white-space: nowrap;
+	background: none;
+	border: 0;
+	isolation: isolate;
+}
+
+.md-segmented-button__segment + .md-segmented-button__segment {
+	border-inline-start: 1px solid var(--md-sys-color-outline);
+}
+
+.md-segmented-button__segment[aria-pressed="true"],
+.md-segmented-button__segment[aria-selected="true"] {
+	color: var(--md-sys-color-on-secondary-container);
+	background-color: var(--md-sys-color-secondary-container);
+}
+
+.md-segmented-button__segment:disabled {
+	color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
+	cursor: not-allowed;
+}
+
+/* --- Progress indicators -------------------------------------------------
+ *
+ * Circular progress is a real MD3 arc: a rotating wrapper carries a stroke
+ * dash animation, rather than a border with one colored edge.
+ */
+
+.md-spinner {
+	display: inline-block;
+	width: 1.5rem;
+	height: 1.5rem;
+	color: var(--md-sys-color-primary);
+	animation: md-spinner-rotate 1568ms linear infinite;
+}
+
+.md-spinner--sm {
+	width: 1rem;
+	height: 1rem;
+}
+
+.md-spinner--lg {
+	width: 3rem;
+	height: 3rem;
+}
+
+.md-spinner__track {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 4;
+	stroke-linecap: round;
+	stroke-dasharray: 1 200;
+	stroke-dashoffset: 0;
+	animation: md-spinner-dash 1332ms var(--md-sys-motion-easing-standard) infinite;
+}
+
+.md-spinner[data-determinate="true"] {
+	animation: none;
+	transform: rotate(-90deg);
+}
+
+.md-spinner[data-determinate="true"] .md-spinner__track {
+	animation: none;
+	stroke-dasharray: var(--md-spinner-dash, 0) 200;
+}
+
+@keyframes md-spinner-rotate {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@keyframes md-spinner-dash {
+	0% {
+		stroke-dasharray: 1 200;
+		stroke-dashoffset: 0;
+	}
+
+	50% {
+		stroke-dasharray: 89 200;
+		stroke-dashoffset: -35;
+	}
+
+	100% {
+		stroke-dasharray: 89 200;
+		stroke-dashoffset: -124;
+	}
+}
+
+.md-linear-progress {
+	position: relative;
+	display: block;
+	width: 100%;
+	height: 0.25rem;
+	overflow: hidden;
+	background: var(--md-sys-color-secondary-container);
+	border-radius: var(--md-sys-shape-corner-full);
+}
+
+.md-linear-progress__indicator {
+	position: absolute;
+	inset: 0 auto 0 0;
+	width: 100%;
+	background: var(--md-sys-color-primary);
+	border-radius: inherit;
+	transform-origin: left;
+	animation: md-linear-indeterminate 2s var(--md-sys-motion-easing-standard) infinite;
+}
+
+.md-linear-progress[data-determinate="true"] .md-linear-progress__indicator {
+	animation: none;
+	transform: scaleX(var(--md-progress-value, 0));
+}
+
+@keyframes md-linear-indeterminate {
+	0% {
+		transform: translateX(-100%) scaleX(0.4);
+	}
+
+	50% {
+		transform: translateX(20%) scaleX(0.6);
+	}
+
+	100% {
+		transform: translateX(100%) scaleX(0.4);
+	}
+}
+
+/* --- Badge ---------------------------------------------------------------
+ *
+ * Narrowed to what MD3 actually calls a badge: a 6dp dot or a small count pill.
+ * The old tone-carrying status pill is now a Chip.
+ */
+
+.md-badge {
+	display: inline-grid;
+	place-items: center;
+	min-width: 1rem;
+	height: 1rem;
+	padding: 0 var(--md-space-1);
+	font-size: var(--md-sys-typescale-label-small-size);
+	font-weight: var(--md-sys-typescale-label-small-weight);
+	line-height: var(--md-sys-typescale-label-small-line-height);
+	color: var(--md-sys-color-on-error);
+	letter-spacing: var(--md-sys-typescale-label-small-tracking);
+	background: var(--md-sys-color-error);
+	border-radius: var(--md-sys-shape-corner-full);
+}
+
+.md-badge--dot {
+	width: 0.375rem;
+	min-width: 0;
+	height: 0.375rem;
+	padding: 0;
+}
+
+.md-badge--neutral {
+	color: var(--md-sys-color-on-surface-variant);
+	background: var(--md-sys-color-surface-container-highest);
+}
+
+.md-badge--primary {
+	color: var(--md-sys-color-on-primary-container);
+	background: var(--md-sys-color-primary-container);
+}
+
+/* --- Reduced motion ------------------------------------------------------
+ *
+ * Opacity is not motion: the state layers stay, only their transitions and the
+ * ripple go. The :active layer restores the pressed feedback the ripple gave.
+ */
+
+@media (prefers-reduced-motion: reduce) {
+	.md-ripple {
+		display: none;
+	}
+
+	.md-state-layer::before {
+		transition: none;
+	}
+
+	.md-state-layer:active:not(:disabled)::before {
+		opacity: var(--md-sys-state-pressed-opacity);
+	}
+
+	.md-spinner,
+	.md-spinner__track,
+	.md-linear-progress__indicator {
+		animation: none;
+	}
+
+	.md-spinner__track {
+		stroke-dasharray: 60 200;
+	}
+}
+
+/* ---------------------------------------------------------------------------
+ * Carried forward from the pre-MD3 stylesheet, renamed only. These components
+ * are converted to Material Design 3 in the next phase (A3). They still read
+ * legacy --pt-* aliases, which resolve to --md-sys-* roles.
+ * --------------------------------------------------------------------------- */
+
+.md-field {
+	display: grid;
+	gap: var(--pt-space-2);
+}
+.md-field__label {
+	color: var(--pt-text);
+	font-size: 0.875rem;
+	font-weight: 650;
+}
+.md-field__optional {
+	color: var(--pt-text-subtle);
+	font-weight: 400;
+}
+.md-field__description {
+	color: var(--pt-text-muted);
+	font-size: 0.8125rem;
+}
+.md-field__error {
+	color: var(--pt-danger);
+	font-size: 0.8125rem;
+}
+.md-input,
+.md-select,
+.md-textarea {
+	width: 100%;
+	min-height: var(--pt-control-md);
+	padding: var(--pt-space-2) var(--pt-space-3);
+	color: var(--pt-text);
+	background: var(--pt-surface);
+	border: 1px solid var(--pt-border);
+	border-radius: var(--pt-radius-sm);
+	letter-spacing: 0;
+}
+.md-textarea {
+	min-height: 7rem;
+	resize: vertical;
+}
+.md-input::placeholder,
+.md-textarea::placeholder {
+	color: var(--pt-text-subtle);
+}
+.md-input[aria-invalid="true"],
+.md-select[aria-invalid="true"],
+.md-textarea[aria-invalid="true"] {
+	border-color: var(--pt-danger);
+}
+
+.md-panel {
+	color: var(--pt-text);
+	background: var(--pt-surface);
+	border: 1px solid var(--pt-border);
+	border-radius: var(--pt-radius-md);
+}
+.md-panel--padded {
+	padding: var(--pt-space-5);
+}
+.md-panel__header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--pt-space-4);
+	padding: var(--pt-space-4) var(--pt-space-5);
+	border-bottom: 1px solid var(--pt-border);
+}
+.md-panel__title {
+	margin: 0;
+	font-size: 1rem;
+	font-weight: 700;
+	letter-spacing: 0;
+}
+.md-panel__description {
+	margin: var(--pt-space-1) 0 0;
+	color: var(--pt-text-muted);
+	font-size: 0.875rem;
+}
+.md-panel__body {
+	padding: var(--pt-space-5);
+}
+
+.md-page-shell {
+	width: min(100%, var(--pt-content-max));
+	margin: 0 auto;
+	padding: var(--pt-space-6);
+}
+.md-page-shell__header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--pt-space-4);
+	margin-bottom: var(--pt-space-6);
+}
+.md-page-shell__title {
+	margin: 0;
+	font-size: 2rem;
+	line-height: 1.2;
+	letter-spacing: 0;
+}
+.md-page-shell__description {
+	max-width: 46rem;
+	margin: var(--pt-space-2) 0 0;
+	color: var(--pt-text-muted);
+}
+.md-page-shell__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--pt-space-2);
+}
+
+.md-empty-state {
+	display: grid;
+	justify-items: center;
+	gap: var(--pt-space-3);
+	padding: var(--pt-space-8) var(--pt-space-5);
+	color: var(--pt-text-muted);
+	text-align: center;
+}
+.md-empty-state__icon {
+	color: var(--pt-text-subtle);
+}
+.md-empty-state__title {
+	margin: 0;
+	color: var(--pt-text);
+	font-size: 1rem;
+}
+.md-empty-state__description {
+	max-width: 28rem;
+	margin: 0;
+}
+
+.md-spinner-layout {
+	display: grid;
+	place-items: center;
+	min-height: 12rem;
+	color: var(--pt-text-muted);
+}
+
+.md-data-table-wrap {
+	width: 100%;
+	overflow-x: auto;
+}
+.md-data-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.875rem;
+}
+.md-data-table th {
+	padding: var(--pt-space-3) var(--pt-space-4);
+	color: var(--pt-text-muted);
+	background: var(--pt-surface-subtle);
+	border-bottom: 1px solid var(--pt-border);
+	font-weight: 650;
+	text-align: left;
+	white-space: nowrap;
+}
+.md-data-table td {
+	padding: var(--pt-space-3) var(--pt-space-4);
+	border-bottom: 1px solid var(--pt-border);
+	vertical-align: middle;
+}
+.md-data-table tbody tr:last-child td {
+	border-bottom: 0;
+}
+.md-data-table tbody tr[data-clickable="true"]:hover {
+	background: var(--pt-surface-hover);
+}
+
+.md-tabs__list {
+	display: flex;
+	gap: var(--pt-space-1);
+	overflow-x: auto;
+	border-bottom: 1px solid var(--pt-border);
+}
+.md-tab {
+	min-height: var(--pt-control-md);
+	padding: 0 var(--pt-space-3);
+	color: var(--pt-text-muted);
+	background: transparent;
+	border: 0;
+	border-bottom: 2px solid transparent;
+	font-weight: 650;
+	white-space: nowrap;
+}
+.md-tab[data-state="active"] {
+	color: var(--pt-text);
+	border-bottom-color: var(--pt-primary);
+}
+.md-tabs__content {
+	padding-top: var(--pt-space-4);
+}
+
+.md-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	background: var(--pt-overlay);
+	animation: md-fade-in var(--pt-transition);
+}
+.md-dialog,
+.md-drawer {
+	position: fixed;
+	z-index: 51;
+	color: var(--pt-text);
+	background: var(--pt-surface-raised);
+	border: 1px solid var(--pt-border);
+	box-shadow: var(--pt-shadow-overlay);
+}
+.md-dialog {
+	top: 50%;
+	left: 50%;
+	width: min(calc(100vw - 2rem), 32rem);
+	max-height: calc(100svh - 2rem);
+	overflow-y: auto;
+	border-radius: var(--pt-radius-md);
+	transform: translate(-50%, -50%);
+}
+.md-drawer {
+	top: 0;
+	right: 0;
+	width: min(100vw, 34rem);
+	height: 100svh;
+	overflow-y: auto;
+	border-width: 0 0 0 1px;
+}
+.md-dialog__header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--pt-space-4);
+	padding: var(--pt-space-5);
+	border-bottom: 1px solid var(--pt-border);
+}
+.md-dialog__title {
+	margin: 0;
+	font-size: 1.125rem;
+	line-height: 1.3;
+	letter-spacing: 0;
+}
+.md-dialog__description {
+	margin: var(--pt-space-1) 0 0;
+	color: var(--pt-text-muted);
+	font-size: 0.875rem;
+}
+.md-dialog__body {
+	padding: var(--pt-space-5);
+}
+.md-dialog__footer {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--pt-space-2);
+	padding: var(--pt-space-4) var(--pt-space-5);
+	border-top: 1px solid var(--pt-border);
+}
+.md-alert-dialog {
+	width: min(calc(100vw - 2rem), 28rem);
+}
+@keyframes md-fade-in {
+	from {
+		opacity: 0;
+	}
+}
+
+.md-toast-region {
+	position: fixed;
+	right: var(--pt-space-4);
+	bottom: var(--pt-space-4);
+	z-index: 70;
+	display: grid;
+	gap: var(--pt-space-2);
+	width: min(calc(100vw - 2rem), 24rem);
+}
+.md-toast {
+	padding: var(--pt-space-4);
+	color: var(--pt-text);
+	background: var(--pt-surface-raised);
+	border: 1px solid var(--pt-border-strong);
+	border-left: 0.25rem solid var(--pt-info);
+	border-radius: var(--pt-radius-sm);
+	box-shadow: var(--pt-shadow-overlay);
+}
+.md-toast--success {
+	border-left-color: var(--pt-success);
+}
+.md-toast--danger {
+	border-left-color: var(--pt-danger);
+}
+.md-toast__title {
+	margin: 0;
+	font-size: 0.875rem;
+}
+.md-toast__description {
+	margin: var(--pt-space-1) 0 0;
+	color: var(--pt-text-muted);
+	font-size: 0.8125rem;
+}
+
+@media (max-width: 38rem) {
+	.md-page-shell {
+		padding: var(--pt-space-4);
+	}
+	.md-page-shell__title {
+		font-size: 1.5rem;
+	}
+	.md-page-shell__header {
+		align-items: stretch;
+		flex-direction: column;
+	}
+	.md-page-shell__actions > * {
+		flex: 1 1 auto;
+	}
+	.md-panel__header,
+	.md-panel__body {
+		padding: var(--pt-space-4);
+	}
+	.md-dialog {
+		width: calc(100vw - 1rem);
+		max-height: calc(100svh - 1rem);
+	}
+}

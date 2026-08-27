@@ -1,22 +1,54 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Archive, Plus } from "lucide-react";
 import { useState } from "react";
-import { Badge, Button, ConfirmDialog, EmptyState, IconButton, Panel, SelectField, Spinner, TextAreaField, TextField } from "../index";
+import {
+	Badge,
+	Button,
+	ConfirmDialog,
+	EmptyState,
+	IconButton,
+	LinearProgress,
+	Panel,
+	SegmentedButton,
+	SelectField,
+	Spinner,
+	StaticChip,
+	TextAreaField,
+	TextField
+} from "../index";
 
 function ComponentCatalog() {
 	const [confirmOpen, setConfirmOpen] = useState(false);
+	const [mode, setMode] = useState<"single" | "all">("single");
 	return (
 		<div className="storybook-stack">
 			<Panel title="Buttons and states" description="Commands use explicit tone and stable dimensions.">
 				<div className="storybook-row">
 					<Button leadingIcon={<Plus size="1rem" aria-hidden="true" />}>Create task</Button>
-					<Button variant="secondary">Secondary</Button>
-					<Button variant="ghost">Ghost</Button>
-					<Button variant="danger" onClick={() => setConfirmOpen(true)}>
+					<Button variant="outlined">Outlined</Button>
+					<Button variant="text">Text</Button>
+					<Button variant="tonal">Tonal</Button>
+					<Button variant="elevated">Elevated</Button>
+					<Button variant="filled" tone="error" onClick={() => setConfirmOpen(true)}>
 						Delete
 					</Button>
 					<Button loading>Saving</Button>
 					<IconButton label="Archive" icon={<Archive size="1rem" aria-hidden="true" />} />
+					<IconButton label="Add" variant="filled" icon={<Plus size="1rem" aria-hidden="true" />} />
+					<IconButton label="Pin" variant="tonal" icon={<Archive size="1rem" aria-hidden="true" />} selected />
+					<IconButton label="More" variant="outlined" icon={<Plus size="1rem" aria-hidden="true" />} />
+				</div>
+				<div className="storybook-row">
+					<SegmentedButton
+						label="Create mode"
+						value={mode}
+						onChange={setMode}
+						options={[
+							{ value: "single", label: "Single team" },
+							{ value: "all", label: "All leaders" }
+						]}
+					/>
+					<LinearProgress label="Syncing" />
 				</div>
 			</Panel>
 			<Panel title="Fields">
@@ -35,11 +67,13 @@ function ComponentCatalog() {
 				</div>
 			</Panel>
 			<div className="storybook-row">
-				<Badge>Neutral</Badge>
-				<Badge tone="info">In progress</Badge>
-				<Badge tone="success">Done</Badge>
-				<Badge tone="warning">Attention</Badge>
-				<Badge tone="danger">Blocked</Badge>
+				<StaticChip label="Neutral" />
+				<StaticChip label="In progress" variant="suggestion" />
+				<StaticChip label="Done" variant="filter" selected />
+				<StaticChip label="Attention" variant="assist" elevated />
+				<Badge>3</Badge>
+				<Badge tone="primary">12</Badge>
+				<Badge dot aria-label="Unread" />
 				<Spinner />
 			</div>
 			<Panel>

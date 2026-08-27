@@ -18,8 +18,8 @@ export interface DialogProps {
 function DialogHeader({ title, description }: Pick<DialogProps, "title" | "description">) {
 	return (
 		<div>
-			<DialogPrimitive.Title className="pt-dialog__title">{title}</DialogPrimitive.Title>
-			{description ? <DialogPrimitive.Description className="pt-dialog__description">{description}</DialogPrimitive.Description> : null}
+			<DialogPrimitive.Title className="md-dialog__title">{title}</DialogPrimitive.Title>
+			{description ? <DialogPrimitive.Description className="md-dialog__description">{description}</DialogPrimitive.Description> : null}
 		</div>
 	);
 }
@@ -29,16 +29,16 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
 		<DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
 			{trigger ? <DialogPrimitive.Trigger asChild>{trigger}</DialogPrimitive.Trigger> : null}
 			<DialogPrimitive.Portal>
-				<DialogPrimitive.Overlay className="pt-overlay" />
-				<DialogPrimitive.Content className="pt-dialog">
-					<header className="pt-dialog__header">
+				<DialogPrimitive.Overlay className="md-overlay" />
+				<DialogPrimitive.Content className="md-dialog">
+					<header className="md-dialog__header">
 						<DialogHeader title={title} description={description} />
 						<DialogPrimitive.Close asChild>
 							<IconButton label="Close dialog" icon={<X size="1.125rem" aria-hidden="true" />} />
 						</DialogPrimitive.Close>
 					</header>
-					<div className="pt-dialog__body">{children}</div>
-					{footer ? <footer className="pt-dialog__footer">{footer}</footer> : null}
+					<div className="md-dialog__body">{children}</div>
+					{footer ? <footer className="md-dialog__footer">{footer}</footer> : null}
 				</DialogPrimitive.Content>
 			</DialogPrimitive.Portal>
 		</DialogPrimitive.Root>
@@ -52,16 +52,16 @@ export function Drawer({ open, onOpenChange, title, description, children, foote
 		<DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
 			{trigger ? <DialogPrimitive.Trigger asChild>{trigger}</DialogPrimitive.Trigger> : null}
 			<DialogPrimitive.Portal>
-				<DialogPrimitive.Overlay className="pt-overlay" />
-				<DialogPrimitive.Content className="pt-drawer">
-					<header className="pt-dialog__header">
+				<DialogPrimitive.Overlay className="md-overlay" />
+				<DialogPrimitive.Content className="md-drawer">
+					<header className="md-dialog__header">
 						<DialogHeader title={title} description={description} />
 						<DialogPrimitive.Close asChild>
 							<IconButton label="Close drawer" icon={<X size="1.125rem" aria-hidden="true" />} />
 						</DialogPrimitive.Close>
 					</header>
-					<div className="pt-dialog__body">{children}</div>
-					{footer ? <footer className="pt-dialog__footer">{footer}</footer> : null}
+					<div className="md-dialog__body">{children}</div>
+					{footer ? <footer className="md-dialog__footer">{footer}</footer> : null}
 				</DialogPrimitive.Content>
 			</DialogPrimitive.Portal>
 		</DialogPrimitive.Root>
@@ -83,20 +83,20 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
 	return (
 		<AlertDialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
 			<AlertDialogPrimitive.Portal>
-				<AlertDialogPrimitive.Overlay className="pt-overlay" />
-				<AlertDialogPrimitive.Content className="pt-dialog pt-alert-dialog">
-					<div className="pt-dialog__header">
+				<AlertDialogPrimitive.Overlay className="md-overlay" />
+				<AlertDialogPrimitive.Content className="md-dialog pt-alert-dialog">
+					<div className="md-dialog__header">
 						<div>
-							<AlertDialogPrimitive.Title className="pt-dialog__title">{title}</AlertDialogPrimitive.Title>
-							<AlertDialogPrimitive.Description className="pt-dialog__description">{description}</AlertDialogPrimitive.Description>
+							<AlertDialogPrimitive.Title className="md-dialog__title">{title}</AlertDialogPrimitive.Title>
+							<AlertDialogPrimitive.Description className="md-dialog__description">{description}</AlertDialogPrimitive.Description>
 						</div>
 					</div>
-					<div className="pt-dialog__footer">
+					<div className="md-dialog__footer">
 						<AlertDialogPrimitive.Cancel asChild>
-							<Button variant="secondary">Cancel</Button>
+							<Button variant="text">Cancel</Button>
 						</AlertDialogPrimitive.Cancel>
 						<AlertDialogPrimitive.Action asChild>
-							<Button variant={destructive ? "danger" : "primary"} loading={busy} onClick={onConfirm}>
+							<Button variant="text" tone={destructive ? "error" : "primary"} loading={busy} onClick={onConfirm}>
 								{confirmLabel}
 							</Button>
 						</AlertDialogPrimitive.Action>

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { CheckSquare } from "lucide-react";
-import { Badge, Button, DataTable, EmptyState, PageShell, Panel } from "../index";
+import { Button, DataTable, EmptyState, PageShell, Panel, StaticChip } from "../index";
 
 const rows = [
 	{ id: "1", title: "Review access policy", status: "In progress", owner: "Taylor" },
@@ -17,7 +17,7 @@ function TaskPattern() {
 					getRowKey={(row) => row.id}
 					columns={[
 						{ key: "title", header: "Task", cell: (row) => row.title },
-						{ key: "status", header: "Status", cell: (row) => <Badge tone={row.status === "Done" ? "success" : "info"}>{row.status}</Badge> },
+						{ key: "status", header: "Status", cell: (row) => <StaticChip label={row.status} variant="filter" selected={row.status === "Done"} /> },
 						{ key: "owner", header: "Assignee", cell: (row) => row.owner }
 					]}
 					empty={<EmptyState title="No tasks" description="Create the first task in this workspace." icon={<CheckSquare size="2rem" />} />}
