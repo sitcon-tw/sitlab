@@ -114,7 +114,7 @@ func TestProjectLabelsAndCommentsUseExpectedCredentialsAndPagination(t *testing.
 			if request.Header.Get("PRIVATE-TOKEN") != "project-token" {
 				t.Errorf("labels PRIVATE-TOKEN = %q", request.Header.Get("PRIVATE-TOKEN"))
 			}
-			return response(http.StatusOK, `[{"name":"Backend","color":"#1D76DB","text_color":"#FFFFFF","description":"Server work"}]`), nil
+			return response(http.StatusOK, `[{"id":7,"name":"Backend","color":"#1D76DB","text_color":"#FFFFFF","description":"Server work"}]`), nil
 		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/notes"):
 			assertBearer(t, request)
 			if request.URL.Query().Get("page") == "1" {
@@ -138,7 +138,7 @@ func TestProjectLabelsAndCommentsUseExpectedCredentialsAndPagination(t *testing.
 		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", AccessToken: "project-token",
 	})
 	labels, err := client.ProjectLabels(context.Background())
-	if err != nil || len(labels) != 1 || labels[0].Name != "Backend" || labels[0].TextColor != "#FFFFFF" {
+	if err != nil || len(labels) != 1 || labels[0].ID != 7 || labels[0].Name != "Backend" || labels[0].TextColor != "#FFFFFF" {
 		t.Fatalf("ProjectLabels() = %#v, %v", labels, err)
 	}
 	comments, err := client.Comments(context.Background(), 42, "token")
@@ -289,4 +289,128 @@ func testWorkItemJSON(iid, id, title string) string {
 		},
 	})
 	return string(value)
+}
+
+func TestProjectLabelWritesUseRESTAndTheActorToken(t *testing.T) {
+	t.Parallel()
+	var seen struct {
+		method  string
+		path    string
+		payload map[string]any
+	}
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		// Label writes must carry the actor's bearer token, never the service
+		// PRIVATE-TOKEN: GitLab's own project role is the authorization.
+		if request.Header.Get("Authorization") != "Bearer actor-token" {
+			t.Errorf("label write Authorization = %q", request.Header.Get("Authorization"))
+		}
+		if request.Header.Get("PRIVATE-TOKEN") != "" {
+			t.Errorf("label write sent PRIVATE-TOKEN = %q", request.Header.Get("PRIVATE-TOKEN"))
+		}
+		seen.method, seen.path = request.Method, request.URL.Path
+		if request.Body != nil && request.Method != http.MethodDelete {
+			_ = json.NewDecoder(request.Body).Decode(&seen.payload)
+		}
+		if request.Method == http.MethodDelete {
+			return response(http.StatusNoContent, ""), nil
+		}
+		return response(http.StatusOK, `{"id":10,"name":"feature","color":"#5843AD","text_color":"#FFFFFF","description":null}`), nil
+	})
+	client, _ := New(&http.Client{Transport: transport}, Config{
+		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", AccessToken: "project-token",
+	})
+
+	created, err := client.CreateProjectLabel(context.Background(), cardactivity.ProjectLabelWrite{Name: "feature", Color: "#5843AD"}, "actor-token")
+	if err != nil || created.ID != 10 || created.TextColor != "#FFFFFF" {
+		t.Fatalf("CreateProjectLabel() = %#v, %v", created, err)
+	}
+	if seen.method != http.MethodPost || !strings.HasSuffix(seen.path, "/labels") || seen.payload["name"] != "feature" {
+		t.Fatalf("create call = %s %s %#v", seen.method, seen.path, seen.payload)
+	}
+
+	description := "renamed"
+	if _, err := client.UpdateProjectLabel(context.Background(), 10, cardactivity.ProjectLabelWrite{Name: "epic", Color: "#5843AD", Description: &description}, "actor-token"); err != nil {
+		t.Fatalf("UpdateProjectLabel() error = %v", err)
+	}
+	// GitLab renames through new_name, not name.
+	if seen.method != http.MethodPut || !strings.HasSuffix(seen.path, "/labels/10") || seen.payload["new_name"] != "epic" || seen.payload["description"] != "renamed" {
+		t.Fatalf("update call = %s %s %#v", seen.method, seen.path, seen.payload)
+	}
+
+	if err := client.DeleteProjectLabel(context.Background(), 10, "actor-token"); err != nil {
+		t.Fatalf("DeleteProjectLabel() error = %v", err)
+	}
+	if seen.method != http.MethodDelete || !strings.HasSuffix(seen.path, "/labels/10") {
+		t.Fatalf("delete call = %s %s", seen.method, seen.path)
+	}
+}
+
+func TestProjectLabelWritesMapGitLabStatuses(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		status int
+		want   error
+	}{
+		{http.StatusConflict, cardactivity.ErrLabelConflict},
+		{http.StatusBadRequest, cardactivity.ErrLabelRejected},
+		{http.StatusForbidden, cardactivity.ErrGitLabForbidden},
+		{http.StatusNotFound, board.ErrCardNotFound},
+	} {
+		transport := roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return response(testCase.status, `{}`), nil
+		})
+		client, _ := New(&http.Client{Transport: transport}, Config{BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027"})
+		_, err := client.CreateProjectLabel(context.Background(), cardactivity.ProjectLabelWrite{Name: "feature", Color: "#5843AD"}, "actor-token")
+		if !errors.Is(err, testCase.want) {
+			t.Fatalf("CreateProjectLabel() on %d = %v, want %v", testCase.status, err, testCase.want)
+		}
+	}
+}
+
+// A rename or delete landing while a card operation is pending would otherwise
+// fail that operation permanently, because the worker replays the stale label
+// names from the optimistic row and retryOperation re-reads the same names.
+func TestApplyIssueDropsAVanishedLabelButNotAVanishedTeamLabel(t *testing.T) {
+	t.Parallel()
+	newClient := func(sentLabels *[]any) *Client {
+		transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			var payload struct {
+				Query     string         `json:"query"`
+				Variables map[string]any `json:"variables"`
+			}
+			_ = json.NewDecoder(request.Body).Decode(&payload)
+			if strings.Contains(payload.Query, "WorkItemMetadata") {
+				return response(http.StatusOK, `{"data":{"project":{"labels":{"pageInfo":{"hasNextPage":false},"nodes":[{"id":"gid://gitlab/ProjectLabel/1","title":"Team::開發組"}]},"workItemTypes":{"nodes":[{"id":"gid://gitlab/WorkItems::Type/1","name":"Issue","widgetDefinitions":[{"allowedStatuses":[{"id":"status-3","name":"To do"}]}]}]}}}}`), nil
+			}
+			if strings.Contains(payload.Query, "UpdateWorkItem") {
+				input := payload.Variables["input"].(map[string]any)
+				if widget, ok := input["labelsWidget"].(map[string]any); ok {
+					if add, ok := widget["addLabelIds"].([]any); ok {
+						*sentLabels = add
+					}
+				}
+				return response(http.StatusOK, `{"data":{"workItemUpdate":{"errors":[],"workItem":`+testWorkItemJSON("1", "10", "[開發組] 修正流程")+`}}}`), nil
+			}
+			return response(http.StatusOK, `{"data":{"project":{"workItems":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[`+testWorkItemJSON("1", "10", "[開發組] 修正流程")+`]}}}}`), nil
+		})
+		client, _ := New(&http.Client{Transport: transport}, Config{BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027"})
+		return client
+	}
+
+	var sent []any
+	mutation := sync.IssueMutation{
+		IssueIID: 10, Title: "[開發組] 修正流程", GitLabStatusName: "To do",
+		Labels: []string{"Team::開發組", "Deleted::Label"},
+	}
+	if _, err := newClient(&sent).ApplyIssue(context.Background(), mutation, "actor-token"); err != nil {
+		t.Fatalf("ApplyIssue() with a vanished ordinary label = %v, want it dropped", err)
+	}
+
+	missingTeam := sync.IssueMutation{
+		IssueIID: 10, Title: "[新組] 修正流程", GitLabStatusName: "To do",
+		Labels: []string{"Team::新組"},
+	}
+	if _, err := newClient(&sent).ApplyIssue(context.Background(), missingTeam, "actor-token"); err == nil {
+		t.Fatal("ApplyIssue() with a vanished team label = nil, want an error")
+	}
 }

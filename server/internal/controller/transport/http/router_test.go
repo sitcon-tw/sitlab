@@ -143,8 +143,17 @@ type cardActivityFake struct{}
 
 func (cardActivityFake) Labels(context.Context) ([]appactivity.ProjectLabel, error) {
 	description := "Server work"
-	return []appactivity.ProjectLabel{{Name: "Backend", Color: "#1D76DB", TextColor: "#FFFFFF", Description: &description}}, nil
+	return []appactivity.ProjectLabel{{ID: 7, Name: "Backend", Color: "#1D76DB", TextColor: "#FFFFFF", Description: &description}}, nil
 }
+func (cardActivityFake) CreateLabel(_ context.Context, input appactivity.CreateLabelInput) (appactivity.ProjectLabel, error) {
+	return appactivity.ProjectLabel{ID: 99, Name: input.Name, Color: input.Color, TextColor: "#FFFFFF", Description: input.Description}, nil
+}
+
+func (cardActivityFake) UpdateLabel(_ context.Context, input appactivity.UpdateLabelInput) (appactivity.ProjectLabel, error) {
+	return appactivity.ProjectLabel{ID: input.LabelID, Name: input.Name, Color: input.Color, TextColor: "#FFFFFF", Description: input.Description}, nil
+}
+
+func (cardActivityFake) DeleteLabel(context.Context, appactivity.DeleteLabelInput) error { return nil }
 func (cardActivityFake) Comments(context.Context, string, int64) ([]appactivity.Comment, error) {
 	return []appactivity.Comment{{
 		ID: 7, Body: "changed status", System: true,
@@ -236,8 +245,8 @@ func TestUpdateCardStartDateUsesAcceptedContract(t *testing.T) {
 }
 
 func TestCardLabelsAndCommentsMatchContract(t *testing.T) {
-	labels := perform(testRouter(nil, ""), http.MethodGet, "/api/v1/cards/labels", "", true)
-	if labels.Code != http.StatusOK || !strings.Contains(labels.Body.String(), `"name":"Backend"`) || !strings.Contains(labels.Body.String(), `"textColor":"#FFFFFF"`) {
+	labels := perform(testRouter(nil, ""), http.MethodGet, "/api/v1/labels", "", true)
+	if labels.Code != http.StatusOK || !strings.Contains(labels.Body.String(), `"id":7`) || !strings.Contains(labels.Body.String(), `"name":"Backend"`) || !strings.Contains(labels.Body.String(), `"textColor":"#FFFFFF"`) {
 		t.Fatalf("labels = %d %s", labels.Code, labels.Body.String())
 	}
 	updated := perform(testRouter(nil, ""), http.MethodPut, "/api/v1/cards/127/labels", `{"operationId":"10000000-0000-0000-0000-000000000001","labels":["Backend"]}`, true)
@@ -307,4 +316,54 @@ func cookieByName(cookies []*http.Cookie, name string) *http.Cookie {
 		}
 	}
 	return nil
+}
+
+func TestProjectLabelManagementMatchesContract(t *testing.T) {
+	created := perform(testRouter(nil, ""), http.MethodPost, "/api/v1/labels", `{"name":"Priority::High","color":"#D73A4A","description":null}`, true)
+	if created.Code != http.StatusCreated || !strings.Contains(created.Body.String(), `"name":"Priority::High"`) {
+		t.Fatalf("create label = %d %s", created.Code, created.Body.String())
+	}
+	updated := perform(testRouter(nil, ""), http.MethodPut, "/api/v1/labels/7", `{"name":"Priority::Urgent","color":"#B60205","description":null}`, true)
+	if updated.Code != http.StatusOK || !strings.Contains(updated.Body.String(), `"id":7`) {
+		t.Fatalf("update label = %d %s", updated.Code, updated.Body.String())
+	}
+	deleted := perform(testRouter(nil, ""), http.MethodDelete, "/api/v1/labels/7", "", true)
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("delete label = %d %s", deleted.Code, deleted.Body.String())
+	}
+	// A non-integer id is rejected before the service runs.
+	malformed := perform(testRouter(nil, ""), http.MethodDelete, "/api/v1/labels/abc", "", true)
+	if malformed.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("delete label with a bad id = %d %s", malformed.Code, malformed.Body.String())
+	}
+}
+
+func TestProjectLabelWritesRequireSessionAndCSRF(t *testing.T) {
+	cases := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{http.MethodPost, "/api/v1/labels", `{"name":"Backend","color":"#1D76DB","description":null}`},
+		{http.MethodPut, "/api/v1/labels/7", `{"name":"Backend","color":"#1D76DB","description":null}`},
+		{http.MethodDelete, "/api/v1/labels/7", ""},
+	}
+	for _, testCase := range cases {
+		unauthenticated := perform(testRouter(nil, ""), testCase.method, testCase.path, testCase.body, false)
+		if unauthenticated.Code != http.StatusUnauthorized {
+			t.Fatalf("%s %s unauthenticated = %d %s", testCase.method, testCase.path, unauthenticated.Code, unauthenticated.Body.String())
+		}
+
+		// A real session with the wrong CSRF token must still be rejected.
+		request := httptest.NewRequestWithContext(context.Background(), testCase.method, testCase.path, strings.NewReader(testCase.body))
+		request.Header.Set("Content-Type", "application/json")
+		request.AddCookie(&http.Cookie{Name: "test_session", Value: "session"})
+		request.Header.Set("X-CSRF-Token", "stale-csrf")
+		request.Header.Set("Origin", "https://app.example.com")
+		response := httptest.NewRecorder()
+		testRouter(nil, "").ServeHTTP(response, request)
+		if response.Code != http.StatusForbidden {
+			t.Fatalf("%s %s with a stale CSRF token = %d %s", testCase.method, testCase.path, response.Code, response.Body.String())
+		}
+	}
 }

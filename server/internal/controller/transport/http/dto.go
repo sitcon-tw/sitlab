@@ -101,6 +101,7 @@ type syncStatusResponse struct {
 }
 
 type projectLabelResponse struct {
+	ID          int64   `json:"id"`
 	Name        string  `json:"name"`
 	Color       string  `json:"color"`
 	TextColor   string  `json:"textColor"`
@@ -197,7 +198,7 @@ func mapOperation(item board.Operation) operationResponse {
 
 func mapProjectLabel(item appactivity.ProjectLabel) projectLabelResponse {
 	return projectLabelResponse{
-		Name: item.Name, Color: item.Color, TextColor: item.TextColor, Description: item.Description,
+		ID: item.ID, Name: item.Name, Color: item.Color, TextColor: item.TextColor, Description: item.Description,
 	}
 }
 

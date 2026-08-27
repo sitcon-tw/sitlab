@@ -49,6 +49,9 @@ type BoardService interface {
 
 type CardActivityService interface {
 	Labels(context.Context) ([]appactivity.ProjectLabel, error)
+	CreateLabel(context.Context, appactivity.CreateLabelInput) (appactivity.ProjectLabel, error)
+	UpdateLabel(context.Context, appactivity.UpdateLabelInput) (appactivity.ProjectLabel, error)
+	DeleteLabel(context.Context, appactivity.DeleteLabelInput) error
 	Comments(context.Context, string, int64) ([]appactivity.Comment, error)
 	CreateComment(context.Context, appactivity.CreateCommentInput) (appactivity.Comment, error)
 }

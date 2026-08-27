@@ -3,10 +3,39 @@ package cardactivity
 import "time"
 
 type ProjectLabel struct {
+	ID          int64
 	Name        string
 	Color       string
 	TextColor   string
 	Description *string
+}
+
+// ProjectLabelWrite is the mutable half of a label. TextColor is computed by
+// GitLab and never sent.
+type ProjectLabelWrite struct {
+	Name        string
+	Color       string
+	Description *string
+}
+
+type CreateLabelInput struct {
+	ActorUserID string
+	Name        string
+	Color       string
+	Description *string
+}
+
+type UpdateLabelInput struct {
+	ActorUserID string
+	LabelID     int64
+	Name        string
+	Color       string
+	Description *string
+}
+
+type DeleteLabelInput struct {
+	ActorUserID string
+	LabelID     int64
 }
 
 type CommentAuthor struct {

@@ -131,12 +131,93 @@ func (c *Client) ProjectLabels(ctx context.Context) ([]appactivity.ProjectLabel,
 			if isDeprecatedLabel(row.Name) {
 				continue
 			}
-			result = append(result, appactivity.ProjectLabel{
-				Name: row.Name, Color: row.Color, TextColor: row.TextColor, Description: row.Description,
-			})
+			result = append(result, mapLabelWire(row))
 		}
 	}
 	return result, nil
+}
+
+// Label writes use REST for all three operations. GitLab's GraphQL schema
+// offers at most labelCreate — there is no labelUpdate or labelDelete — so
+// rename and delete must be REST regardless, and splitting one CRUD triple
+// across two transports buys nothing. REST also returns text_color, which the
+// contract requires.
+//
+// All three run as the acting user: ARCHITECTURE.md already states mutations
+// execute as the real actor, GitLab's own project role then decides who may
+// manage a project-wide resource, and an irreversible change gets a real name
+// in GitLab's audit trail. Reads keep the service token — the catalog is
+// fetched on every drawer open and should not vary by the reader's role.
+func (c *Client) CreateProjectLabel(ctx context.Context, write appactivity.ProjectLabelWrite, actorAccessToken string) (appactivity.ProjectLabel, error) {
+	payload := map[string]any{"name": write.Name, "color": write.Color, "description": labelDescription(write.Description)}
+	return c.writeProjectLabel(ctx, http.MethodPost, c.projectEndpoint("/labels"), payload, actorAccessToken)
+}
+
+func (c *Client) UpdateProjectLabel(ctx context.Context, labelID int64, write appactivity.ProjectLabelWrite, actorAccessToken string) (appactivity.ProjectLabel, error) {
+	// GitLab renames through new_name; an empty description is how one is cleared.
+	payload := map[string]any{"new_name": write.Name, "color": write.Color, "description": labelDescription(write.Description)}
+	requestURL := c.projectEndpoint("/labels/") + strconv.FormatInt(labelID, 10)
+	return c.writeProjectLabel(ctx, http.MethodPut, requestURL, payload, actorAccessToken)
+}
+
+func (c *Client) DeleteProjectLabel(ctx context.Context, labelID int64, actorAccessToken string) error {
+	requestURL := c.projectEndpoint("/labels/") + strconv.FormatInt(labelID, 10)
+	response, err := c.do(ctx, http.MethodDelete, requestURL, nil, "", actorAccessToken)
+	if err != nil {
+		return mapLabelStatus(err)
+	}
+	return response.Body.Close()
+}
+
+func (c *Client) writeProjectLabel(ctx context.Context, method, requestURL string, payload map[string]any, actorAccessToken string) (appactivity.ProjectLabel, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return appactivity.ProjectLabel{}, fmt.Errorf("encode GitLab project label: %w", err)
+	}
+	headers := http.Header{}
+	headers.Set("Content-Type", "application/json")
+	headers.Set("Accept", "application/json")
+	response, err := c.doWithHeaders(ctx, method, requestURL, strings.NewReader(string(body)), "", actorAccessToken, headers)
+	if err != nil {
+		return appactivity.ProjectLabel{}, mapLabelStatus(err)
+	}
+	var row labelWire
+	decodeErr := decodeJSON(response.Body, &row)
+	closeErr := response.Body.Close()
+	if decodeErr != nil {
+		return appactivity.ProjectLabel{}, fmt.Errorf("decode GitLab project label: %w", decodeErr)
+	}
+	if closeErr != nil {
+		return appactivity.ProjectLabel{}, fmt.Errorf("close GitLab project label response: %w", closeErr)
+	}
+	return mapLabelWire(row), nil
+}
+
+func labelDescription(description *string) string {
+	if description == nil {
+		return ""
+	}
+	return *description
+}
+
+func mapLabelWire(row labelWire) appactivity.ProjectLabel {
+	return appactivity.ProjectLabel{ID: row.ID, Name: row.Name, Color: row.Color, TextColor: row.TextColor, Description: row.Description}
+}
+
+// mapLabelStatus is separate from mapActivityStatus on purpose: that one is
+// shared with comment reads and must not start treating 400 as a validation
+// failure.
+func mapLabelStatus(err error) error {
+	var statusError *httpStatusError
+	if errors.As(err, &statusError) {
+		switch statusError.status {
+		case http.StatusConflict:
+			return appactivity.ErrLabelConflict
+		case http.StatusBadRequest:
+			return appactivity.ErrLabelRejected
+		}
+	}
+	return mapActivityStatus(err)
 }
 
 func (c *Client) Comments(ctx context.Context, issueIID int64, actorAccessToken string) ([]appactivity.Comment, error) {
@@ -207,7 +288,19 @@ func (c *Client) ApplyIssue(ctx context.Context, mutation appsync.IssueMutation,
 	for _, label := range mutation.Labels {
 		id, ok := metadata.labels[label]
 		if !ok {
-			return appsync.GitLabIssue{}, fmt.Errorf("GitLab project label %q does not exist", label)
+			// The worker replays labels captured on the optimistic row, so a
+			// rename or delete landing while an operation is pending would
+			// otherwise fail it permanently: retryOperation re-reads the same
+			// stale names and fails identically. Drop the vanished label and
+			// continue. The board never lets a user type a free-form label, so
+			// the only ways here are that race and an out-of-band deletion.
+			//
+			// Team labels are the exception: issueTeam needs one to keep the
+			// card on the board at all.
+			if strings.HasPrefix(label, board.TeamLabelPrefix) {
+				return appsync.GitLabIssue{}, fmt.Errorf("GitLab project label %q does not exist", label)
+			}
+			continue
 		}
 		labelIDs = append(labelIDs, id)
 	}
@@ -768,15 +861,7 @@ func nullableGraphQLDate(value string) any {
 }
 
 func isDeprecatedLabel(label string) bool {
-	if _, legacyStatus := board.LegacyStatusListKey(label); legacyStatus {
-		return true
-	}
-	for _, deprecated := range board.DeprecatedLabels {
-		if label == deprecated {
-			return true
-		}
-	}
-	return strings.HasPrefix(label, "Status::")
+	return board.DeprecatedLabel(label)
 }
 
 type httpStatusError struct{ status int }
@@ -797,6 +882,7 @@ type gitLabMember struct {
 }
 
 type labelWire struct {
+	ID          int64   `json:"id"`
 	Name        string  `json:"name"`
 	Color       string  `json:"color"`
 	TextColor   string  `json:"text_color"`

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -16,14 +17,152 @@ import (
 )
 
 type Service struct {
-	repo   CardRepository
-	gitlab GitLab
-	actors ActorTokens
-	tracer trace.Tracer
+	repo      CardRepository
+	directory Directory
+	gitlab    GitLab
+	actors    ActorTokens
+	tracer    trace.Tracer
 }
 
-func NewService(repo CardRepository, gitlab GitLab, actors ActorTokens, tracer trace.Tracer) *Service {
-	return &Service{repo: repo, gitlab: gitlab, actors: actors, tracer: tracer}
+func NewService(repo CardRepository, directory Directory, gitlab GitLab, actors ActorTokens, tracer trace.Tracer) *Service {
+	return &Service{repo: repo, directory: directory, gitlab: gitlab, actors: actors, tracer: tracer}
+}
+
+var labelColorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+// validateLabelWrite checks the payload server-side. GitLab also accepts CSS
+// color names; the contract does not, so they are rejected here.
+func validateLabelWrite(name, color string) error {
+	if strings.TrimSpace(name) == "" {
+		return apperror.Invalid("VALIDATION_FAILED", "label name is required", apperror.Field{Name: "name", Code: "REQUIRED", Message: "label name is required"})
+	}
+	if len([]rune(name)) > 255 {
+		return apperror.Invalid("VALIDATION_FAILED", "label name is too long", apperror.Field{Name: "name", Code: "VALUE_TOO_LONG", Message: "label name must be 255 characters or fewer"})
+	}
+	if !labelColorPattern.MatchString(color) {
+		return apperror.Invalid("VALIDATION_FAILED", "label color must be a hex value", apperror.Field{Name: "color", Code: "INVALID_FORMAT", Message: "label color must look like #RRGGBB"})
+	}
+	return nil
+}
+
+func reservedLabelError() error {
+	return apperror.Invalid("VALIDATION_FAILED", "label name is reserved", apperror.Field{
+		Name:    "name",
+		Code:    "RESERVED_LABEL",
+		Message: "Team and legacy workflow labels are managed by the board directory",
+	})
+}
+
+func (s *Service) teamLabels(ctx context.Context) ([]string, error) {
+	snapshot, err := s.directory.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	labels := make([]string, 0, len(snapshot.Teams))
+	for _, team := range snapshot.Teams {
+		if team.GitLabLabel != "" {
+			labels = append(labels, team.GitLabLabel)
+		}
+	}
+	return labels, nil
+}
+
+// findLabel resolves a label id against the catalog. ProjectLabels already
+// filters deprecated names, so a deprecated label's id simply never resolves
+// and falls out as NotFound. Do not "fix" that by widening the lookup.
+func (s *Service) findLabel(ctx context.Context, labelID int64) (ProjectLabel, error) {
+	labels, err := s.gitlab.ProjectLabels(ctx)
+	if err != nil {
+		return ProjectLabel{}, err
+	}
+	for _, label := range labels {
+		if label.ID == labelID {
+			return label, nil
+		}
+	}
+	return ProjectLabel{}, apperror.NotFound("label")
+}
+
+func (s *Service) CreateLabel(ctx context.Context, input CreateLabelInput) (ProjectLabel, error) {
+	ctx, span := s.tracer.Start(ctx, "card_activity.create_label")
+	defer span.End()
+	if err := validateLabelWrite(input.Name, input.Color); err != nil {
+		return ProjectLabel{}, err
+	}
+	teamLabels, err := s.teamLabels(ctx)
+	if err != nil {
+		return ProjectLabel{}, err
+	}
+	if board.ReservedLabel(input.Name, teamLabels) {
+		return ProjectLabel{}, reservedLabelError()
+	}
+	token, err := s.actorToken(ctx, input.ActorUserID)
+	if err != nil {
+		return ProjectLabel{}, err
+	}
+	write := ProjectLabelWrite{Name: strings.TrimSpace(input.Name), Color: input.Color, Description: input.Description}
+	label, err := s.gitlab.CreateProjectLabel(ctx, write, token)
+	if err != nil {
+		return ProjectLabel{}, s.mapGitLabError(span, "create GitLab project label", err)
+	}
+	return label, nil
+}
+
+func (s *Service) UpdateLabel(ctx context.Context, input UpdateLabelInput) (ProjectLabel, error) {
+	ctx, span := s.tracer.Start(ctx, "card_activity.update_label")
+	defer span.End()
+	if err := validateLabelWrite(input.Name, input.Color); err != nil {
+		return ProjectLabel{}, err
+	}
+	teamLabels, err := s.teamLabels(ctx)
+	if err != nil {
+		return ProjectLabel{}, err
+	}
+	if board.ReservedLabel(input.Name, teamLabels) {
+		return ProjectLabel{}, reservedLabelError()
+	}
+	existing, err := s.findLabel(ctx, input.LabelID)
+	if err != nil {
+		return ProjectLabel{}, err
+	}
+	// A reserved label may not be renamed even to an otherwise legal new name.
+	if board.ReservedLabel(existing.Name, teamLabels) {
+		return ProjectLabel{}, reservedLabelError()
+	}
+	token, err := s.actorToken(ctx, input.ActorUserID)
+	if err != nil {
+		return ProjectLabel{}, err
+	}
+	write := ProjectLabelWrite{Name: strings.TrimSpace(input.Name), Color: input.Color, Description: input.Description}
+	label, err := s.gitlab.UpdateProjectLabel(ctx, input.LabelID, write, token)
+	if err != nil {
+		return ProjectLabel{}, s.mapGitLabError(span, "update GitLab project label", err)
+	}
+	return label, nil
+}
+
+func (s *Service) DeleteLabel(ctx context.Context, input DeleteLabelInput) error {
+	ctx, span := s.tracer.Start(ctx, "card_activity.delete_label")
+	defer span.End()
+	teamLabels, err := s.teamLabels(ctx)
+	if err != nil {
+		return err
+	}
+	existing, err := s.findLabel(ctx, input.LabelID)
+	if err != nil {
+		return err
+	}
+	if board.ReservedLabel(existing.Name, teamLabels) {
+		return reservedLabelError()
+	}
+	token, err := s.actorToken(ctx, input.ActorUserID)
+	if err != nil {
+		return err
+	}
+	if err := s.gitlab.DeleteProjectLabel(ctx, input.LabelID, token); err != nil {
+		return s.mapGitLabError(span, "delete GitLab project label", err)
+	}
+	return nil
 }
 
 func (s *Service) Labels(ctx context.Context) ([]ProjectLabel, error) {
@@ -116,6 +255,10 @@ func (s *Service) mapGitLabError(span trace.Span, action string, err error) erro
 		return apperror.NotFound("card")
 	case errors.Is(err, ErrGitLabForbidden):
 		return apperror.Forbidden("FORBIDDEN", "GitLab access is required")
+	case errors.Is(err, ErrLabelConflict):
+		return apperror.Conflict("CONFLICT", "a project label with that name already exists")
+	case errors.Is(err, ErrLabelRejected):
+		return apperror.Invalid("VALIDATION_FAILED", "GitLab rejected the project label")
 	case errors.Is(err, identity.ErrGitLabUnavailable):
 		return apperror.Unavailable("GitLab is unavailable")
 	default:

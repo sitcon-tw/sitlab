@@ -10,19 +10,6 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func (h handler) listProjectLabels(w http.ResponseWriter, r *http.Request) {
-	labels, err := h.activity.Labels(r.Context())
-	if err != nil {
-		writeError(w, r, err)
-		return
-	}
-	response := make([]projectLabelResponse, 0, len(labels))
-	for _, label := range labels {
-		response = append(response, mapProjectLabel(label))
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"labels": response})
-}
-
 func (h handler) bootstrapState(w http.ResponseWriter, r *http.Request) {
 	result, err := h.bootstrap.Get(r.Context(), claimsFromContext(r.Context()))
 	if err != nil {
