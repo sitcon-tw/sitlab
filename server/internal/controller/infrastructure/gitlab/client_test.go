@@ -106,6 +106,103 @@ func TestMissingIssueMapsToCardNotFound(t *testing.T) {
 	}
 }
 
+func TestInvisibleProjectIsAnErrorRatherThanAnEmptyBoard(t *testing.T) {
+	t.Parallel()
+	lifecycle := `{"data":{"project":{"workItemTypes":{"nodes":[{"name":"Issue","widgetDefinitions":[{"allowedStatuses":[{"id":"status-1","name":"Waiting"},{"id":"status-2","name":"Inbox"},{"id":"status-3","name":"To do"},{"id":"status-4","name":"Doing"},{"id":"status-5","name":"Review"},{"id":"status-6","name":"Done"}]}]}]}}}}`
+	// GitLab answers a project-rooted query with a null project and no errors array
+	// when the token cannot see the project. The lifecycle probe is served normally
+	// here so the assertion does not depend on it happening to fail first.
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		var payload struct {
+			Query string `json:"query"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(payload.Query, "WorkItemLifecycle") {
+			return response(http.StatusOK, lifecycle), nil
+		}
+		return response(http.StatusOK, `{"data":{"project":null}}`), nil
+	})
+	client, _ := New(&http.Client{Transport: transport}, Config{
+		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", AccessToken: "project-token",
+	})
+
+	issues, err := client.Issues(context.Background())
+	if err == nil {
+		t.Fatalf("Issues() = %#v, want an error so the snapshot merge never prunes a live board", issues)
+	}
+	if !strings.Contains(err.Error(), "sitcon-tw/2027") {
+		t.Errorf("Issues() error = %v, want it to name the project", err)
+	}
+	if _, err := client.Issue(context.Background(), 1); err == nil {
+		t.Fatal("Issue() = nil error, want an error")
+	} else if errors.Is(err, board.ErrCardNotFound) {
+		t.Errorf("Issue() error = %v, want a visibility error rather than a missing card", err)
+	}
+}
+
+func TestLifecycleStatusesAreCachedAndDroppedOnAFailedValidation(t *testing.T) {
+	t.Parallel()
+	full := `{"data":{"project":{"workItemTypes":{"nodes":[{"name":"Issue","widgetDefinitions":[{"allowedStatuses":[{"id":"status-1","name":"Waiting"},{"id":"status-2","name":"Inbox"},{"id":"status-3","name":"To do"},{"id":"status-4","name":"Doing"},{"id":"status-5","name":"Review"},{"id":"status-6","name":"Done"}]}]}]}}}}`
+	partial := `{"data":{"project":{"workItemTypes":{"nodes":[{"name":"Issue","widgetDefinitions":[{"allowedStatuses":[{"id":"status-1","name":"Waiting"}]}]}]}}}}`
+	emptyBoard := `{"data":{"project":{"workItems":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}`
+
+	lifecycleBody := full
+	lifecycleCalls := 0
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		var payload struct {
+			Query string `json:"query"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(payload.Query, "WorkItemLifecycle") {
+			lifecycleCalls++
+			return response(http.StatusOK, lifecycleBody), nil
+		}
+		return response(http.StatusOK, emptyBoard), nil
+	})
+	client, _ := New(&http.Client{Transport: transport}, Config{
+		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", AccessToken: "project-token",
+	})
+	clock := time.Unix(1_750_000_000, 0).UTC()
+	client.now = func() time.Time { return clock }
+
+	for range 3 {
+		if _, err := client.Issues(context.Background()); err != nil {
+			t.Fatalf("Issues() error = %v", err)
+		}
+	}
+	if lifecycleCalls != 1 {
+		t.Fatalf("lifecycle requests = %d, want 1 across three polls inside the TTL", lifecycleCalls)
+	}
+
+	clock = clock.Add(lifecycleTTL)
+	if _, err := client.Issues(context.Background()); err != nil {
+		t.Fatalf("Issues() error = %v", err)
+	}
+	if lifecycleCalls != 2 {
+		t.Fatalf("lifecycle requests = %d, want a refetch once the TTL elapsed", lifecycleCalls)
+	}
+
+	// A lifecycle missing a required status must not stay cached, so an administrator
+	// who fixes it is picked up by the next poll instead of after the TTL.
+	lifecycleBody = partial
+	client.forgetLifecycle()
+	if _, err := client.Issues(context.Background()); err == nil {
+		t.Fatal("Issues() = nil error for a lifecycle missing required statuses")
+	}
+	before := lifecycleCalls
+	lifecycleBody = full
+	if _, err := client.Issues(context.Background()); err != nil {
+		t.Fatalf("Issues() error = %v", err)
+	}
+	if lifecycleCalls != before+1 {
+		t.Fatalf("lifecycle requests = %d, want %d: the failed lifecycle stayed cached", lifecycleCalls, before+1)
+	}
+}
+
 func TestProjectLabelsAndCommentsUseExpectedCredentialsAndPagination(t *testing.T) {
 	t.Parallel()
 	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	appactivity "example.com/project-template/internal/controller/application/cardactivity"
@@ -74,6 +75,9 @@ func (c *Client) Issues(ctx context.Context) ([]appsync.GitLabIssue, error) {
 	}
 	for _, required := range []string{"Waiting", "Inbox", "To do", "Doing", "Review", "Done"} {
 		if _, ok := statuses[strings.ToLower(required)]; !ok {
+			// Drop the cache so a corrected lifecycle is picked up by the next
+			// poll rather than after the TTL expires.
+			c.forgetLifecycle()
 			return nil, fmt.Errorf("GitLab lifecycle does not contain required status %q", required)
 		}
 	}
@@ -344,10 +348,20 @@ func (c *Client) ApplyIssue(ctx context.Context, mutation appsync.IssueMutation,
 	return mapWorkItem(payload.WorkItem), nil
 }
 
+// lifecycleTTL bounds how long a work-item lifecycle is reused. A project's
+// allowed statuses change about as often as the board's own column list, while
+// every board poll needs them, so refetching per poll is pure overhead.
+const lifecycleTTL = 5 * time.Minute
+
 type Client struct {
 	http   *http.Client
 	config Config
 	base   *url.URL
+	now    func() time.Time
+
+	lifecycleMu      sync.Mutex
+	lifecycle        map[string]string
+	lifecycleFetched time.Time
 }
 
 func New(httpClient *http.Client, config Config) (*Client, error) {
@@ -358,7 +372,7 @@ func New(httpClient *http.Client, config Config) (*Client, error) {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	return &Client{http: httpClient, config: config, base: base}, nil
+	return &Client{http: httpClient, config: config, base: base, now: time.Now}, nil
 }
 
 func (c *Client) AuthorizationURL(state, codeChallenge string) string {
@@ -528,6 +542,24 @@ func decodeJSON(reader io.Reader, target any) error {
 	return json.NewDecoder(io.LimitReader(reader, 2<<20)).Decode(target)
 }
 
+// ensureProjectVisible rejects a GraphQL response whose project resolved to null.
+// GitLab answers that way, with no errors array, when the token cannot see the
+// project at all: revoked membership, a renamed path, or a misconfigured
+// SITCON_BOARD_GITLAB_PROJECT_PATH. Decoding null into a value struct produces an
+// empty result that is indistinguishable from "the project has no work items", so
+// callers would treat a total loss of access as an empty board.
+func ensureProjectVisible(data json.RawMessage, projectPath string) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return nil // Not a project-rooted response (mutations); nothing to assert.
+	}
+	project, rooted := fields["project"]
+	if !rooted || string(project) != "null" {
+		return nil
+	}
+	return fmt.Errorf("GitLab project %q is not visible to this token", projectPath)
+}
+
 func (c *Client) graphQL(ctx context.Context, query string, variables map[string]any, privateToken, bearerToken string, target any) error {
 	body, err := json.Marshal(map[string]any{"query": query, "variables": variables})
 	if err != nil {
@@ -556,6 +588,9 @@ func (c *Client) graphQL(ctx context.Context, query string, variables map[string
 			messages = append(messages, item.Message)
 		}
 		return fmt.Errorf("GitLab GraphQL: %s", strings.Join(messages, "; "))
+	}
+	if err := ensureProjectVisible(envelope.Data, c.config.ProjectPath); err != nil {
+		return err
 	}
 	if err := json.Unmarshal(envelope.Data, target); err != nil {
 		return fmt.Errorf("decode GitLab GraphQL data: %w", err)
@@ -722,7 +757,12 @@ type workItemMetadata struct {
 	statuses    map[string]string
 }
 
+// lifecycleStatuses maps lowercased GitLab work-item status names to their IDs.
+// The returned map is shared with the cache and must be treated as read-only.
 func (c *Client) lifecycleStatuses(ctx context.Context) (map[string]string, error) {
+	if cached := c.cachedLifecycle(); cached != nil {
+		return cached, nil
+	}
 	var data struct {
 		Project struct {
 			WorkItemTypes struct {
@@ -749,7 +789,25 @@ func (c *Client) lifecycleStatuses(ctx context.Context) (map[string]string, erro
 			}
 		}
 	}
+	c.lifecycleMu.Lock()
+	c.lifecycle, c.lifecycleFetched = statuses, c.now()
+	c.lifecycleMu.Unlock()
 	return statuses, nil
+}
+
+func (c *Client) cachedLifecycle() map[string]string {
+	c.lifecycleMu.Lock()
+	defer c.lifecycleMu.Unlock()
+	if c.lifecycle == nil || c.now().Sub(c.lifecycleFetched) >= lifecycleTTL {
+		return nil
+	}
+	return c.lifecycle
+}
+
+func (c *Client) forgetLifecycle() {
+	c.lifecycleMu.Lock()
+	defer c.lifecycleMu.Unlock()
+	c.lifecycle = nil
 }
 
 func (c *Client) workItemMetadata(ctx context.Context, actorAccessToken string) (workItemMetadata, error) {
