@@ -5,6 +5,7 @@ import "./models/common.tsp";
 import "./models/auth.tsp";
 import "./models/directory.tsp";
 import "./models/board.tsp";
+import "./models/sync.tsp";
 
 import "./services/system.tsp";
 import "./services/auth.tsp";

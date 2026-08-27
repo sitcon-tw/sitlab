@@ -10,6 +10,7 @@ import (
 	appactivity "example.com/project-template/internal/controller/application/cardactivity"
 	appdirectory "example.com/project-template/internal/controller/application/directory"
 	appoauth "example.com/project-template/internal/controller/application/oauth"
+	appsync "example.com/project-template/internal/controller/application/sync"
 	"example.com/project-template/internal/domain/board"
 	"example.com/project-template/internal/domain/directory"
 	"example.com/project-template/internal/domain/identity"
@@ -59,6 +60,7 @@ type CardActivityService interface {
 type SyncService interface {
 	RequestRefresh() time.Time
 	EnqueueWebhook(context.Context, board.WebhookDelivery) (bool, error)
+	Delta(context.Context, appsync.DeltaQuery) (board.SyncDelta, error)
 }
 
 type RevisionEvents interface {

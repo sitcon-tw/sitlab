@@ -550,6 +550,19 @@ func (s *Service) Run(ctx context.Context, intervals Intervals) {
 	}
 }
 
+// DeltaQuery asks for everything recorded after a checkpoint that this user may see.
+type DeltaQuery struct {
+	Since          string
+	AudienceUserID string
+	Limit          int
+}
+
+// Delta serves both the catch-up endpoint and the event stream, so the checkpoint
+// guards cannot diverge between them.
+func (s *Service) Delta(ctx context.Context, query DeltaQuery) (board.SyncDelta, error) {
+	return s.repo.SyncActions(ctx, query.Since, query.AudienceUserID, query.Limit)
+}
+
 func (s *Service) RequestRefresh() time.Time {
 	requestedAt := s.now().UTC()
 	select {

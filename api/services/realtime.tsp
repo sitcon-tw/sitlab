@@ -63,4 +63,11 @@ interface RealtimeService {
 	@get
 	@route("/events/bootstrap")
 	streamBootstrapEvents(): EventStreamResponse | UnauthorizedProblem | ServiceUnavailableProblem | InternalServerProblem;
+
+	@operationId("streamSyncEvents")
+	@summary("Stream authenticated board deltas from a checkpoint")
+	@useAuth(SessionCookieAuth)
+	@get
+	@route("/events/sync")
+	streamSyncEvents(@query since?: string): EventStreamResponse | UnauthorizedProblem | ServiceUnavailableProblem | InternalServerProblem;
 }

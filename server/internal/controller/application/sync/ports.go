@@ -61,6 +61,7 @@ type Repository interface {
 	ApplyBoardObservation(context.Context, board.BoardObservation) error
 	EnsureBoardLists(context.Context, []board.List, time.Time) error
 	BoardCursor(context.Context) (board.SyncCursor, error)
+	SyncActions(ctx context.Context, since, audienceUserID string, limit int) (board.SyncDelta, error)
 	// SweepStartedAt reads PostgreSQL's clock. A full-board read must take it before
 	// its first GitLab page so that concurrent webhook reconciles are not mistaken for
 	// cards GitLab has dropped.

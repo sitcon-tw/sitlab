@@ -25,6 +25,12 @@ const (
 	OperationMoveCard        OperationKind = "move_card"
 )
 
+// ErrCheckpointTooOld means a client cannot be caught up incrementally and has to
+// start again from a full bootstrap: its checkpoint has been pruned, is further ahead
+// than the server (a restored backup), or is so far behind that replaying costs more
+// than resending everything.
+var ErrCheckpointTooOld = errors.New("sync checkpoint is too old")
+
 var (
 	ErrCardNotFound        = errors.New("card not found")
 	ErrTeamNotFound        = errors.New("team not found")
@@ -111,6 +117,28 @@ type BoardObservation struct {
 	Watermark *time.Time
 	StartedAt time.Time
 	SyncedAt  time.Time
+}
+
+// SyncAction is one recorded change, replayed to clients that are behind.
+type SyncAction struct {
+	SyncID    string
+	Seq       int32
+	Entity    string
+	EntityID  string
+	Operation string
+	// ActorGitLabUserID identifies who caused the change, where a person did.
+	ActorGitLabUserID *int64
+	// Payload is the domain value as JSON. Transport maps it to the wire shape; this
+	// type stays free of HTTP concerns.
+	Payload    []byte
+	OccurredAt time.Time
+}
+
+// SyncDelta is one page of the change log.
+type SyncDelta struct {
+	Checkpoint string
+	Actions    []SyncAction
+	HasMore    bool
 }
 
 // SyncCursor is where the incremental board read left off.

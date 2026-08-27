@@ -153,7 +153,10 @@ func timeoutExceptEventStream(timeout time.Duration) func(http.Handler) http.Han
 	return func(next http.Handler) http.Handler {
 		timedHandler := timed(next)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == "/api/v1/events/bootstrap" {
+			// Prefix, not equality: every stream under this path is long-lived by
+			// definition, and a new one added later would otherwise be cut off after
+			// the request timeout with no obvious cause.
+			if strings.HasPrefix(r.URL.Path, "/api/v1/events/") {
 				next.ServeHTTP(w, r)
 				return
 			}

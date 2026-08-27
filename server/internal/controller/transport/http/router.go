@@ -103,6 +103,8 @@ func NewRouter(dep Dependencies) http.Handler {
 			protected.Post("/auth/logout", h.logout)
 			protected.Get("/bootstrap", h.bootstrapState)
 			protected.Get("/events/bootstrap", h.bootstrapEvents)
+			protected.Get("/events/sync", h.syncEvents)
+			protected.Get("/sync", h.syncDelta)
 			protected.Get("/directory", h.directoryState)
 			protected.Put("/me/preferences", h.updatePreferences)
 			protected.Post("/cards", h.createCard)

@@ -281,6 +281,9 @@ func (f *repoFake) ApplyBoardObservation(_ context.Context, observation board.Bo
 	f.observations = append(f.observations, observation)
 	return nil
 }
+func (f *repoFake) SyncActions(context.Context, string, string, int) (board.SyncDelta, error) {
+	return board.SyncDelta{}, nil
+}
 func (f *repoFake) EnsureBoardLists(context.Context, []board.List, time.Time) error { return nil }
 func (f *repoFake) BoardCursor(context.Context) (board.SyncCursor, error) {
 	return board.SyncCursor{Watermark: f.watermark}, nil

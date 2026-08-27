@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -116,6 +117,7 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	verifyRepeatedObservationIsQuiet(t, ctx, pool, store, now)
 	verifySyncActionsAreGaplessAndCommitOrdered(t, ctx, pool, store, now)
 	verifyPruneKeepsWhatIsStillNeeded(t, ctx, pool, store, now)
+	verifySyncDeltaReplaysAndScopesByAudience(t, ctx, pool, store, user.ID, now)
 
 	listenerCtx, stopListener := context.WithCancel(ctx)
 	updates, unsubscribe := store.SubscribeRevisions()
@@ -578,6 +580,143 @@ func verifySyncActionsAreGaplessAndCommitOrdered(t *testing.T, ctx context.Conte
 	}
 	if missing != 0 {
 		t.Fatalf("%d sync ids advanced the revision without recording an action", missing)
+	}
+}
+
+// verifySyncDeltaReplaysAndScopesByAudience covers the read path a browser will use:
+// what it gets back, what it must not be shown, and when it is told to give up and
+// reload rather than being handed a silently incomplete answer.
+func verifySyncDeltaReplaysAndScopesByAudience(t *testing.T, ctx context.Context, pool *pgxpool.Pool, store *pgsitcon.Repository, userID string, now time.Time) {
+	t.Helper()
+	defer func() {
+		if _, err := pool.Exec(ctx, `DELETE FROM issue_cache WHERE issue_iid = $1`, int64(1101)); err != nil {
+			t.Fatalf("clean delta fixtures: %v", err)
+		}
+	}()
+	before, err := store.Revision(ctx)
+	if err != nil {
+		t.Fatalf("load checkpoint: %v", err)
+	}
+
+	gitLabIssueID := int64(11001)
+	card := domainboard.Card{
+		IssueIID: 1101, GitLabIssueID: &gitLabIssueID, Title: "Delta card", ListKey: "wating", TeamKey: "development",
+		GitLabStatusName: "Waiting", SyncState: domainboard.OperationSynced,
+		CreatedAt: now, UpdatedAt: now.Add(40 * time.Minute),
+	}
+	if changed, err := store.ReconcileIssue(ctx, card.IssueIID, &card, now.Add(40*time.Minute)); err != nil || !changed {
+		t.Fatalf("seed delta change = changed %v, error %v", changed, err)
+	}
+	if _, err := store.SetPreferences(ctx, userID, "design", now.Add(41*time.Minute)); err != nil {
+		t.Fatalf("seed preference change: %v", err)
+	}
+
+	delta, err := store.SyncActions(ctx, before, userID, 0)
+	if err != nil {
+		t.Fatalf("SyncActions() error = %v", err)
+	}
+	kinds := map[string]int{}
+	for _, action := range delta.Actions {
+		kinds[action.Entity]++
+	}
+	if kinds["card"] == 0 {
+		t.Fatalf("replay carried no card action: %#v", delta.Actions)
+	}
+	if kinds["preference"] != 1 {
+		t.Fatalf("replay carried %d preference actions for the owning user, want 1", kinds["preference"])
+	}
+	if delta.Checkpoint == before {
+		t.Fatal("checkpoint did not advance past the replayed actions")
+	}
+	for index := 1; index < len(delta.Actions); index++ {
+		previous, current := delta.Actions[index-1], delta.Actions[index]
+		previousID, previousErr := strconv.ParseInt(previous.SyncID, 10, 64)
+		currentID, currentErr := strconv.ParseInt(current.SyncID, 10, 64)
+		if previousErr != nil || currentErr != nil {
+			t.Fatalf("parse sync ids %q and %q: %v, %v", previous.SyncID, current.SyncID, previousErr, currentErr)
+		}
+		if previousID > currentID || (previousID == currentID && previous.Seq > current.Seq) {
+			t.Fatalf("actions came back out of order at %d: %#v then %#v", index, previous, current)
+		}
+	}
+
+	// A page limit must never split one transaction. A checkpoint names only sync_id,
+	// not seq, so advancing after one action would make its siblings unreachable.
+	type actionKey struct {
+		syncID string
+		seq    int32
+	}
+	paged := make(map[actionKey]int)
+	checkpoint := before
+	for {
+		page, pageErr := store.SyncActions(ctx, checkpoint, userID, 1)
+		if pageErr != nil {
+			t.Fatalf("SyncActions() paged error = %v", pageErr)
+		}
+		for _, action := range page.Actions {
+			paged[actionKey{syncID: action.SyncID, seq: action.Seq}]++
+		}
+		if !page.HasMore {
+			if page.Checkpoint != delta.Checkpoint {
+				t.Fatalf("paged checkpoint = %q, full checkpoint = %q", page.Checkpoint, delta.Checkpoint)
+			}
+			break
+		}
+		if page.Checkpoint == checkpoint {
+			t.Fatalf("paged replay did not advance from checkpoint %q", checkpoint)
+		}
+		checkpoint = page.Checkpoint
+	}
+	if len(paged) != len(delta.Actions) {
+		t.Fatalf("paged replay returned %d distinct actions, full replay returned %d", len(paged), len(delta.Actions))
+	}
+	for _, action := range delta.Actions {
+		key := actionKey{syncID: action.SyncID, seq: action.Seq}
+		if paged[key] != 1 {
+			t.Fatalf("paged replay returned action %#v %d times, want once", key, paged[key])
+		}
+	}
+
+	// A preference belongs to one person. Nothing else in the payload is per-user
+	// today, so this is the only thing standing between the log and a leak.
+	other := uuid.NewString()
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO users (id, gitlab_user_id, username, display_name, profile_url, access_level, created_at, updated_at)
+		VALUES ($1, 909, 'someone-else', 'Someone Else', 'https://gitlab.com/someone-else', 30, $2, $2)
+	`, uuid.MustParse(other), now); err != nil {
+		t.Fatalf("seed second user: %v", err)
+	}
+	defer func() {
+		if _, err := pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, uuid.MustParse(other)); err != nil {
+			t.Fatalf("clean second user: %v", err)
+		}
+	}()
+	foreign, err := store.SyncActions(ctx, before, other, 0)
+	if err != nil {
+		t.Fatalf("SyncActions() for another user: %v", err)
+	}
+	for _, action := range foreign.Actions {
+		if action.Entity == "preference" {
+			t.Fatalf("another user's preference leaked into the replay: %#v", action)
+		}
+	}
+
+	// Being handed nothing would leave a client silently and permanently stale, so an
+	// unusable checkpoint has to be an error the client can act on.
+	if _, err := store.SyncActions(ctx, "not-a-checkpoint", userID, 0); !errors.Is(err, domainboard.ErrCheckpointTooOld) {
+		t.Fatalf("malformed checkpoint error = %v, want ErrCheckpointTooOld", err)
+	}
+	if _, err := store.SyncActions(ctx, "999999999", userID, 0); !errors.Is(err, domainboard.ErrCheckpointTooOld) {
+		t.Fatalf("future checkpoint error = %v, want ErrCheckpointTooOld", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE realtime_state SET action_floor = revision WHERE topic = 'bootstrap'`); err != nil {
+		t.Fatalf("raise the floor: %v", err)
+	}
+	if _, err := store.SyncActions(ctx, before, userID, 0); !errors.Is(err, domainboard.ErrCheckpointTooOld) {
+		t.Fatalf("pruned checkpoint error = %v, want ErrCheckpointTooOld", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE realtime_state SET action_floor = 0 WHERE topic = 'bootstrap'`); err != nil {
+		t.Fatalf("restore the floor: %v", err)
 	}
 }
 

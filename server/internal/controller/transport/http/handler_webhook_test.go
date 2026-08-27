@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	appsync "example.com/project-template/internal/controller/application/sync"
 	"example.com/project-template/internal/domain/board"
 )
 
@@ -20,6 +21,9 @@ type webhookSyncFake struct {
 }
 
 func (*webhookSyncFake) RequestRefresh() time.Time { return time.Time{} }
+func (*webhookSyncFake) Delta(context.Context, appsync.DeltaQuery) (board.SyncDelta, error) {
+	return board.SyncDelta{}, nil
+}
 func (f *webhookSyncFake) EnqueueWebhook(_ context.Context, delivery board.WebhookDelivery) (bool, error) {
 	f.delivery = delivery
 	return false, nil

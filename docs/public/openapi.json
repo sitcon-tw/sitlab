@@ -1498,6 +1498,71 @@
 				]
 			}
 		},
+		"/events/sync": {
+			"get": {
+				"operationId": "streamSyncEvents",
+				"summary": "Stream authenticated board deltas from a checkpoint",
+				"parameters": [
+					{
+						"name": "since",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						},
+						"explode": false
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The request has succeeded.",
+						"content": {
+							"text/event-stream": {
+								"schema": {
+									"type": "string"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Realtime"],
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
 		"/health/live": {
 			"get": {
 				"operationId": "getLiveness",
@@ -2059,6 +2124,101 @@
 					},
 					"500": {
 						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Sync"],
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
+		"/sync": {
+			"get": {
+				"operationId": "getSyncDelta",
+				"summary": "Replay board changes since a checkpoint",
+				"parameters": [
+					{
+						"name": "since",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"explode": false
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"format": "int32"
+						},
+						"explode": false
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The request has succeeded.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SyncDeltaResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The server could not understand the request due to invalid syntax.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with the current state of the server.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
 						"content": {
 							"application/problem+json": {
 								"schema": {
@@ -2764,6 +2924,66 @@
 					}
 				}
 			},
+			"CardOrder": {
+				"type": "object",
+				"required": ["listKey", "issueIids"],
+				"properties": {
+					"listKey": {
+						"type": "string"
+					},
+					"issueIids": {
+						"type": "array",
+						"items": {
+							"type": "integer",
+							"format": "int64"
+						}
+					}
+				},
+				"description": "A lane's manual card order. Recorded per lane rather than per card because one drag renumbers every card in up to two lanes."
+			},
+			"CardOrderSyncAction": {
+				"type": "object",
+				"required": ["entity", "order"],
+				"properties": {
+					"entity": {
+						"type": "string",
+						"enum": ["cardOrder"]
+					},
+					"order": {
+						"$ref": "#/components/schemas/CardOrder"
+					}
+				},
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/SyncAction"
+					}
+				]
+			},
+			"CardSyncAction": {
+				"type": "object",
+				"required": ["entity", "card"],
+				"properties": {
+					"entity": {
+						"type": "string",
+						"enum": ["card"]
+					},
+					"card": {
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/BoardCard"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				},
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/SyncAction"
+					}
+				]
+			},
 			"CreateCardCommentRequest": {
 				"type": "object",
 				"required": ["body"],
@@ -3127,6 +3347,56 @@
 					}
 				]
 			},
+			"ListSyncAction": {
+				"type": "object",
+				"required": ["entity", "list"],
+				"properties": {
+					"entity": {
+						"type": "string",
+						"enum": ["list"]
+					},
+					"list": {
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/BoardList"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				},
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/SyncAction"
+					}
+				]
+			},
+			"MemberSyncAction": {
+				"type": "object",
+				"required": ["entity", "member"],
+				"properties": {
+					"entity": {
+						"type": "string",
+						"enum": ["member"]
+					},
+					"member": {
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/DirectoryMember"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				},
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/SyncAction"
+					}
+				]
+			},
 			"MoveCardRequest": {
 				"type": "object",
 				"required": ["operationId", "listKey", "position"],
@@ -3144,6 +3414,24 @@
 						"minimum": 0
 					}
 				}
+			},
+			"PreferenceSyncAction": {
+				"type": "object",
+				"required": ["entity", "preferences"],
+				"properties": {
+					"entity": {
+						"type": "string",
+						"enum": ["preference"]
+					},
+					"preferences": {
+						"$ref": "#/components/schemas/UserPreferences"
+					}
+				},
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/SyncAction"
+					}
+				]
 			},
 			"PreferencesResponse": {
 				"type": "object",
@@ -3193,7 +3481,8 @@
 							"OPERATION_CONFLICT",
 							"SNAPSHOT_NOT_READY",
 							"GITLAB_UNAVAILABLE",
-							"GITLAB_INVALID_WEBHOOK"
+							"GITLAB_INVALID_WEBHOOK",
+							"SYNC_CHECKPOINT_TOO_OLD"
 						]
 					},
 					"detail": {
@@ -3333,6 +3622,84 @@
 					}
 				}
 			},
+			"SyncAction": {
+				"type": "object",
+				"required": ["entity", "syncId", "entityId", "operation", "actorGitLabUserId", "occurredAt"],
+				"properties": {
+					"entity": {
+						"type": "string"
+					},
+					"syncId": {
+						"type": "string",
+						"description": "Monotonic checkpoint. Gapless and issued in commit order."
+					},
+					"entityId": {
+						"type": "string"
+					},
+					"operation": {
+						"type": "string",
+						"enum": ["upsert", "delete"]
+					},
+					"actorGitLabUserId": {
+						"anyOf": [
+							{
+								"type": "integer",
+								"format": "int64"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"occurredAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				},
+				"description": "One recorded change. Payloads are full snapshots, so applying the same action twice is a no-op and the newest action for an entity subsumes every earlier one."
+			},
+			"SyncDeltaResponse": {
+				"type": "object",
+				"required": ["checkpoint", "actions", "hasMore"],
+				"properties": {
+					"checkpoint": {
+						"type": "string",
+						"description": "The checkpoint reached. Store it and send it back as `since` next time."
+					},
+					"actions": {
+						"type": "array",
+						"items": {
+							"anyOf": [
+								{
+									"$ref": "#/components/schemas/CardSyncAction"
+								},
+								{
+									"$ref": "#/components/schemas/CardOrderSyncAction"
+								},
+								{
+									"$ref": "#/components/schemas/ListSyncAction"
+								},
+								{
+									"$ref": "#/components/schemas/TeamSyncAction"
+								},
+								{
+									"$ref": "#/components/schemas/MemberSyncAction"
+								},
+								{
+									"$ref": "#/components/schemas/PreferenceSyncAction"
+								},
+								{
+									"$ref": "#/components/schemas/SyncStatusSyncAction"
+								}
+							]
+						}
+					},
+					"hasMore": {
+						"type": "boolean",
+						"description": "More actions remain past this batch; request again from the new checkpoint."
+					}
+				}
+			},
 			"SyncStatus": {
 				"type": "object",
 				"required": ["state", "lastSuccessAt", "message"],
@@ -3356,6 +3723,49 @@
 						]
 					}
 				}
+			},
+			"SyncStatusSyncAction": {
+				"type": "object",
+				"required": ["entity", "sync"],
+				"properties": {
+					"entity": {
+						"type": "string",
+						"enum": ["syncStatus"]
+					},
+					"sync": {
+						"$ref": "#/components/schemas/SyncStatus"
+					}
+				},
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/SyncAction"
+					}
+				]
+			},
+			"TeamSyncAction": {
+				"type": "object",
+				"required": ["entity", "team"],
+				"properties": {
+					"entity": {
+						"type": "string",
+						"enum": ["team"]
+					},
+					"team": {
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/DirectoryTeam"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				},
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/SyncAction"
+					}
+				]
 			},
 			"UpdateCardAssigneeRequest": {
 				"type": "object",

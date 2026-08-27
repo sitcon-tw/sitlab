@@ -222,4 +222,16 @@ interface SyncService {
 	@post
 	@route("/sync/refresh")
 	refreshSnapshots(...CSRFHeader): AcceptedJson<RefreshSyncResponse> | UnauthorizedProblem | ForbiddenProblem | ConflictProblem | InternalServerProblem;
+
+	@operationId("getSyncDelta")
+	@summary("Replay board changes since a checkpoint")
+	@get
+	@route("/sync")
+	getSyncDelta(@query since: string, @query limit?: int32):
+		| OkJson<SyncDeltaResponse>
+		| BadRequestProblem
+		| UnauthorizedProblem
+		| ConflictProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
 }

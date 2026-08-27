@@ -17,6 +17,7 @@ import (
 	appactivity "example.com/project-template/internal/controller/application/cardactivity"
 	appdirectory "example.com/project-template/internal/controller/application/directory"
 	appoauth "example.com/project-template/internal/controller/application/oauth"
+	appsync "example.com/project-template/internal/controller/application/sync"
 	"example.com/project-template/internal/domain/board"
 	"example.com/project-template/internal/domain/directory"
 	"example.com/project-template/internal/domain/identity"
@@ -137,6 +138,9 @@ type syncFake struct{}
 func (syncFake) RequestRefresh() time.Time { return time.Unix(2, 0) }
 func (syncFake) EnqueueWebhook(context.Context, board.WebhookDelivery) (bool, error) {
 	return false, nil
+}
+func (syncFake) Delta(context.Context, appsync.DeltaQuery) (board.SyncDelta, error) {
+	return board.SyncDelta{}, nil
 }
 
 type cardActivityFake struct{}

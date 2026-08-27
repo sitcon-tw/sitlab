@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"example.com/project-template/internal/controller/infrastructure/postgres"
 
 	domainboard "example.com/project-template/internal/domain/board"
 	domaindirectory "example.com/project-template/internal/domain/directory"
@@ -152,4 +155,112 @@ func optionalText(value string) *string {
 
 func formatIID(value int64) string {
 	return fmt.Sprintf("%d", value)
+}
+
+// syncCatchUpBudget caps how much replay is worth serving. Past it a full bootstrap is
+// the cheaper answer for both sides, so the client is told to start over.
+const syncCatchUpBudget = 2000
+
+// SyncActions replays the log from a checkpoint for one audience.
+//
+// It returns ErrCheckpointTooOld rather than an empty page whenever the client cannot
+// be brought up to date incrementally, because silently returning nothing would leave
+// it permanently and invisibly stale.
+func (r *Repository) SyncActions(ctx context.Context, since string, audienceUserID string, limit int) (domainboard.SyncDelta, error) {
+	var delta domainboard.SyncDelta
+	db := postgres.Executor(ctx, r.pool)
+	var revision, floor int64
+	if err := db.QueryRow(ctx, `
+		SELECT revision, action_floor FROM realtime_state WHERE topic = 'bootstrap'
+	`).Scan(&revision, &floor); err != nil {
+		return delta, fmt.Errorf("load sync checkpoint bounds: %w", err)
+	}
+	cursor, err := strconv.ParseInt(since, 10, 64)
+	if err != nil || cursor < 0 || cursor > revision || cursor < floor {
+		return delta, domainboard.ErrCheckpointTooOld
+	}
+	if limit <= 0 || limit > syncCatchUpBudget {
+		limit = syncCatchUpBudget
+	}
+	audience := optionalText(audienceUserID)
+	var behind int64
+	if err := db.QueryRow(ctx, `
+		SELECT COUNT(*) FROM (
+		    SELECT 1
+		    FROM sync_actions
+		    WHERE sync_id > $1 AND sync_id <= $2
+		      AND (audience_user_id IS NULL OR audience_user_id = $3::uuid)
+		    LIMIT $4
+		) AS bounded
+	`, cursor, revision, audience, syncCatchUpBudget+1).Scan(&behind); err != nil {
+		return delta, fmt.Errorf("measure sync backlog: %w", err)
+	}
+	if behind > syncCatchUpBudget {
+		return delta, domainboard.ErrCheckpointTooOld
+	}
+
+	// A checkpoint names a committed transaction, not an individual action. The page
+	// limit is therefore soft: find the sync id containing the limit-th visible action,
+	// then return that transaction in full. Cutting a transaction in half and advancing
+	// to its sync id would make the remaining actions impossible to request.
+	boundary := revision
+	var limitedBoundary int64
+	err = db.QueryRow(ctx, `
+		SELECT sync_id
+		FROM sync_actions
+		WHERE sync_id > $1 AND sync_id <= $2
+		  AND (audience_user_id IS NULL OR audience_user_id = $3::uuid)
+		ORDER BY sync_id, seq
+		OFFSET ($4::integer - 1) LIMIT 1
+	`, cursor, revision, audience, limit).Scan(&limitedBoundary)
+	if err == nil {
+		boundary = limitedBoundary
+	} else if err != pgx.ErrNoRows {
+		return delta, fmt.Errorf("find sync page boundary: %w", err)
+	}
+
+	if err := db.QueryRow(ctx, `
+		SELECT EXISTS (
+		    SELECT 1
+		    FROM sync_actions
+		    WHERE sync_id > $1 AND sync_id <= $2
+		      AND (audience_user_id IS NULL OR audience_user_id = $3::uuid)
+		)
+	`, boundary, revision, audience).Scan(&delta.HasMore); err != nil {
+		return delta, fmt.Errorf("check for more sync actions: %w", err)
+	}
+
+	rows, err := db.Query(ctx, `
+		SELECT action.sync_id::text, action.seq, action.entity, action.entity_id, action.op,
+		       actor.gitlab_user_id, action.payload, action.created_at
+		FROM sync_actions action
+		LEFT JOIN users actor ON actor.id = action.actor_user_id
+		WHERE action.sync_id > $1 AND action.sync_id <= $2
+		  AND (action.audience_user_id IS NULL OR action.audience_user_id = $3::uuid)
+		ORDER BY action.sync_id, action.seq
+	`, cursor, boundary, audience)
+	if err != nil {
+		return delta, fmt.Errorf("read sync actions: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var action domainboard.SyncAction
+		if err := rows.Scan(&action.SyncID, &action.Seq, &action.Entity, &action.EntityID,
+			&action.Operation, &action.ActorGitLabUserID, &action.Payload, &action.OccurredAt); err != nil {
+			return delta, fmt.Errorf("scan sync action: %w", err)
+		}
+		delta.Actions = append(delta.Actions, action)
+	}
+	if err := rows.Err(); err != nil {
+		return delta, fmt.Errorf("iterate sync actions: %w", err)
+	}
+
+	if delta.HasMore {
+		delta.Checkpoint = strconv.FormatInt(boundary, 10)
+	} else {
+		// No visible action remains, so private actions for other users are also safe to
+		// skip and the caller can advance all the way to the sampled revision.
+		delta.Checkpoint = strconv.FormatInt(revision, 10)
+	}
+	return delta, nil
 }
