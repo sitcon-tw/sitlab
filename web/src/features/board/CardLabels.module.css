@@ -1,0 +1,26 @@
+.strip {
+	display: flex;
+	gap: 0.25rem;
+	min-width: 0;
+	overflow-x: auto;
+	/* The board is the enclosing horizontal scroller. Without this, reaching the
+	 * end of the chip row scrolls the whole board sideways. */
+	overscroll-behavior-x: contain;
+	scrollbar-width: none;
+}
+
+.strip::-webkit-scrollbar {
+	display: none;
+}
+
+.strip:focus-visible {
+	outline: 3px solid var(--md-sys-color-secondary);
+	outline-offset: 2px;
+	border-radius: var(--md-sys-shape-corner-extra-small);
+}
+
+.chip {
+	flex: 0 0 auto;
+	min-height: 1.5rem;
+	white-space: nowrap;
+}

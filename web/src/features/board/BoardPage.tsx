@@ -47,6 +47,7 @@ import {
 import { BoardFilters } from "./BoardFilters";
 import { planCardMove } from "./boardOrder";
 import styles from "./BoardPage.module.css";
+import { CardLabels } from "./CardLabels";
 import { canonicalClientLabels, isDeprecatedLabel } from "./labels";
 import { MembersDrawer } from "./MembersDrawer";
 import {
@@ -58,14 +59,15 @@ import {
 	type BoardCard,
 	type BoardSortMode,
 	type Bootstrap,
-	type CardComment
+	type CardComment,
+	type ProjectLabel
 } from "./model";
 import { parseQuickAction, quickActionCommands, type QuickAction } from "./quickActions";
 import { SaveIndicator } from "./SaveIndicator";
 import { TagSwatch } from "./TagSwatch";
 import { useBoardDrag } from "./useBoardDrag";
 import { useFieldSaveState, type FieldSave, type FieldSaveState, type SaveField } from "./useFieldSaveState";
-import { useProjectLabels } from "./useProjectLabels";
+import { useProjectLabelMap, useProjectLabels } from "./useProjectLabels";
 import { parseBoardViewState, serializeBoardViewState } from "./viewState";
 
 export interface BoardPageProps {
@@ -109,6 +111,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 	const [undo, setUndo] = useState<{ cardIid: number; assigneeIds: number[]; assigneeNames: string[] } | null>(null);
 	const localRetries = useRef(new Map<string, () => void>());
 	const save = useFieldSaveState();
+	const labelMetadata = useProjectLabelMap();
 	const nextTemporaryIid = useRef(-1);
 	const cards = bootstrap.board.cards;
 	const filteredCards = cards.filter(
@@ -459,6 +462,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 												onMoveUp={index > 0 ? () => handleReorder(card, listCards[index - 1]!, "up") : undefined}
 												onMoveDown={index < listCards.length - 1 ? () => handleReorder(card, listCards[index + 1]!, "down") : undefined}
 												onRetry={() => handleRetry(card)}
+												labelMetadata={labelMetadata}
 											/>
 										))}
 										{listCards.length === 0 ? <p className={styles.emptyLane}>{filtersActive ? "沒有符合篩選的卡片" : "目前沒有卡片"}</p> : null}
@@ -801,7 +805,8 @@ function CardItem({
 	sortableIndex,
 	onMoveUp,
 	onMoveDown,
-	onRetry
+	onRetry,
+	labelMetadata
 }: {
 	card: BoardCard;
 	bootstrap: Bootstrap;
@@ -813,6 +818,7 @@ function CardItem({
 	onMoveUp: (() => void) | undefined;
 	onMoveDown: (() => void) | undefined;
 	onRetry: () => void;
+	labelMetadata: Map<string, ProjectLabel>;
 }) {
 	const { handleRef, isDragSource, ref } = useSortable({
 		id: card.issueIid,
@@ -890,6 +896,7 @@ function CardItem({
 				<h3>{title}</h3>
 				{card.description ? <p>{card.description}</p> : null}
 			</button>
+			<CardLabels card={card} bootstrap={bootstrap} labelMetadata={labelMetadata} title={title} />
 			<footer className={styles.cardFooter}>
 				<label className={styles.cardDate} data-overdue={overdue}>
 					<span className={styles.srOnly}>期限</span>

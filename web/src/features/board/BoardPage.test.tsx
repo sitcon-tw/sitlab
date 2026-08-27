@@ -457,6 +457,25 @@ describe("SITCON Board interactions", () => {
 		expect(within(dialog).getByRole("status")).toHaveTextContent("Due儲存失敗");
 	});
 
+	it("shows general labels on the card as a single scrollable row and hides the team label", async () => {
+		render(<Harness />);
+		const card = (await screen.findByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).closest("article") as HTMLElement;
+		const strip = await within(card).findByRole("group", { name: "[開發組] 修正報名系統寄信流程 的 Labels" });
+		expect(within(strip).getByText("Priority::High")).toBeVisible();
+		expect(within(strip).getByText("Backend")).toBeVisible();
+		// The title already carries the team prefix, so a Team:: chip would repeat it.
+		expect(within(strip).queryByText("Team::開發組")).not.toBeInTheDocument();
+		// One tab stop for the row, not one per chip.
+		expect(strip).toHaveAttribute("tabindex", "0");
+		expect(within(strip).queryAllByRole("button")).toHaveLength(0);
+	});
+
+	it("renders no label row on a card that only carries its team label", async () => {
+		render(<Harness />);
+		const card = (await screen.findByRole("heading", { name: "[行政組] 整理志工行前通知" })).closest("article") as HTMLElement;
+		expect(within(card).queryByRole("group", { name: /Labels$/ })).not.toBeInTheDocument();
+	});
+
 	it("ignores an older move response after a newer move has started", async () => {
 		const user = userEvent.setup();
 		const requests: Array<{
