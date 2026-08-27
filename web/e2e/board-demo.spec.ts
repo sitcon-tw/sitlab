@@ -106,7 +106,7 @@ test.describe("SITCON Board demo visual audit", () => {
 		await page.setViewportSize({ width: 928, height: 800 });
 		await page.goto("/");
 
-		const doing = page.getByRole("heading", { name: "Doing" }).locator("..").locator("..");
+		const doing = page.locator('section[data-list="doing"]');
 		await page.getByLabel("排序方式").selectOption("due-desc");
 		await expect(doing.getByRole("heading", { level: 3 }).first()).toHaveText("[場務組] 盤點會場網路設備");
 
@@ -229,7 +229,7 @@ test.describe("SITCON Board demo visual audit", () => {
 		await page.getByLabel("卡片標題").fill("新增值班表");
 		await page.getByRole("button", { name: "建立卡片" }).click();
 
-		const doing = page.getByRole("heading", { name: "Doing" }).locator("..").locator("..");
+		const doing = page.locator('section[data-list="doing"]');
 		await expect(doing.getByRole("heading", { level: 3 }).first()).toHaveText("[開發組] 新增值班表");
 		await expect(doing.getByText("確認交接與值班時段")).toBeVisible();
 		await doing.getByRole("heading", { name: "[開發組] 新增值班表" }).click();

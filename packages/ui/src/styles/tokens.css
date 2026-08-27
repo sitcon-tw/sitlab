@@ -377,7 +377,11 @@
 	--sb-coral: #ff625b;
 	--sb-blue: #7d88ff;
 
-	/* Legacy --sb-* aliases. Remove as each CSS module moves to --md-sys-*. */
+	/* Product surface roles. These are NOT a legacy shim: light and dark map them
+	 * to different --md-sys-* roles on purpose. The board wants cards brightest in
+	 * light (container-lowest) and brightest-by-elevation in dark
+	 * (container-high), which no single MD3 role satisfies in both schemes. MD3
+	 * expects product surfaces to be mapped per scheme exactly like this. */
 	--sb-page: var(--md-sys-color-surface-container);
 	--sb-lane: var(--md-sys-color-surface-container-high);
 	--sb-surface: var(--md-sys-color-surface-container-lowest);
@@ -491,7 +495,11 @@
 	--sb-coral: #ff938b;
 	--sb-blue: #9ba3ff;
 
-	/* Legacy --sb-* aliases. Remove as each CSS module moves to --md-sys-*. */
+	/* Product surface roles. These are NOT a legacy shim: light and dark map them
+	 * to different --md-sys-* roles on purpose. The board wants cards brightest in
+	 * light (container-lowest) and brightest-by-elevation in dark
+	 * (container-high), which no single MD3 role satisfies in both schemes. MD3
+	 * expects product surfaces to be mapped per scheme exactly like this. */
 	--sb-page: var(--md-sys-color-surface);
 	--sb-lane: var(--md-sys-color-surface-container);
 	--sb-surface: var(--md-sys-color-surface-container-low);
