@@ -114,6 +114,8 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	verifyUnaffectedLanesAreNotRewritten(t, ctx, pool, store, now)
 	verifySweepKeepsCardsObservedMidFetch(t, ctx, pool, store, now)
 	verifyRepeatedObservationIsQuiet(t, ctx, pool, store, now)
+	verifySyncActionsAreGaplessAndCommitOrdered(t, ctx, pool, store, now)
+	verifyPruneKeepsWhatIsStillNeeded(t, ctx, pool, store, now)
 
 	listenerCtx, stopListener := context.WithCancel(ctx)
 	updates, unsubscribe := store.SubscribeRevisions()
@@ -483,6 +485,147 @@ func verifyCardReordering(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	}
 	if result.Card.Position != 0 || !slices.Equal(issueIIDs, []int64{503, 501, 502}) || !slices.Equal(positions, []int32{0, 1, 2}) {
 		t.Fatalf("reordered cards = ids %v positions %v result %#v", issueIIDs, positions, result.Card)
+	}
+}
+
+// verifySyncActionsAreGaplessAndCommitOrdered pins the property the whole delta
+// protocol rests on.
+//
+// The classic way to get this wrong is a bigserial: it hands out its number before the
+// transaction commits, so a reader can see id 5 while id 4 is still in flight, advance
+// its cursor past it, and lose id 4 permanently once it lands. Taking the id from a
+// single-row counter updated inside the transaction makes that impossible, because the
+// row lock is held until commit -- which also means writers serialize here, and this
+// test is what says that is deliberate rather than accidental.
+func verifySyncActionsAreGaplessAndCommitOrdered(t *testing.T, ctx context.Context, pool *pgxpool.Pool, store *pgsitcon.Repository, now time.Time) {
+	t.Helper()
+	defer func() {
+		if _, err := pool.Exec(ctx, `DELETE FROM issue_cache WHERE issue_iid = $1`, int64(1002)); err != nil {
+			t.Fatalf("clean ordering fixtures: %v", err)
+		}
+	}()
+	gitLabIssueID := int64(10002)
+	fast := domainboard.Card{
+		IssueIID: 1002, GitLabIssueID: &gitLabIssueID, Title: "Fast writer", ListKey: "wating", TeamKey: "development",
+		GitLabStatusName: "Waiting", SyncState: domainboard.OperationSynced,
+		CreatedAt: now, UpdatedAt: now.Add(30 * time.Minute),
+	}
+
+	// Stand in for a slow writer by taking a sync id the way flush does and holding the
+	// transaction open. The UPDATE is the whole mechanism: it locks the single counter
+	// row until commit.
+	held, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin held transaction: %v", err)
+	}
+	var heldID int64
+	if err := held.QueryRow(ctx, `
+		UPDATE realtime_state SET revision = revision + 1, updated_at = $1
+		WHERE topic = 'bootstrap' RETURNING revision
+	`, now.Add(30*time.Minute)).Scan(&heldID); err != nil {
+		_ = held.Rollback(ctx)
+		t.Fatalf("take held sync id: %v", err)
+	}
+	if _, err := held.Exec(ctx, `
+		INSERT INTO sync_actions (sync_id, seq, entity, entity_id, op, payload, created_at)
+		VALUES ($1, 0, 'card', '1001', 'upsert', '{}'::jsonb, $2)
+	`, heldID, now.Add(30*time.Minute)); err != nil {
+		_ = held.Rollback(ctx)
+		t.Fatalf("record held action: %v", err)
+	}
+
+	// A second writer must block rather than take a number ahead of the first.
+	blocked := make(chan error, 1)
+	go func() {
+		_, blockedErr := store.ReconcileIssue(ctx, fast.IssueIID, &fast, now.Add(31*time.Minute))
+		blocked <- blockedErr
+	}()
+	select {
+	case err := <-blocked:
+		_ = held.Rollback(ctx)
+		t.Fatalf("second writer completed while the first still held its sync id: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	if err := held.Commit(ctx); err != nil {
+		t.Fatalf("commit held transaction: %v", err)
+	}
+	if err := <-blocked; err != nil {
+		t.Fatalf("second writer: %v", err)
+	}
+
+	var fastID int64
+	if err := pool.QueryRow(ctx, `
+		SELECT sync_id FROM sync_actions WHERE entity = 'card' AND entity_id = '1002' ORDER BY sync_id DESC LIMIT 1
+	`).Scan(&fastID); err != nil {
+		t.Fatalf("read second writer sync id: %v", err)
+	}
+	if heldID >= fastID {
+		t.Fatalf("sync ids %d and %d were not issued in commit order", heldID, fastID)
+	}
+
+	// No gaps: every id from the floor up to the current revision has at least one
+	// action, which is also a mechanical check that no write path forgot to record.
+	var missing int64
+	if err := pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM realtime_state state,
+		     generate_series(state.action_floor + 1, state.revision) AS candidate(sync_id)
+		WHERE state.topic = 'bootstrap'
+		  AND NOT EXISTS (SELECT 1 FROM sync_actions WHERE sync_actions.sync_id = candidate.sync_id)
+	`).Scan(&missing); err != nil {
+		t.Fatalf("check for gaps: %v", err)
+	}
+	if missing != 0 {
+		t.Fatalf("%d sync ids advanced the revision without recording an action", missing)
+	}
+}
+
+// verifyPruneKeepsWhatIsStillNeeded pins retention. A failed operation is still offered
+// for retry in the UI, and one a card still points at is still live, so neither may be
+// swept up with the merely old.
+func verifyPruneKeepsWhatIsStillNeeded(t *testing.T, ctx context.Context, pool *pgxpool.Pool, store *pgsitcon.Repository, now time.Time) {
+	t.Helper()
+	stale := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	var userID string
+	if err := pool.QueryRow(ctx, `SELECT id FROM users LIMIT 1`).Scan(&userID); err != nil {
+		t.Fatalf("load a user: %v", err)
+	}
+	seed := func(kind, state string, updatedAt time.Time) string {
+		id := uuid.NewString()
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO durable_operations
+			    (id, kind, issue_iid, requested_by_user_id, payload, state, attempts, available_at, created_at, updated_at)
+			VALUES ($1, $2, NULL, $3, '{}'::jsonb, $4, 0, $5, $5, $5)
+		`, uuid.MustParse(id), kind, uuid.MustParse(userID), state, updatedAt); err != nil {
+			t.Fatalf("seed durable operation: %v", err)
+		}
+		return id
+	}
+	oldSynced := seed("update_details", "synced", stale)
+	oldFailed := seed("update_details", "failed", stale)
+	defer func() {
+		if _, err := pool.Exec(ctx, `DELETE FROM durable_operations WHERE id = ANY($1::uuid[])`,
+			[]string{oldSynced, oldFailed}); err != nil {
+			t.Fatalf("clean retention fixtures: %v", err)
+		}
+	}()
+
+	if err := store.Prune(ctx, time.Now().UTC()); err != nil {
+		t.Fatalf("Prune() error = %v", err)
+	}
+	exists := func(id string) bool {
+		var found bool
+		if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM durable_operations WHERE id = $1)`, uuid.MustParse(id)).Scan(&found); err != nil {
+			t.Fatalf("check operation %s: %v", id, err)
+		}
+		return found
+	}
+	if exists(oldSynced) {
+		t.Fatal("an old completed operation survived pruning")
+	}
+	if !exists(oldFailed) {
+		t.Fatal("an old failed operation was pruned; the board still offers it for retry")
 	}
 }
 

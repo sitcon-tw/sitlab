@@ -61,7 +61,7 @@ func (r observationResult) touched() bool { return r.Changed > 0 || r.Deleted > 
 // Every skip here is self-resolving, which is why none of them holds back the caller's
 // cursor. A row with a local mutation in flight is superseded when the operation worker
 // completes it; a row we already hold newer data for needs no repair at all.
-func applyCardObservations(ctx context.Context, tx pgx.Tx, batch observationBatch) (observationResult, error) {
+func applyCardObservations(ctx context.Context, tx pgx.Tx, actions *actionBatch, batch observationBatch) (observationResult, error) {
 	var result observationResult
 	states, orders, err := loadLaneOrders(ctx, tx, nil)
 	if err != nil {
@@ -115,6 +115,9 @@ func applyCardObservations(ctx context.Context, tx pgx.Tx, batch observationBatc
 			return result, err
 		}
 		result.Deleted = int(command.RowsAffected())
+		for _, issueIID := range deleteIIDs {
+			actions.deleteCard(issueIID)
+		}
 		if _, err := tx.Exec(ctx, `DELETE FROM board_sync_rejects WHERE issue_iid = ANY($1::bigint[])`, deleteIIDs); err != nil {
 			return result, err
 		}
@@ -159,6 +162,11 @@ func applyCardObservations(ctx context.Context, tx pgx.Tx, batch observationBatc
 		if err := replaceCardAssignees(ctx, tx, card.IssueIID, card.AssigneeGitLabUserIDs); err != nil {
 			return result, err
 		}
+		stored := card
+		stored.Position = positions[card.IssueIID]
+		stored.SyncState = domainboard.OperationSynced
+		stored.SyncError, stored.PendingOperationID = "", ""
+		actions.card(stored)
 	}
 
 	// Stamp every card GitLab confirmed, changed or not. This is what tells a later
@@ -185,7 +193,7 @@ func applyCardObservations(ctx context.Context, tx pgx.Tx, batch observationBatc
 		}
 	}
 
-	if err := writeChangedLanes(ctx, tx, before, orders); err != nil {
+	if err := writeChangedLanes(ctx, tx, actions, before, orders); err != nil {
 		return result, err
 	}
 	return result, nil

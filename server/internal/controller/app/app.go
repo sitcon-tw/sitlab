@@ -153,7 +153,7 @@ func (a *Application) Run(ctx context.Context) error {
 	go a.Sync.RunOperations(workerCtx, a.Config.Sync.OperationInterval)
 	go a.Sync.RunWebhooks(workerCtx, a.Config.Sync.OperationInterval)
 	go a.Events.RunRevisionListener(workerCtx)
-	go a.runWebhookMetrics(workerCtx)
+	go a.runMaintenance(workerCtx)
 
 	serveErrors := make(chan error, 1)
 	go func() {
@@ -182,13 +182,23 @@ func (a *Application) Run(ctx context.Context) error {
 	return errors.Join(runErr, shutdownErr, traceErr)
 }
 
-func (a *Application) runWebhookMetrics(ctx context.Context) {
+// runMaintenance publishes queue depth and trims the append-only tables. Pruning rides
+// the metrics ticker rather than owning a goroutine: it is a housekeeping sweep with no
+// latency requirement, and once every couple of minutes is plenty for week-long
+// retention.
+func (a *Application) runMaintenance(ctx context.Context) {
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
-	for {
+	const pruneEvery = 8
+	for tick := 0; ; tick++ {
 		pending, dead, oldestSeconds, err := a.Events.WebhookQueueStats(ctx)
 		if err == nil {
 			a.Metrics.SetWebhookQueue(pending, dead, oldestSeconds)
+		}
+		if tick%pruneEvery == 0 {
+			if pruneErr := a.Events.Prune(ctx, time.Now().UTC()); pruneErr != nil {
+				a.Log.Warn("sync_prune_failed", zap.Error(pruneErr))
+			}
 		}
 		select {
 		case <-ctx.Done():

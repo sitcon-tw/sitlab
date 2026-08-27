@@ -147,7 +147,7 @@ func (o laneOrders) positions() map[int64]int32 {
 // writeChangedLanes renumbers only the lanes whose order actually moved. Rewriting an
 // unchanged lane would touch every row in it for nothing, and once the sync action log
 // lands it would also broadcast a spurious reordering to every connected client.
-func writeChangedLanes(ctx context.Context, tx pgx.Tx, before, after laneOrders) error {
+func writeChangedLanes(ctx context.Context, tx pgx.Tx, batch *actionBatch, before, after laneOrders) error {
 	listKeys := make([]string, 0, len(after))
 	for listKey := range after {
 		listKeys = append(listKeys, listKey)
@@ -166,6 +166,7 @@ func writeChangedLanes(ctx context.Context, tx pgx.Tx, before, after laneOrders)
 		`, order); err != nil {
 			return err
 		}
+		batch.laneOrder(listKey, order)
 	}
 	return nil
 }

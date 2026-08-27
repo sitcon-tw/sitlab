@@ -88,6 +88,12 @@ func (r *Repository) ReadySnapshots(ctx context.Context) error {
 
 func (r *Repository) ReplaceDirectory(ctx context.Context, snapshot domaindirectory.Snapshot) error {
 	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		// Read what is stored before the rewrite so the log can carry the difference
+		// rather than the whole directory.
+		before, beforeErr := loadDirectorySnapshot(ctx, tx)
+		if beforeErr != nil && !errors.Is(beforeErr, pgx.ErrNoRows) {
+			return beforeErr
+		}
 		if _, err := tx.Exec(ctx, `
 			UPDATE directory_teams
 			SET active = false, source_revision = $1, updated_at = $2
@@ -201,7 +207,104 @@ func (r *Repository) ReplaceDirectory(ctx context.Context, snapshot domaindirect
 				return err
 			}
 		}
-		_, err := bumpBootstrapRevision(ctx, tx, snapshot.SyncedAt)
+		batch := newActionBatch("", snapshot.SyncedAt)
+		if err := emitDirectoryChanges(ctx, tx, batch, before, snapshot); err != nil {
+			return err
+		}
+		_, err := batch.flush(ctx, tx)
+		return err
+	})
+}
+
+// emitDirectoryChanges records only what a directory refresh actually altered. The
+// refresh runs every five minutes and on every member webhook, so emitting the whole
+// directory each time would be roughly seventeen thousand rows of noise a day.
+func emitDirectoryChanges(ctx context.Context, tx pgx.Tx, batch *actionBatch, before, after domaindirectory.Snapshot) error {
+	previousTeams := make(map[string]domaindirectory.Team, len(before.Teams))
+	for _, team := range before.Teams {
+		previousTeams[team.Key] = team
+	}
+	for _, team := range after.Teams {
+		if existing, found := previousTeams[team.Key]; !found || !teamsEqual(existing, team) {
+			batch.team(team)
+		}
+		delete(previousTeams, team.Key)
+	}
+	for key := range previousTeams {
+		batch.deleteTeam(key)
+	}
+
+	previousMembers := make(map[int64]domaindirectory.Member, len(before.Members))
+	for _, member := range before.Members {
+		previousMembers[member.GitLabUserID] = member
+	}
+	for _, member := range after.Members {
+		if existing, found := previousMembers[member.GitLabUserID]; !found || !membersEqual(existing, member) {
+			batch.member(member)
+		}
+		delete(previousMembers, member.GitLabUserID)
+	}
+	for gitLabUserID := range previousMembers {
+		batch.deleteMember(gitLabUserID)
+	}
+	return nil
+}
+
+func teamsEqual(a, b domaindirectory.Team) bool {
+	return a.Key == b.Key && a.Name == b.Name && a.TitlePrefix == b.TitlePrefix && a.GitLabLabel == b.GitLabLabel &&
+		a.Active == b.Active && a.SortOrder == b.SortOrder &&
+		slices.Equal(a.MemberGitLabUserIDs, b.MemberGitLabUserIDs) &&
+		slices.Equal(a.LeaderGitLabUserIDs, b.LeaderGitLabUserIDs) &&
+		slices.Equal(a.DirectoryMemberUsernames, b.DirectoryMemberUsernames) &&
+		slices.Equal(a.DirectoryLeaderUsernames, b.DirectoryLeaderUsernames)
+}
+
+func membersEqual(a, b domaindirectory.Member) bool {
+	return a.GitLabUserID == b.GitLabUserID && a.Username == b.Username && a.DisplayName == b.DisplayName &&
+		a.AvatarURL == b.AvatarURL && a.ProfileURL == b.ProfileURL && a.AccessLevel == b.AccessLevel &&
+		a.State == b.State && slices.Equal(a.TeamKeys, b.TeamKeys)
+}
+
+// syncActionRetention bounds how far back a client can be and still catch up
+// incrementally. A week covers a laptop suspended on Friday and reopened on Monday; at
+// this board's write rate that is a few megabytes.
+const syncActionRetention = 7 * 24 * time.Hour
+
+// Prune trims the tables that would otherwise grow without limit. durable_operations
+// had no pruning at all, and dead webhook deliveries were kept forever.
+func (r *Repository) Prune(ctx context.Context, now time.Time) error {
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		// Raising the floor in the same statement that deletes is what keeps a client
+		// from being told it can resume from a checkpoint that has just been removed.
+		if _, err := tx.Exec(ctx, `
+			WITH pruned AS (
+			    DELETE FROM sync_actions WHERE created_at < $1 RETURNING sync_id
+			)
+			UPDATE realtime_state
+			SET action_floor = GREATEST(action_floor, COALESCE((SELECT max(sync_id) FROM pruned), action_floor))
+			WHERE topic = 'bootstrap'
+		`, now.Add(-syncActionRetention)); err != nil {
+			return err
+		}
+		// Never touch a failed operation: the board still offers it for retry. Never
+		// touch one a card still points at.
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM durable_operations
+			WHERE state = 'synced'
+			  AND updated_at < $1
+			  AND NOT EXISTS (SELECT 1 FROM issue_cache WHERE pending_operation_id = durable_operations.id)
+		`, now.Add(-syncActionRetention)); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM gitlab_webhook_deliveries WHERE state = 'dead' AND updated_at < $1
+		`, now.Add(-30*24*time.Hour)); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM oauth_states WHERE expires_at < $1`, now); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `DELETE FROM auth_sessions WHERE expires_at < $1`, now)
 		return err
 	})
 }
@@ -246,7 +349,9 @@ func (r *Repository) EnsureBoardLists(ctx context.Context, lists []domainboard.L
 		if unchanged {
 			return nil
 		}
+		batch := newActionBatch("", at)
 		for _, list := range lists {
+			batch.list(list)
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO board_lists (key, display_name, gitlab_status_name, position, closed, color, updated_at)
 				VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -261,7 +366,7 @@ func (r *Repository) EnsureBoardLists(ctx context.Context, lists []domainboard.L
 				return err
 			}
 		}
-		_, err = bumpBootstrapRevision(ctx, tx, at)
+		_, err = batch.flush(ctx, tx)
 		return err
 	})
 }
@@ -309,7 +414,8 @@ func (r *Repository) ApplyBoardObservation(ctx context.Context, observation doma
 		for _, issueIID := range observation.Removed {
 			observations = append(observations, cardObservation{IssueIID: issueIID})
 		}
-		merge, err := applyCardObservations(ctx, tx, observationBatch{
+		actions := newActionBatch("", observation.SyncedAt)
+		merge, err := applyCardObservations(ctx, tx, actions, observationBatch{
 			Observations: observations, Complete: observation.Complete, Retained: observation.Retained,
 			StartedAt: observation.StartedAt, ObservedAt: observation.SyncedAt,
 		})
@@ -348,7 +454,10 @@ func (r *Repository) ApplyBoardObservation(ctx context.Context, observation doma
 		if !merge.touched() && !hadError {
 			return nil
 		}
-		_, err = bumpBootstrapRevision(ctx, tx, observation.SyncedAt)
+		if hadError {
+			actions.syncStatus(domainboard.SyncStatus{State: "synced", LastSuccessAt: observation.SyncedAt})
+		}
+		_, err = actions.flush(ctx, tx)
 		return err
 	})
 }
@@ -456,6 +565,9 @@ func (r *Repository) ClaimOperation(ctx context.Context, now time.Time) (domainb
 func (r *Repository) CompleteOperation(ctx context.Context, pending domainboard.PendingOperation, issue domainboard.CanonicalIssue, completedAt time.Time) error {
 	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		operationID := uuid.MustParse(pending.Operation.ID)
+		// A create swaps the locally assigned negative IID for GitLab's real one, so
+		// the card changes identity rather than merely changing content.
+		renamed := pending.Operation.Kind == domainboard.OperationCreateCard && pending.Card.IssueIID != issue.IssueIID
 		if pending.Operation.Kind == domainboard.OperationCreateCard {
 			if _, err := tx.Exec(ctx, `
 				DELETE FROM issue_cache
@@ -520,7 +632,21 @@ func (r *Repository) CompleteOperation(ctx context.Context, pending domainboard.
 		if err != nil {
 			return err
 		}
-		_, err = bumpBootstrapRevision(ctx, tx, completedAt)
+		batch := newActionBatch(pending.RequestedByUserID, completedAt)
+		if renamed {
+			// The temporary negative IID no longer exists. Emitting the delete first
+			// keeps a client from briefly holding the card under both identities.
+			batch.deleteCard(pending.Card.IssueIID)
+		}
+		if err := emitCard(ctx, tx, batch, issue.IssueIID); err != nil {
+			return err
+		}
+		if renamed {
+			if err := emitLaneOrder(ctx, tx, batch, pending.Card.ListKey); err != nil {
+				return err
+			}
+		}
+		_, err = batch.flush(ctx, tx)
 		return err
 	})
 }
@@ -553,9 +679,71 @@ func (r *Repository) FailOperation(ctx context.Context, pending domainboard.Pend
 				return err
 			}
 		}
-		_, err := bumpBootstrapRevision(ctx, tx, failedAt)
+		batch := newActionBatch(pending.RequestedByUserID, failedAt)
+		if err := emitCard(ctx, tx, batch, pending.Card.IssueIID); err != nil {
+			return err
+		}
+		_, err := batch.flush(ctx, tx)
 		return err
 	})
+}
+
+// loadDirectorySnapshot reads teams and members inside the caller's transaction. It
+// exists so ReplaceDirectory can diff against what is stored without reaching for a
+// second connection, which would block on the locks this transaction already holds.
+func loadDirectorySnapshot(ctx context.Context, tx pgx.Tx) (domaindirectory.Snapshot, error) {
+	var snapshot domaindirectory.Snapshot
+	teamRows, err := tx.Query(ctx, `
+		SELECT key, display_name, title_prefix, gitlab_label, sort_order, active
+		FROM directory_teams
+		ORDER BY sort_order, key
+	`)
+	if err != nil {
+		return snapshot, err
+	}
+	for teamRows.Next() {
+		var team domaindirectory.Team
+		if err := teamRows.Scan(&team.Key, &team.Name, &team.TitlePrefix, &team.GitLabLabel, &team.SortOrder, &team.Active); err != nil {
+			teamRows.Close()
+			return snapshot, err
+		}
+		snapshot.Teams = append(snapshot.Teams, team)
+	}
+	teamRows.Close()
+	if err := teamRows.Err(); err != nil {
+		return snapshot, err
+	}
+
+	memberRows, err := tx.Query(ctx, `
+		SELECT member.gitlab_user_id, member.username, member.display_name,
+		       member.avatar_url, member.profile_url, member.access_level, member.state,
+		       COALESCE(array_agg(DISTINCT membership.team_key)
+		           FILTER (WHERE membership.team_key IS NOT NULL), '{}')::text[]
+		FROM directory_members member
+		LEFT JOIN directory_team_memberships membership
+		  ON membership.gitlab_user_id = member.gitlab_user_id
+		GROUP BY member.gitlab_user_id
+		ORDER BY lower(member.display_name), lower(member.username)
+	`)
+	if err != nil {
+		return snapshot, err
+	}
+	defer memberRows.Close()
+	for memberRows.Next() {
+		var member domaindirectory.Member
+		var avatarURL *string
+		if err := memberRows.Scan(
+			&member.GitLabUserID, &member.Username, &member.DisplayName, &avatarURL,
+			&member.ProfileURL, &member.AccessLevel, &member.State, &member.TeamKeys,
+		); err != nil {
+			return snapshot, err
+		}
+		if avatarURL != nil {
+			member.AvatarURL = *avatarURL
+		}
+		snapshot.Members = append(snapshot.Members, member)
+	}
+	return snapshot, memberRows.Err()
 }
 
 func (r *Repository) Snapshot(ctx context.Context) (domaindirectory.Snapshot, error) {
@@ -730,13 +918,66 @@ func (r *Repository) SetPreferences(ctx context.Context, userID, teamKey string,
 		if err != nil {
 			return err
 		}
-		_, err = bumpBootstrapRevision(ctx, tx, confirmedAt)
+		batch := newActionBatch(userID, confirmedAt)
+		// Two actions, not one. The preference itself is private to this user, but the
+		// self-selected membership it writes changes the team list everyone sees on
+		// that member, so it has to be broadcast as well.
+		preferences, err := loadPreferences(ctx, tx, userID)
+		if err != nil {
+			return err
+		}
+		batch.preferences(userID, preferences)
+		member, err := loadDirectoryMember(ctx, tx, gitLabUserID)
+		if err != nil {
+			return err
+		}
+		batch.member(member)
+		_, err = batch.flush(ctx, tx)
 		return err
 	})
 	if err != nil {
 		return domaindirectory.Preferences{}, fmt.Errorf("set preferences transaction: %w", err)
 	}
 	return r.Preferences(ctx, userID)
+}
+
+func loadPreferences(ctx context.Context, tx pgx.Tx, userID string) (domaindirectory.Preferences, error) {
+	var preferences domaindirectory.Preferences
+	err := tx.QueryRow(ctx, `
+		SELECT preference.default_team_key, preference.confirmed_at,
+		       COALESCE(array_agg(DISTINCT membership.team_key)
+		           FILTER (WHERE membership.source = 'gitlab_directory'), '{}')::text[]
+		FROM users person
+		LEFT JOIN user_preferences preference ON preference.user_id = person.id
+		LEFT JOIN directory_team_memberships membership
+		  ON membership.gitlab_user_id = person.gitlab_user_id
+		WHERE person.id = $1
+		GROUP BY person.id, preference.default_team_key, preference.confirmed_at
+	`, uuid.MustParse(userID)).Scan(&preferences.DefaultTeamKey, &preferences.ConfirmedAt, &preferences.DirectoryTeamKeys)
+	return preferences, err
+}
+
+func loadDirectoryMember(ctx context.Context, tx pgx.Tx, gitLabUserID int64) (domaindirectory.Member, error) {
+	var member domaindirectory.Member
+	var avatarURL *string
+	err := tx.QueryRow(ctx, `
+		SELECT member.gitlab_user_id, member.username, member.display_name,
+		       member.avatar_url, member.profile_url, member.access_level, member.state,
+		       COALESCE(array_agg(DISTINCT membership.team_key)
+		           FILTER (WHERE membership.team_key IS NOT NULL), '{}')::text[]
+		FROM directory_members member
+		LEFT JOIN directory_team_memberships membership
+		  ON membership.gitlab_user_id = member.gitlab_user_id
+		WHERE member.gitlab_user_id = $1
+		GROUP BY member.gitlab_user_id
+	`, gitLabUserID).Scan(
+		&member.GitLabUserID, &member.Username, &member.DisplayName, &avatarURL,
+		&member.ProfileURL, &member.AccessLevel, &member.State, &member.TeamKeys,
+	)
+	if avatarURL != nil {
+		member.AvatarURL = *avatarURL
+	}
+	return member, err
 }
 
 func (r *Repository) Board(ctx context.Context) (domainboard.Snapshot, error) {
@@ -871,7 +1112,15 @@ func (r *Repository) CreateCard(ctx context.Context, mutation domainboard.Mutati
 		mutation.Card.IssueIID = issueIID
 		mutation.Operation.IssueIID = &issueIID
 		result = domainboard.Result{Card: mutation.Card, Operation: mutation.Operation}
-		_, err := bumpBootstrapRevision(ctx, tx, mutation.Card.UpdatedAt)
+		batch := newActionBatch(mutation.RequestedByUserID, mutation.Card.UpdatedAt)
+		if err := emitCard(ctx, tx, batch, issueIID); err != nil {
+			return err
+		}
+		// The insert shifted every other card in the lane down by one.
+		if err := emitLaneOrder(ctx, tx, batch, mutation.Card.ListKey); err != nil {
+			return err
+		}
+		_, err := batch.flush(ctx, tx)
 		return err
 	})
 	if operationConflict(err) {
@@ -889,6 +1138,7 @@ func (r *Repository) UpdateCard(ctx context.Context, mutation domainboard.Mutati
 		return domainboard.Result{}, fmt.Errorf("encode card operation: %w", err)
 	}
 	err = pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		batch := newActionBatch(mutation.RequestedByUserID, mutation.Card.UpdatedAt)
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO durable_operations
 			    (id, kind, issue_iid, requested_by_user_id, payload, state, attempts, available_at, created_at, updated_at)
@@ -909,7 +1159,7 @@ func (r *Repository) UpdateCard(ctx context.Context, mutation domainboard.Mutati
 			return err
 		}
 		if currentList != mutation.Card.ListKey || currentPosition != mutation.Card.Position {
-			position, err := reorderCardPositions(ctx, tx, mutation.Card.IssueIID, currentList, mutation.Card.ListKey, mutation.Card.Position)
+			position, err := reorderCardPositions(ctx, tx, batch, mutation.Card.IssueIID, currentList, mutation.Card.ListKey, mutation.Card.Position)
 			if err != nil {
 				return err
 			}
@@ -933,7 +1183,10 @@ func (r *Repository) UpdateCard(ctx context.Context, mutation domainboard.Mutati
 		if err := replaceCardAssignees(ctx, tx, mutation.Card.IssueIID, mutation.Card.AssigneeGitLabUserIDs); err != nil {
 			return err
 		}
-		_, err = bumpBootstrapRevision(ctx, tx, mutation.Card.UpdatedAt)
+		if err := emitCard(ctx, tx, batch, mutation.Card.IssueIID); err != nil {
+			return err
+		}
+		_, err = batch.flush(ctx, tx)
 		return err
 	})
 	if operationConflict(err) {
@@ -973,6 +1226,7 @@ func (r *Repository) RetryOperation(ctx context.Context, operationID string) (do
 			return err
 		}
 		operation.IssueIID = issueIID
+		batch := newActionBatch("", operation.UpdatedAt)
 		if issueIID != nil {
 			if _, err := tx.Exec(ctx, `
 				UPDATE issue_cache
@@ -981,8 +1235,11 @@ func (r *Repository) RetryOperation(ctx context.Context, operationID string) (do
 			`, *issueIID, uuid.MustParse(operationID)); err != nil {
 				return err
 			}
+			if err := emitCard(ctx, tx, batch, *issueIID); err != nil {
+				return err
+			}
 		}
-		_, err = bumpBootstrapRevision(ctx, tx, operation.UpdatedAt)
+		_, err = batch.flush(ctx, tx)
 		return err
 	})
 	if err != nil {
@@ -1060,7 +1317,43 @@ func replaceCardAssignees(ctx context.Context, tx pgx.Tx, issueIID int64, gitLab
 	return err
 }
 
-func reorderCardPositions(ctx context.Context, tx pgx.Tx, issueIID int64, sourceList, destinationList string, targetPosition int32) (int32, error) {
+// emitCard records a card as it now stands in the cache. The payload has to come from
+// a re-read: several of these statements carry CASE guards that can leave a newer
+// pending operation in place, so what the caller passed in is not necessarily what was
+// stored.
+func emitCard(ctx context.Context, tx pgx.Tx, batch *actionBatch, issueIID int64) error {
+	card, err := scanCard(tx.QueryRow(ctx, selectCards+` WHERE card.issue_iid = $1`, issueIID))
+	if err != nil {
+		return err
+	}
+	batch.card(card)
+	return nil
+}
+
+// emitLaneOrder reads a lane back for the paths that shift positions with arithmetic
+// rather than by rewriting an explicit order.
+func emitLaneOrder(ctx context.Context, tx pgx.Tx, batch *actionBatch, listKey string) error {
+	rows, err := tx.Query(ctx, `SELECT issue_iid FROM issue_cache WHERE list_key = $1 ORDER BY position, issue_iid`, listKey)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	order := make([]int64, 0)
+	for rows.Next() {
+		var issueIID int64
+		if err := rows.Scan(&issueIID); err != nil {
+			return err
+		}
+		order = append(order, issueIID)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	batch.laneOrder(listKey, order)
+	return nil
+}
+
+func reorderCardPositions(ctx context.Context, tx pgx.Tx, batch *actionBatch, issueIID int64, sourceList, destinationList string, targetPosition int32) (int32, error) {
 	_, orders, err := loadLaneOrders(ctx, tx, []string{sourceList, destinationList})
 	if err != nil {
 		return 0, err
@@ -1068,7 +1361,7 @@ func reorderCardPositions(ctx context.Context, tx pgx.Tx, issueIID int64, source
 	before := orders.clone()
 	orders.remove(sourceList, issueIID)
 	normalizedPosition := orders.insertAt(destinationList, issueIID, targetPosition)
-	if err := writeChangedLanes(ctx, tx, before, orders); err != nil {
+	if err := writeChangedLanes(ctx, tx, batch, before, orders); err != nil {
 		return 0, err
 	}
 	return normalizedPosition, nil
