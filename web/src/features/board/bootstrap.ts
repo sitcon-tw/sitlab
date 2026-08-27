@@ -1,6 +1,8 @@
 import { api, expectData, setCsrfToken } from "@/shared/api/client";
 import type { Bootstrap } from "./model";
 
+export const bootstrapQueryKey = ["sitcon", "bootstrap"] as const;
+
 function readInjectedBootstrap() {
 	const element = document.getElementById("__SITCON_BOOTSTRAP__");
 	if (!element?.textContent) return null;

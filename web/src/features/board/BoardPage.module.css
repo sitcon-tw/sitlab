@@ -1499,14 +1499,6 @@
 	opacity: 0.35;
 }
 
-.tagSwatch {
-	width: 0.625rem;
-	height: 0.625rem;
-	background: var(--tag-color, var(--sb-border-strong));
-	border: 1px solid color-mix(in srgb, var(--tag-color, var(--sb-border-strong)) 72%, black);
-	border-radius: 0.125rem;
-}
-
 .emptyTags,
 .commentState {
 	margin: 0;

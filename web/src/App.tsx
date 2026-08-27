@@ -1,13 +1,12 @@
 import { LoginPage } from "@/features/auth/LoginPage";
 import { BoardPage } from "@/features/board/BoardPage";
-import { refreshBootstrap } from "@/features/board/bootstrap";
+import { bootstrapQueryKey, refreshBootstrap } from "@/features/board/bootstrap";
 import type { Bootstrap } from "@/features/board/model";
 import { subscribeBootstrapEvents } from "@/features/board/realtime";
 import { OnboardingPage } from "@/features/onboarding/OnboardingPage";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const bootstrapKey = ["sitcon", "bootstrap"] as const;
 const queryClient = new QueryClient({
 	defaultOptions: {
 		queries: { retry: false, refetchOnWindowFocus: false },
@@ -37,7 +36,7 @@ function AuthenticatedApp({ initialBootstrap }: { initialBootstrap: Bootstrap })
 	const [boardDragging, setBoardDragging] = useState(false);
 	const boardDraggingRef = useRef(false);
 	const bootstrapQuery = useQuery({
-		queryKey: bootstrapKey,
+		queryKey: bootstrapQueryKey,
 		queryFn: refreshBootstrap,
 		initialData: initialBootstrap,
 		refetchInterval: demo || boardDragging ? false : 5_000,
@@ -48,20 +47,20 @@ function AuthenticatedApp({ initialBootstrap }: { initialBootstrap: Bootstrap })
 		if (demo) return;
 		return subscribeBootstrapEvents((revision) => {
 			if (boardDraggingRef.current) return;
-			const current = client.getQueryData<Bootstrap>(bootstrapKey);
-			if (revision !== current?.revision) void client.invalidateQueries({ queryKey: bootstrapKey });
+			const current = client.getQueryData<Bootstrap>(bootstrapQueryKey);
+			if (revision !== current?.revision) void client.invalidateQueries({ queryKey: bootstrapQueryKey });
 		});
 	}, [client, demo]);
 	const handleBoardDraggingChange = useCallback(
 		(dragging: boolean) => {
 			boardDraggingRef.current = dragging;
 			setBoardDragging(dragging);
-			if (dragging) void client.cancelQueries({ queryKey: bootstrapKey });
+			if (dragging) void client.cancelQueries({ queryKey: bootstrapQueryKey });
 		},
 		[client]
 	);
 	const updateBootstrap = (update: (current: Bootstrap) => Bootstrap) => {
-		client.setQueryData<Bootstrap>(bootstrapKey, (current) => update(current ?? bootstrap));
+		client.setQueryData<Bootstrap>(bootstrapQueryKey, (current) => update(current ?? bootstrap));
 	};
 
 	if (!bootstrap.preferences.confirmedAt) {

@@ -33,7 +33,6 @@ import {
 	createCard,
 	createComment,
 	listComments,
-	listProjectLabels,
 	logout,
 	moveCard,
 	retryOperation,
@@ -48,6 +47,7 @@ import {
 import { BoardFilters } from "./BoardFilters";
 import { planCardMove } from "./boardOrder";
 import styles from "./BoardPage.module.css";
+import { canonicalClientLabels, isDeprecatedLabel } from "./labels";
 import { MembersDrawer } from "./MembersDrawer";
 import {
 	compareBoardCards,
@@ -58,11 +58,12 @@ import {
 	type BoardCard,
 	type BoardSortMode,
 	type Bootstrap,
-	type CardComment,
-	type ProjectLabel
+	type CardComment
 } from "./model";
 import { parseQuickAction, quickActionCommands, type QuickAction } from "./quickActions";
+import { TagSwatch } from "./TagSwatch";
 import { useBoardDrag } from "./useBoardDrag";
+import { useProjectLabels } from "./useProjectLabels";
 import { parseBoardViewState, serializeBoardViewState } from "./viewState";
 
 export interface BoardPageProps {
@@ -730,18 +731,13 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 
 function QuickCreateLabels({ bootstrap, value, onChange }: { bootstrap: Bootstrap; value: string[]; onChange: (labels: string[]) => void }) {
 	const [query, setQuery] = useState("");
-	const labelsQuery = useQuery({
-		queryKey: ["sitcon", "project-labels"],
-		queryFn: listProjectLabels,
-		staleTime: 5 * 60_000
-	});
+	const labelsQuery = useProjectLabels();
 	const teamLabels = new Set(bootstrap.teams.map((team) => team.gitLabLabel));
 	const normalizedQuery = query.trim().toLocaleLowerCase("zh-Hant");
 	const available = (labelsQuery.data ?? []).filter(
 		(label) =>
 			!teamLabels.has(label.name) &&
-			!deprecatedLabels.has(label.name) &&
-			!label.name.startsWith("Status::") &&
+			!isDeprecatedLabel(label.name) &&
 			(!normalizedQuery || `${label.name} ${label.description ?? ""}`.toLocaleLowerCase("zh-Hant").includes(normalizedQuery))
 	);
 	const toggle = (label: string) => onChange(value.includes(label) ? value.filter((current) => current !== label) : [...value, label]);
@@ -1103,31 +1099,17 @@ function CardDetail({
 	);
 }
 
-const deprecatedLabels = new Set(["Wating", "Waiting", "Inbox", "To Do", "Todo", "Doing", "Review", "Closed", "組別::總召", "組別::行政", "組別::開發"]);
-
-function canonicalClientLabels(bootstrap: Bootstrap, labels: string[], teamKey: string) {
-	const teamLabels = new Set(bootstrap.teams.map((team) => team.gitLabLabel));
-	const general = labels.filter((label) => !teamLabels.has(label) && !deprecatedLabels.has(label) && !label.startsWith("Status::"));
-	const teamLabel = bootstrap.teams.find((team) => team.key === teamKey && team.active)?.gitLabLabel;
-	return [...general, ...(teamLabel ? [teamLabel] : [])];
-}
-
 function CardTags({ card, bootstrap, onChange }: { card: BoardCard; bootstrap: Bootstrap; onChange: (labels: string[]) => void }) {
 	const [query, setQuery] = useState("");
 	const picker = useRef<HTMLDetailsElement>(null);
-	const labelsQuery = useQuery({
-		queryKey: ["sitcon", "project-labels"],
-		queryFn: listProjectLabels,
-		staleTime: 5 * 60_000
-	});
+	const labelsQuery = useProjectLabels();
 	const teamLabels = new Set(bootstrap.teams.filter((team) => team.active).map((team) => team.gitLabLabel));
 	const labelMetadata = new Map(labelsQuery.data?.map((label) => [label.name, label]));
 	const normalizedQuery = query.trim().toLocaleLowerCase("zh-Hant");
 	const available = (labelsQuery.data ?? []).filter(
 		(label) =>
 			!card.labels.includes(label.name) &&
-			!deprecatedLabels.has(label.name) &&
-			!label.name.startsWith("Status::") &&
+			!isDeprecatedLabel(label.name) &&
 			(!normalizedQuery || `${label.name} ${label.description ?? ""}`.toLocaleLowerCase("zh-Hant").includes(normalizedQuery))
 	);
 	const selectedTeamCount = card.labels.filter((label) => teamLabels.has(label)).length;
@@ -1198,11 +1180,6 @@ function CardTags({ card, bootstrap, onChange }: { card: BoardCard; bootstrap: B
 			</div>
 		</section>
 	);
-}
-
-function TagSwatch({ label }: { label: ProjectLabel | undefined }) {
-	const color = label && /^#[0-9a-f]{6}$/i.test(label.color) ? label.color : undefined;
-	return <span className={styles.tagSwatch} style={color ? ({ "--tag-color": color } as React.CSSProperties) : undefined} aria-hidden="true" />;
 }
 
 function CardComments({ card }: { card: BoardCard }) {

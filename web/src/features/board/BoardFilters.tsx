@@ -1,11 +1,11 @@
 import { Dialog } from "@project-template/ui";
-import { useQuery } from "@tanstack/react-query";
 import { ArrowUpDown, Check, ChevronDown, Filter, Search, UsersRound, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { listProjectLabels } from "./boardApi";
 import styles from "./BoardPage.module.css";
 import { GroupedMemberList } from "./GroupedMemberList";
 import { activeMembers, filterDirectoryMembers, type BoardSortMode, type Bootstrap, type DirectoryMember, type ProjectLabel } from "./model";
+import { TagSwatch } from "./TagSwatch";
+import { useProjectLabels } from "./useProjectLabels";
 
 export interface BoardFiltersProps {
 	bootstrap: Bootstrap;
@@ -95,7 +95,7 @@ export function BoardFilters({
 function LabelFilter({ value, onChange }: { value: string[]; onChange: (labels: string[]) => void }) {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
-	const labelsQuery = useQuery({ queryKey: ["sitcon", "project-labels"], queryFn: listProjectLabels, staleTime: 5 * 60_000 });
+	const labelsQuery = useProjectLabels();
 	const normalizedQuery = query.trim().toLocaleLowerCase("zh-Hant");
 	const labels = (labelsQuery.data ?? []).filter(
 		(label) => !normalizedQuery || `${label.name} ${label.description ?? ""}`.toLocaleLowerCase("zh-Hant").includes(normalizedQuery)
@@ -168,11 +168,10 @@ function LabelFilter({ value, onChange }: { value: string[]; onChange: (labels: 
 }
 
 function LabelOption({ label, selected, onToggle }: { label: ProjectLabel; selected: boolean; onToggle: (label: string) => void }) {
-	const color = /^#[0-9a-f]{6}$/i.test(label.color) ? label.color : undefined;
 	return (
 		<label className={styles.labelFilterOption}>
 			<input type="checkbox" checked={selected} onChange={() => onToggle(label.name)} />
-			<span className={styles.tagSwatch} style={color ? ({ "--tag-color": color } as React.CSSProperties) : undefined} aria-hidden="true" />
+			<TagSwatch label={label} />
 			<span>
 				<strong>{label.name}</strong>
 				{label.description ? <small>{label.description}</small> : null}
