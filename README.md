@@ -20,7 +20,7 @@ SITCON 2027 籌備工作的 GitLab-backed 看板。登入、選擇主要組別�
 - 單組與所有組長開卡、詳細規劃、移動、多人指派、期限與組別調整先寫 PostgreSQL optimistic cache 與 durable operation，再由 worker 以實際 actor 身分同步 GitLab；新卡預設在最上方。
 - GitLab signed project/group webhooks 觸發 targeted catch-up；PostgreSQL revision 與 SSE 讓已開啟的看板立即 refetch，既有 polling 負責漏訊恢復。
 - GitLab 暫時離線時仍顯示最後一次成功的 Board，失敗操作可重試。
-- 正常背景刷新與 optimistic pending 不顯示技術狀態；只有離線或操作失敗會出現在 UI。
+- 正常背景刷新與 optimistic pending 不顯示技術狀態；只有離線或操作失敗會出現在 UI。使用者剛編輯的欄位會就地顯示 saving/saved 指示。
 
 ## 架構
 

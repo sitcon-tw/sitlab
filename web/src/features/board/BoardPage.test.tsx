@@ -48,6 +48,21 @@ function Harness({ initial = demoBootstrap }: { initial?: Bootstrap }) {
 	);
 }
 
+function mutationResult(card: BoardCard, operationId: string, patch: Partial<BoardCard>): CardMutation {
+	return {
+		card: { ...card, ...patch, syncState: "synced", syncError: null, pendingOperationId: null },
+		operation: {
+			id: operationId,
+			kind: "update_details",
+			state: "synced",
+			attempts: 1,
+			lastError: null,
+			createdAt: "2026-08-22T08:00:00Z",
+			updatedAt: "2026-08-22T08:00:01Z"
+		}
+	};
+}
+
 describe("SITCON Board interactions", () => {
 	beforeEach(() => {
 		window.history.replaceState(null, "", "/");
@@ -375,6 +390,71 @@ describe("SITCON Board interactions", () => {
 		expect(doingLane).not.toBeNull();
 		expect(within(doingLane as HTMLElement).getByRole("heading", { name: title })).toBeVisible();
 		expect(moveCard).toHaveBeenCalledOnce();
+	});
+
+	it("shows an in-place saving indicator that settles to saved without moving focus", async () => {
+		const user = userEvent.setup();
+		let resolveStart: ((result: CardMutation) => void) | undefined;
+		vi.mocked(updateStartDate).mockImplementation(
+			(card, operationId) =>
+				new Promise<CardMutation>((resolve) => {
+					resolveStart = () => resolve(mutationResult(card, operationId, { startDate: "2026-07-18" }));
+				})
+		);
+		render(<Harness />);
+		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		const startInput = within(dialog).getByLabelText("Start");
+		fireEvent.change(startInput, { target: { value: "2026-07-18" } });
+
+		expect(within(dialog).getByTitle("Start儲存中")).toBeInTheDocument();
+		expect(within(dialog).getByRole("status")).toHaveTextContent("Start儲存中");
+
+		resolveStart!({} as CardMutation);
+		await waitFor(() => expect(within(dialog).getByTitle("Start已儲存")).toBeInTheDocument());
+		// The control is never disabled or re-keyed while saving, so focus survives.
+		expect(within(dialog).getByLabelText("Start")).toBe(startInput);
+		expect(screen.getByRole("dialog", { name: /127 卡片詳細資料/ })).toBeVisible();
+	});
+
+	// Regression: the card carries one syncState and only the newest
+	// pendingOperationId, so any indicator derived from it would strand the first
+	// field on "saving" forever. Save state is per field, keyed by operationId.
+	it("settles two fields edited in quick succession independently", async () => {
+		const user = userEvent.setup();
+		const pending = new Map<string, (result: CardMutation) => void>();
+		vi.mocked(updateStartDate).mockImplementation(
+			(card, operationId) =>
+				new Promise<CardMutation>((resolve) => pending.set("start", () => resolve(mutationResult(card, operationId, { startDate: "2026-07-18" }))))
+		);
+		vi.mocked(updateDueDate).mockImplementation(
+			(card, operationId) =>
+				new Promise<CardMutation>((resolve) => pending.set("due", () => resolve(mutationResult(card, operationId, { dueDate: "2026-07-25" }))))
+		);
+		render(<Harness />);
+		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		fireEvent.change(within(dialog).getByLabelText("Start"), { target: { value: "2026-07-18" } });
+		fireEvent.change(within(dialog).getByLabelText("Due"), { target: { value: "2026-07-25" } });
+		expect(within(dialog).getByTitle("Start儲存中")).toBeInTheDocument();
+		expect(within(dialog).getByTitle("Due儲存中")).toBeInTheDocument();
+
+		pending.get("start")!({} as CardMutation);
+
+		await waitFor(() => expect(within(dialog).getByTitle("Start已儲存")).toBeInTheDocument());
+		expect(within(dialog).getByTitle("Due儲存中")).toBeInTheDocument();
+		expect(within(dialog).queryByTitle("Due已儲存")).not.toBeInTheDocument();
+	});
+
+	it("marks the field as unsynced when its save fails and leaves the card alert authoritative", async () => {
+		const user = userEvent.setup();
+		vi.mocked(updateDueDate).mockRejectedValue(new Error("GitLab 暫時無法更新。"));
+		render(<Harness />);
+		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		fireEvent.change(within(dialog).getByLabelText("Due"), { target: { value: "2026-07-25" } });
+		await waitFor(() => expect(within(dialog).getByTitle("Due未同步")).toBeInTheDocument());
+		expect(within(dialog).getByRole("status")).toHaveTextContent("Due儲存失敗");
 	});
 
 	it("ignores an older move response after a newer move has started", async () => {

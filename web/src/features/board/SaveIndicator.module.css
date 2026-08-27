@@ -1,0 +1,42 @@
+.indicator {
+	display: inline-flex;
+	gap: 0.1875rem;
+	align-items: center;
+	font-size: var(--md-sys-typescale-label-small-size);
+	font-weight: var(--md-sys-typescale-label-small-weight);
+	line-height: var(--md-sys-typescale-label-small-line-height);
+	letter-spacing: var(--md-sys-typescale-label-small-tracking);
+	white-space: nowrap;
+}
+
+.indicator[data-state="saving"] {
+	color: var(--md-sys-color-on-surface-variant);
+}
+
+.indicator[data-state="saved"] {
+	color: var(--md-sys-color-primary);
+}
+
+.indicator[data-state="failed"] {
+	color: var(--md-sys-color-error);
+}
+
+.text {
+	font-variant-numeric: tabular-nums;
+}
+
+.spin {
+	animation: save-indicator-spin 900ms linear infinite;
+}
+
+@keyframes save-indicator-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.spin {
+		animation: none;
+	}
+}

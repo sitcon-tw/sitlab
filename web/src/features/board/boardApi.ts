@@ -1,6 +1,21 @@
 import { api, expectData, getCsrfToken } from "@/shared/api/client";
 import type { BoardCard, CardComment, ProjectLabel } from "./model";
 
+const demo = import.meta.env.VITE_SITCON_DEMO === "true";
+
+/**
+ * Demo mode resolves card mutations locally.
+ *
+ * Without this every save in demo mode fails, which leaves the optimistic state
+ * on screen (that is what the e2e assertions read) but makes the in-place save
+ * indicators unreviewable and untestable.
+ */
+async function demoMutation(card: BoardCard, patch: Partial<BoardCard>, operationId: string) {
+	await new Promise((resolve) => setTimeout(resolve, 250));
+	const next: BoardCard = { ...card, ...patch, syncState: "synced", syncError: null, pendingOperationId: null, updatedAt: new Date().toISOString() };
+	return { card: next, operation: { id: operationId, kind: "update_details" as const, state: "succeeded" as const, attempts: 1, lastError: null } };
+}
+
 export async function createCard(input: {
 	operationId: string;
 	title: string;
@@ -21,6 +36,7 @@ export async function createCard(input: {
 }
 
 export async function updateDetails(card: BoardCard, operationId: string, title: string, description: string) {
+	if (demo) return demoMutation(card, { title, description }, operationId);
 	return expectData(
 		await api.PUT("/cards/{issueIid}/details", {
 			params: { path: { issueIid: card.issueIid }, header: { "X-CSRF-Token": await getCsrfToken() } },
@@ -30,6 +46,7 @@ export async function updateDetails(card: BoardCard, operationId: string, title:
 }
 
 export async function updateTeam(card: BoardCard, operationId: string, teamKey: string) {
+	if (demo) return demoMutation(card, { teamKey }, operationId);
 	return expectData(
 		await api.PUT("/cards/{issueIid}/team", {
 			params: { path: { issueIid: card.issueIid }, header: { "X-CSRF-Token": await getCsrfToken() } },
@@ -39,6 +56,7 @@ export async function updateTeam(card: BoardCard, operationId: string, teamKey: 
 }
 
 export async function updateAssignee(card: BoardCard, operationId: string, assigneeGitLabUserIds: number[]) {
+	if (demo) return demoMutation(card, { assigneeGitLabUserIds }, operationId);
 	return expectData(
 		await api.PUT("/cards/{issueIid}/assignee", {
 			params: { path: { issueIid: card.issueIid }, header: { "X-CSRF-Token": await getCsrfToken() } },
@@ -48,6 +66,7 @@ export async function updateAssignee(card: BoardCard, operationId: string, assig
 }
 
 export async function updateDueDate(card: BoardCard, operationId: string, dueDate: string | null) {
+	if (demo) return demoMutation(card, { dueDate }, operationId);
 	return expectData(
 		await api.PUT("/cards/{issueIid}/due-date", {
 			params: { path: { issueIid: card.issueIid }, header: { "X-CSRF-Token": await getCsrfToken() } },
@@ -57,6 +76,7 @@ export async function updateDueDate(card: BoardCard, operationId: string, dueDat
 }
 
 export async function updateStartDate(card: BoardCard, operationId: string, startDate: string | null) {
+	if (demo) return demoMutation(card, { startDate }, operationId);
 	return expectData(
 		await api.PUT("/cards/{issueIid}/start-date", {
 			params: { path: { issueIid: card.issueIid }, header: { "X-CSRF-Token": await getCsrfToken() } },
@@ -66,11 +86,12 @@ export async function updateStartDate(card: BoardCard, operationId: string, star
 }
 
 export async function listProjectLabels(): Promise<ProjectLabel[]> {
-	if (import.meta.env.VITE_SITCON_DEMO === "true") return demoLabels;
+	if (demo) return demoLabels;
 	return expectData(await api.GET("/cards/labels")).labels;
 }
 
 export async function updateLabels(card: BoardCard, operationId: string, labels: string[]) {
+	if (demo) return demoMutation(card, { labels }, operationId);
 	return expectData(
 		await api.PUT("/cards/{issueIid}/labels", {
 			params: { path: { issueIid: card.issueIid }, header: { "X-CSRF-Token": await getCsrfToken() } },
@@ -80,7 +101,7 @@ export async function updateLabels(card: BoardCard, operationId: string, labels:
 }
 
 export async function listComments(card: BoardCard): Promise<CardComment[]> {
-	if (import.meta.env.VITE_SITCON_DEMO === "true") return demoComments[card.issueIid] ?? [];
+	if (demo) return demoComments[card.issueIid] ?? [];
 	return expectData(
 		await api.GET("/cards/{issueIid}/comments", {
 			params: { path: { issueIid: card.issueIid } }
@@ -89,7 +110,7 @@ export async function listComments(card: BoardCard): Promise<CardComment[]> {
 }
 
 export async function createComment(card: BoardCard, body: string): Promise<CardComment> {
-	if (import.meta.env.VITE_SITCON_DEMO === "true") {
+	if (demo) {
 		return {
 			id: Date.now(),
 			body,
@@ -114,6 +135,7 @@ export async function createComment(card: BoardCard, body: string): Promise<Card
 }
 
 export async function moveCard(card: BoardCard, operationId: string, listKey: string, position: number) {
+	if (demo) return demoMutation(card, { listKey, position }, operationId);
 	return expectData(
 		await api.PUT("/cards/{issueIid}/position", {
 			params: { path: { issueIid: card.issueIid }, header: { "X-CSRF-Token": await getCsrfToken() } },

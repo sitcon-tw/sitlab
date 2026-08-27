@@ -61,8 +61,10 @@ import {
 	type CardComment
 } from "./model";
 import { parseQuickAction, quickActionCommands, type QuickAction } from "./quickActions";
+import { SaveIndicator } from "./SaveIndicator";
 import { TagSwatch } from "./TagSwatch";
 import { useBoardDrag } from "./useBoardDrag";
+import { useFieldSaveState, type FieldSave, type FieldSaveState, type SaveField } from "./useFieldSaveState";
 import { useProjectLabels } from "./useProjectLabels";
 import { parseBoardViewState, serializeBoardViewState } from "./viewState";
 
@@ -106,6 +108,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 	const [sortMode, setSortMode] = useState<BoardSortMode>(initialView.sortMode);
 	const [undo, setUndo] = useState<{ cardIid: number; assigneeIds: number[]; assigneeNames: string[] } | null>(null);
 	const localRetries = useRef(new Map<string, () => void>());
+	const save = useFieldSaveState();
 	const nextTemporaryIid = useRef(-1);
 	const cards = bootstrap.board.cards;
 	const filteredCards = cards.filter(
@@ -167,7 +170,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 		}));
 	};
 
-	const runCardMutation = (card: BoardCard, patch: CardPatch, request: (operationId: string) => ReturnType<typeof updateTeam>) => {
+	const runCardMutation = (card: BoardCard, patch: CardPatch, field: SaveField, request: (operationId: string) => ReturnType<typeof updateTeam>) => {
 		const operationId = crypto.randomUUID();
 		const optimistic: BoardCard = {
 			...card,
@@ -183,18 +186,22 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 				.then((result) => {
 					localRetries.current.delete(operationId);
 					replaceCardForOperation(card.issueIid, operationId, result.card);
+					save.settle(operationId, "saved");
 				})
 				.catch((cause: unknown) => {
 					localRetries.current.set(operationId, execute);
+					const message = errorMessage(cause, "變更尚未同步，請重試。");
 					patchCardForOperation(card.issueIid, operationId, {
 						...patch,
 						syncState: "failed",
-						syncError: errorMessage(cause, "變更尚未同步，請重試。"),
+						syncError: message,
 						pendingOperationId: operationId
 					});
+					save.settle(operationId, "failed", message);
 				});
 		};
 		localRetries.current.set(operationId, execute);
+		save.begin(card.issueIid, field, operationId);
 		execute();
 	};
 
@@ -256,27 +263,27 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 			});
 		}
 		const labels = canonicalClientLabels(bootstrap, card.labels, teamKey);
-		runCardMutation(card, { teamKey, labels, assigneeGitLabUserIds: nextAssigneeIDs }, (operationId) => updateTeam(card, operationId, teamKey));
+		runCardMutation(card, { teamKey, labels, assigneeGitLabUserIds: nextAssigneeIDs }, "team", (operationId) => updateTeam(card, operationId, teamKey));
 	};
 
 	const handleAssignee = (card: BoardCard, assigneeGitLabUserIds: number[]) => {
-		runCardMutation(card, { assigneeGitLabUserIds }, (operationId) => updateAssignee(card, operationId, assigneeGitLabUserIds));
+		runCardMutation(card, { assigneeGitLabUserIds }, "assignee", (operationId) => updateAssignee(card, operationId, assigneeGitLabUserIds));
 	};
 
 	const handleDetails = (card: BoardCard, title: string, description: string) => {
-		runCardMutation(card, { title, description }, (operationId) => updateDetails(card, operationId, title, description));
+		runCardMutation(card, { title, description }, "details", (operationId) => updateDetails(card, operationId, title, description));
 	};
 
 	const handleDueDate = (card: BoardCard, dueDate: string | null) => {
-		runCardMutation(card, { dueDate }, (operationId) => updateDueDate(card, operationId, dueDate));
+		runCardMutation(card, { dueDate }, "dueDate", (operationId) => updateDueDate(card, operationId, dueDate));
 	};
 
 	const handleStartDate = (card: BoardCard, startDate: string | null) => {
-		runCardMutation(card, { startDate }, (operationId) => updateStartDate(card, operationId, startDate));
+		runCardMutation(card, { startDate }, "startDate", (operationId) => updateStartDate(card, operationId, startDate));
 	};
 
 	const handleLabels = (card: BoardCard, labels: string[]) => {
-		runCardMutation(card, { labels }, (operationId) => updateLabels(card, operationId, labels));
+		runCardMutation(card, { labels }, "labels", (operationId) => updateLabels(card, operationId, labels));
 	};
 
 	const handleMove = (card: BoardCard, listKey: string) => {
@@ -318,20 +325,24 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 				.then((result) => {
 					localRetries.current.delete(operationId);
 					replaceCardForOperation(card.issueIid, operationId, result.card);
+					save.settle(operationId, "saved");
 				})
 				.catch((cause: unknown) => {
 					localRetries.current.set(operationId, execute);
+					const message = errorMessage(cause, "卡片順序尚未同步，請重試。");
 					patchCardForOperation(card.issueIid, operationId, {
 						position,
 						listKey,
 						labels,
 						syncState: "failed",
-						syncError: errorMessage(cause, "卡片順序尚未同步，請重試。"),
+						syncError: message,
 						pendingOperationId: operationId
 					});
+					save.settle(operationId, "failed", message);
 				});
 		};
 		localRetries.current.set(operationId, execute);
+		save.begin(card.issueIid, "status", operationId);
 		execute();
 	};
 
@@ -367,6 +378,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 		if (!card.pendingOperationId) return;
 		const localRetry = localRetries.current.get(card.pendingOperationId);
 		patchCard(card.issueIid, { syncState: "pending", syncError: null });
+		save.retry(card.pendingOperationId);
 		if (localRetry) {
 			localRetry();
 			return;
@@ -475,6 +487,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 					onStartDate={(startDate) => handleStartDate(detailCard, startDate)}
 					onDueDate={(dueDate) => handleDueDate(detailCard, dueDate)}
 					onLabels={(labels) => handleLabels(detailCard, labels)}
+					save={save}
 				/>
 			) : null}
 			<MembersDrawer bootstrap={bootstrap} open={membersOpen} onOpenChange={setMembersOpen} />
@@ -934,7 +947,8 @@ function CardDetail({
 	onAssignee,
 	onStartDate,
 	onDueDate,
-	onLabels
+	onLabels,
+	save
 }: {
 	card: BoardCard;
 	bootstrap: Bootstrap;
@@ -950,13 +964,14 @@ function CardDetail({
 	onStartDate: (startDate: string | null) => void;
 	onDueDate: (dueDate: string | null) => void;
 	onLabels: (labels: string[]) => void;
+	save: FieldSaveState;
 }) {
 	const [title, setTitle] = useState(card.title);
 	const [description, setDescription] = useState(card.description);
 	const [descriptionMode, setDescriptionMode] = useState<"edit" | "preview">("edit");
 	const teams = bootstrap.teams.filter((team) => team.active).sort((a, b) => a.sortOrder - b.sortOrder);
 	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
-	const save = (event: React.FormEvent) => {
+	const submitDetails = (event: React.FormEvent) => {
 		event.preventDefault();
 		const normalized = title.trim();
 		if (!normalized) return;
@@ -986,7 +1001,7 @@ function CardDetail({
 			title={card.issueIid > 0 ? `#${card.issueIid} 卡片詳細資料` : "新卡片詳細資料"}
 			description="細節與排程"
 		>
-			<form className={styles.cardDetail} onSubmit={save}>
+			<form className={styles.cardDetail} onSubmit={submitDetails}>
 				<nav className={styles.detailNavigation} aria-label="切換卡片">
 					<button type="button" aria-label="上一張卡片" title="上一張卡片" disabled={!onPrevious} onClick={onPrevious}>
 						<ChevronLeft size="1rem" aria-hidden="true" />
@@ -998,6 +1013,9 @@ function CardDetail({
 						<ChevronRight size="1rem" aria-hidden="true" />
 					</button>
 				</nav>
+				<p className={styles.srOnly} role="status" aria-live="polite">
+					{save.announcement}
+				</p>
 				<label className={styles.detailTitle}>
 					<span>標題</span>
 					<input value={title} maxLength={255} onChange={(event) => setTitle(event.target.value)} />
@@ -1045,7 +1063,9 @@ function CardDetail({
 				</section>
 				<div className={styles.detailGrid}>
 					<label>
-						<span>組別</span>
+						<span>
+							組別 <SaveIndicator save={save.get(card.issueIid, "team")} name="組別" />
+						</span>
 						<select aria-label="組別" value={card.teamKey} onChange={(event) => onTeam(event.target.value)}>
 							{teams.map((team) => (
 								<option key={team.key} value={team.key}>
@@ -1055,7 +1075,9 @@ function CardDetail({
 						</select>
 					</label>
 					<label>
-						<span>狀態</span>
+						<span>
+							狀態 <SaveIndicator save={save.get(card.issueIid, "status")} name="狀態" />
+						</span>
 						<select aria-label="狀態" value={card.listKey} onChange={(event) => onMove(event.target.value)}>
 							{lists.map((list) => (
 								<option key={list.key} value={list.key}>
@@ -1065,21 +1087,27 @@ function CardDetail({
 						</select>
 					</label>
 					<div className={styles.detailAssignees}>
-						<span>Assignee</span>
+						<span>
+							Assignee <SaveIndicator save={save.get(card.issueIid, "assignee")} name="Assignee" />
+						</span>
 						<AssigneePicker bootstrap={bootstrap} teamKey={card.teamKey} value={card.assigneeGitLabUserIds} onChange={onAssignee} label="變更 Assignee" />
 					</div>
 					<div className={styles.detailDates}>
 						<label>
-							<span>Start</span>
-							<input type="date" value={card.startDate ?? ""} onChange={(event) => onStartDate(event.target.value || null)} />
+							<span>
+								Start <SaveIndicator save={save.get(card.issueIid, "startDate")} name="Start" />
+							</span>
+							<input type="date" aria-label="Start" value={card.startDate ?? ""} onChange={(event) => onStartDate(event.target.value || null)} />
 						</label>
 						<label>
-							<span>Due</span>
-							<input type="date" value={card.dueDate ?? ""} onChange={(event) => onDueDate(event.target.value || null)} />
+							<span>
+								Due <SaveIndicator save={save.get(card.issueIid, "dueDate")} name="Due" />
+							</span>
+							<input type="date" aria-label="Due" value={card.dueDate ?? ""} onChange={(event) => onDueDate(event.target.value || null)} />
 						</label>
 					</div>
 				</div>
-				<CardTags card={card} bootstrap={bootstrap} onChange={onLabels} />
+				<CardTags card={card} bootstrap={bootstrap} onChange={onLabels} save={save.get(card.issueIid, "labels")} />
 				<QuickActionComposer bootstrap={bootstrap} card={card} onAction={runQuickAction} />
 				<CardComments card={card} />
 				<footer className={styles.detailActions}>
@@ -1093,13 +1121,24 @@ function CardDetail({
 					<button type="submit" disabled={!title.trim()}>
 						<Save size="0.875rem" aria-hidden="true" /> 儲存細節
 					</button>
+					<SaveIndicator save={save.get(card.issueIid, "details")} name="標題與描述" />
 				</footer>
 			</form>
 		</Drawer>
 	);
 }
 
-function CardTags({ card, bootstrap, onChange }: { card: BoardCard; bootstrap: Bootstrap; onChange: (labels: string[]) => void }) {
+function CardTags({
+	card,
+	bootstrap,
+	onChange,
+	save
+}: {
+	card: BoardCard;
+	bootstrap: Bootstrap;
+	onChange: (labels: string[]) => void;
+	save: FieldSave | undefined;
+}) {
 	const [query, setQuery] = useState("");
 	const picker = useRef<HTMLDetailsElement>(null);
 	const labelsQuery = useProjectLabels();
@@ -1133,6 +1172,7 @@ function CardTags({ card, bootstrap, onChange }: { card: BoardCard; bootstrap: B
 		<section className={styles.detailTags} aria-labelledby="card-labels-heading">
 			<header>
 				<h3 id="card-labels-heading">Labels</h3>
+				<SaveIndicator save={save} name="Labels" />
 				<details className={styles.tagPicker} ref={picker}>
 					<summary aria-label="新增 Label" title="新增 Label">
 						<Plus size="0.875rem" aria-hidden="true" /> 新增

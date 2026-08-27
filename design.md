@@ -25,7 +25,7 @@ Header 高度固定，包含產品識別、成員 Sheet、錯誤時才出現的�
 ## Interaction
 
 - Production initial render 使用 injected bootstrap，不顯示 loading page、skeleton、spinner 或空 Board。
-- 背景刷新不替換成 loading state，不改變 layout；健康、pending 與 processing 狀態不顯示，只有離線或 mutation 失敗才顯示技術狀態。
+- 背景刷新不替換成 loading state，不改變 layout；健康的背景 pending 與 processing 狀態不顯示，只有離線或 mutation 失敗才顯示技術狀態。使用者剛編輯的欄位例外：該欄位就地顯示 saving 指示並收斂成短暫的 saved 標記，Drawer 內只用單一 aria-live region 播報，不搶 focus、不 disable 控制項。
 - 開卡與卡片 mutation 立即 optimistic update。失敗保留使用者意圖並顯示 Retry。
 - 手動排序時可由 grip 使用滑鼠或觸控在同欄與跨欄精確拖放；有篩選時以可見卡片為插入錨點並保留隱藏卡片相對順序。上下移按鈕與卡片右側 detail Drawer 的狀態 select 提供完整鍵盤操作，卡片表面不重複組別與狀態 controls。
 - 卡片 detail Drawer 包含前後卡片切換、title、支援 GFM 預覽的 Markdown description、組別、原生 lifecycle status、多人 Assignee、GitLab Start/Due dates、GitLab Labels、typed Quick Actions、Comments 與 Issue 連結。Label 以帶色彩 swatch 的緊湊 chips 呈現；既有 project labels 可搜尋新增，唯一 Team Label 只能由另一個 Team Label 取代，status 只由獨立控制變更。Comment thread 依時間顯示使用者留言與 GitLab system notes，composer 固定在 thread 下方，送出失敗保留 draft。
