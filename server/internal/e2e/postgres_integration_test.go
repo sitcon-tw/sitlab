@@ -112,6 +112,8 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	verifyCardReordering(t, ctx, pool, store, user.ID, now)
 	verifySnapshotMerge(t, ctx, pool, store, now)
 	verifyUnaffectedLanesAreNotRewritten(t, ctx, pool, store, now)
+	verifySweepKeepsCardsObservedMidFetch(t, ctx, pool, store, now)
+	verifyRepeatedObservationIsQuiet(t, ctx, pool, store, now)
 
 	listenerCtx, stopListener := context.WithCancel(ctx)
 	updates, unsubscribe := store.SubscribeRevisions()
@@ -256,9 +258,26 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 		t.Fatalf("process update = %v, %v, mutation=%#v", processed, err, gitlab.lastMutation)
 	}
 
-	if err := store.ReplaceBoard(ctx, appsync.DefaultBoardLists, nil, "board-2", now.Add(2*time.Minute)); err != nil {
+	// The read has to mention some other card. A complete read that mentions nothing
+	// at all is refused as a prune source, because that is what a lost-access GraphQL
+	// response looks like and manual lane order lives only in PostgreSQL.
+	bystanderID := int64(990)
+	bystander := domainboard.Card{
+		IssueIID: 99, GitLabIssueID: &bystanderID, Title: "旁觀卡", ListKey: "wating", TeamKey: "development",
+		GitLabStatusName: "Waiting", SyncState: domainboard.OperationSynced,
+		CreatedAt: now, UpdatedAt: now.Add(2 * time.Minute),
+	}
+	if err := replaceBoard(t, ctx, store, []domainboard.Card{bystander}, "board-2", now.Add(2*time.Minute)); err != nil {
 		t.Fatalf("replace board without completed card: %v", err)
 	}
+	if _, err := store.Card(ctx, bystander.IssueIID); err != nil {
+		t.Fatalf("a card the read did mention was pruned: %v", err)
+	}
+	defer func() {
+		if _, err := pool.Exec(ctx, `DELETE FROM issue_cache WHERE issue_iid = $1`, bystander.IssueIID); err != nil {
+			t.Fatalf("clean bystander card: %v", err)
+		}
+	}()
 	var cardCount, attachedOperationCount int
 	if err := pool.QueryRow(ctx, `
 		SELECT
@@ -456,6 +475,116 @@ func verifyCardReordering(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	}
 }
 
+// verifyRepeatedObservationIsQuiet pins the guard that keeps a re-read of unchanged
+// data from looking like a change. The timestamp guard alone still rewrites a row whose
+// gitlab_updated_at merely matches, so without the value comparison every poll would
+// touch every recently-changed card, bump the bootstrap revision, and wake every
+// connected browser for nothing.
+func verifyRepeatedObservationIsQuiet(t *testing.T, ctx context.Context, pool *pgxpool.Pool, store *pgsitcon.Repository, now time.Time) {
+	t.Helper()
+	defer func() {
+		if _, err := pool.Exec(ctx, `DELETE FROM issue_cache WHERE issue_iid = $1`, int64(901)); err != nil {
+			t.Fatalf("clean repeat fixture: %v", err)
+		}
+	}()
+	gitLabIssueID := int64(9001)
+	card := domainboard.Card{
+		IssueIID: 901, GitLabIssueID: &gitLabIssueID, Title: "重複觀測", ListKey: "wating", TeamKey: "development",
+		GitLabStatusName: "Waiting", SyncState: domainboard.OperationSynced,
+		CreatedAt: now, UpdatedAt: now.Add(20 * time.Minute),
+	}
+	if changed, err := store.ReconcileIssue(ctx, card.IssueIID, &card, now.Add(20*time.Minute)); err != nil || !changed {
+		t.Fatalf("first reconcile = changed %v, error %v", changed, err)
+	}
+
+	revisionBefore, err := store.Revision(ctx)
+	if err != nil {
+		t.Fatalf("load revision before repeat: %v", err)
+	}
+	var writtenBefore string
+	if err := pool.QueryRow(ctx, `SELECT xmin::text FROM issue_cache WHERE issue_iid = $1`, card.IssueIID).Scan(&writtenBefore); err != nil {
+		t.Fatalf("read row version before repeat: %v", err)
+	}
+
+	if changed, err := store.ReconcileIssue(ctx, card.IssueIID, &card, now.Add(21*time.Minute)); err != nil || changed {
+		t.Fatalf("repeat reconcile = changed %v, error %v, want no change", changed, err)
+	}
+	revisionAfter, err := store.Revision(ctx)
+	if err != nil {
+		t.Fatalf("load revision after repeat: %v", err)
+	}
+	if revisionAfter != revisionBefore {
+		t.Fatalf("repeat reconcile bumped the revision %q -> %q", revisionBefore, revisionAfter)
+	}
+
+	// gitlab_observed_at must still move, or a sweep would later mistake this card for
+	// one GitLab has stopped reporting.
+	var observedAt time.Time
+	if err := pool.QueryRow(ctx, `SELECT gitlab_observed_at FROM issue_cache WHERE issue_iid = $1`, card.IssueIID).Scan(&observedAt); err != nil {
+		t.Fatalf("read observed timestamp: %v", err)
+	}
+	if !observedAt.Equal(now.Add(21 * time.Minute)) {
+		t.Fatalf("gitlab_observed_at = %v, want the repeat read at %v", observedAt, now.Add(21*time.Minute))
+	}
+}
+
+// verifySweepKeepsCardsObservedMidFetch pins the clock-domain rule that makes pruning
+// safe. A full read of GitLab takes time; a webhook can reconcile a card while it is in
+// flight, and that card will be missing from the pages the read already fetched.
+// Deciding by gitlab_observed_at against the instant the read began -- both PostgreSQL's
+// clock -- keeps it, while a card nothing has confirmed since before the read began is
+// genuinely gone.
+func verifySweepKeepsCardsObservedMidFetch(t *testing.T, ctx context.Context, pool *pgxpool.Pool, store *pgsitcon.Repository, now time.Time) {
+	t.Helper()
+	defer func() {
+		if _, err := pool.Exec(ctx, `DELETE FROM issue_cache WHERE issue_iid = ANY($1::bigint[])`, []int64{801, 802, 803}); err != nil {
+			t.Fatalf("clean sweep fixtures: %v", err)
+		}
+	}()
+	card := func(issueIID, gitLabIssueID int64, title string, updatedAt time.Time) domainboard.Card {
+		return domainboard.Card{
+			IssueIID: issueIID, GitLabIssueID: &gitLabIssueID, Title: title, ListKey: "wating", TeamKey: "development",
+			GitLabStatusName: "Waiting", SyncState: domainboard.OperationSynced, CreatedAt: now, UpdatedAt: updatedAt,
+		}
+	}
+	beforeSweep := now.Add(9 * time.Minute)
+	for _, seed := range []domainboard.Card{
+		card(801, 8001, "Reconciled mid fetch", beforeSweep),
+		card(802, 8002, "Genuinely gone", beforeSweep),
+		card(803, 8003, "Still reported", beforeSweep),
+	} {
+		if _, err := store.ReconcileIssue(ctx, seed.IssueIID, &seed, beforeSweep); err != nil {
+			t.Fatalf("seed sweep fixture %d: %v", seed.IssueIID, err)
+		}
+	}
+
+	sweepStartedAt := now.Add(10 * time.Minute)
+	// The webhook that lands while the read is paging.
+	midFetch := card(801, 8001, "Reconciled mid fetch, renamed", now.Add(11*time.Minute))
+	if changed, err := store.ReconcileIssue(ctx, 801, &midFetch, now.Add(11*time.Minute)); err != nil || !changed {
+		t.Fatalf("reconcile mid fetch = changed %v, error %v", changed, err)
+	}
+
+	// The read only ever saw 803: it was paging before the webhook landed.
+	stillReported := card(803, 8003, "Still reported", now.Add(12*time.Minute))
+	if err := store.ReplaceBoard(ctx, domainboard.BoardObservation{
+		Lists: appsync.DefaultBoardLists, Cards: []domainboard.Card{stillReported}, Revision: "board-sweep-1",
+		StartedAt: sweepStartedAt, SyncedAt: now.Add(12 * time.Minute),
+	}); err != nil {
+		t.Fatalf("apply sweep: %v", err)
+	}
+
+	if _, err := store.Card(ctx, 801); err != nil {
+		t.Fatalf("a card reconciled while the read was in flight was pruned: %v", err)
+	}
+	if _, err := store.Card(ctx, 802); err == nil {
+		t.Fatal("a card nothing confirmed since before the read began survived the sweep")
+	}
+	if _, err := store.Card(ctx, 803); err != nil {
+		t.Fatalf("a card the read reported was pruned: %v", err)
+	}
+}
+
 // verifyUnaffectedLanesAreNotRewritten pins the guarantee that a merge renumbers only
 // the lanes whose order actually moved. xmin changes on any row rewrite, so comparing
 // it before and after proves the untouched lane was never written, not merely that it
@@ -554,7 +683,7 @@ func verifySnapshotMerge(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	if err != nil {
 		t.Fatalf("load revision before identical snapshot: %v", err)
 	}
-	if err := store.ReplaceBoard(ctx, appsync.DefaultBoardLists, []domainboard.Card{second, first}, "board-1", now.Add(time.Minute)); err != nil {
+	if err := replaceBoard(t, ctx, store, []domainboard.Card{second, first}, "board-1", now.Add(time.Minute)); err != nil {
 		t.Fatalf("replace identical board snapshot: %v", err)
 	}
 	revisionAfter, err := store.Revision(ctx)
@@ -563,7 +692,7 @@ func verifySnapshotMerge(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	}
 	assertStoredOrder(t, ctx, pool, "doing", []int64{601, 602})
 
-	if err := store.ReplaceBoard(ctx, appsync.DefaultBoardLists, []domainboard.Card{second, first}, "board-merge-2", now.Add(2*time.Minute)); err != nil {
+	if err := replaceBoard(t, ctx, store, []domainboard.Card{second, first}, "board-merge-2", now.Add(2*time.Minute)); err != nil {
 		t.Fatalf("merge changed board snapshot: %v", err)
 	}
 	assertStoredOrder(t, ctx, pool, "doing", []int64{601, 602})
@@ -584,14 +713,14 @@ func verifySnapshotMerge(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	if err := pool.QueryRow(ctx, `SELECT source_revision FROM sync_snapshots WHERE resource = 'board'`).Scan(&revisionBeforeStaleMerge); err != nil {
 		t.Fatalf("load revision before stale merge: %v", err)
 	}
-	if err := store.ReplaceBoard(ctx, appsync.DefaultBoardLists, []domainboard.Card{second, first}, "board-merge-3", now.Add(3*time.Minute)); err != nil {
+	if err := replaceBoard(t, ctx, store, []domainboard.Card{second, first}, "board-merge-3", now.Add(3*time.Minute)); err != nil {
 		t.Fatalf("merge stale board snapshot: %v", err)
 	}
 	if stored, err := store.Card(ctx, 601); err != nil || stored.ListKey != "review" || stored.Position != 0 {
 		t.Fatalf("stale snapshot overwrote completed move: card %#v, error %v", stored, err)
 	}
 
-	if err := store.ReplaceBoard(ctx, appsync.DefaultBoardLists, []domainboard.Card{second}, "board-merge-4", now.Add(3*time.Minute)); err != nil {
+	if err := replaceBoard(t, ctx, store, []domainboard.Card{second}, "board-merge-4", now.Add(3*time.Minute)); err != nil {
 		t.Fatalf("merge stale snapshot missing a recently updated card: %v", err)
 	}
 	if _, err := store.Card(ctx, 601); err != nil {
@@ -601,8 +730,21 @@ func verifySnapshotMerge(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	if err := pool.QueryRow(ctx, `SELECT source_revision FROM sync_snapshots WHERE resource = 'board'`).Scan(&revisionAfterStaleMerge); err != nil {
 		t.Fatalf("load revision after stale merge: %v", err)
 	}
-	if revisionAfterStaleMerge != revisionBeforeStaleMerge {
-		t.Fatalf("stale merge revision = %q, want %q so the next refresh retries", revisionAfterStaleMerge, revisionBeforeStaleMerge)
+	// This assertion used to demand the opposite: a merge that skipped any row stored
+	// the *old* revision so the next poll would redo the whole board. Because the
+	// revision was a content hash of the whole board, one skipped row made the hash a
+	// lie and the only repair available was a board-wide retry -- which, paired with a
+	// row whose GitLab timestamp stayed ahead, re-merged every five seconds forever.
+	//
+	// Every skip is self-resolving instead. A row with a local mutation in flight is
+	// superseded when the operation worker completes it, and a row we already hold
+	// newer data for needs no repair at all. So the cursor advances and the treadmill
+	// is gone.
+	if revisionAfterStaleMerge == revisionBeforeStaleMerge {
+		t.Fatalf("stale merge revision stayed at %q; a skipped row must not hold back the cursor", revisionAfterStaleMerge)
+	}
+	if revisionAfterStaleMerge != "board-merge-4" {
+		t.Fatalf("stale merge revision = %q, want the revision this read actually saw", revisionAfterStaleMerge)
 	}
 
 	second.UpdatedAt = now.Add(5 * time.Minute)
@@ -615,6 +757,18 @@ func verifySnapshotMerge(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 		t.Fatalf("reconcile external list move = changed %v, error %v", changed, err)
 	}
 	assertStoredOrder(t, ctx, pool, "review", []int64{602, 601})
+}
+
+// replaceBoard hands the store a full-board read. StartedAt is synthetic here rather
+// than PostgreSQL's real clock because these fixtures live at a fixed date in the
+// past; a real now() would sit after every seeded gitlab_observed_at and make every
+// card look prunable.
+func replaceBoard(t *testing.T, ctx context.Context, store *pgsitcon.Repository, cards []domainboard.Card, revision string, syncedAt time.Time) error {
+	t.Helper()
+	return store.ReplaceBoard(ctx, domainboard.BoardObservation{
+		Lists: appsync.DefaultBoardLists, Cards: cards, Revision: revision,
+		StartedAt: syncedAt.Add(-time.Second), SyncedAt: syncedAt,
+	})
 }
 
 func assertStoredOrder(t *testing.T, ctx context.Context, pool *pgxpool.Pool, listKey string, want []int64) {
