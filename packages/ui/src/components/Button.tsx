@@ -1,3 +1,4 @@
+import { Slot, Slottable } from "@radix-ui/react-slot";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { classNames } from "../lib/classNames";
 import { useRipple } from "../lib/useRipple";
@@ -14,6 +15,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 	loading?: boolean;
 	loadingLabel?: string;
 	leadingIcon?: ReactNode;
+	/** Render the caller's element instead of a <button>, e.g. an <a>. */
+	asChild?: boolean;
 }
 
 export function Button({
@@ -27,14 +30,16 @@ export function Button({
 	disabled,
 	children,
 	type = "button",
+	asChild = false,
 	onPointerDown,
 	...props
 }: ButtonProps) {
 	const ripple = useRipple();
 	const icon = loading ? <Spinner size="sm" label={loadingLabel} /> : leadingIcon;
+	const Root = asChild ? Slot : "button";
 	return (
-		<button
-			type={type}
+		<Root
+			{...(asChild ? {} : { type })}
 			className={classNames(
 				"md-button",
 				"md-state-layer",
@@ -52,8 +57,10 @@ export function Button({
 			{...props}
 		>
 			{icon ? <span className="md-button__icon">{icon}</span> : null}
-			{children}
+			{/* Slot needs exactly one element child; Slottable marks which one the
+			    caller's element is, so the icon and ripple nest inside it. */}
+			{asChild ? <Slottable>{children}</Slottable> : children}
 			{ripple.rippleNodes}
-		</button>
+		</Root>
 	);
 }

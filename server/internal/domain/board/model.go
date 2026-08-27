@@ -83,6 +83,26 @@ type Snapshot struct {
 	SyncedAt time.Time
 }
 
+// BoardObservation is one full-board read of GitLab, handed to the cache as a unit.
+//
+// StartedAt and SyncedAt are deliberately separate and come from different clocks.
+// StartedAt is PostgreSQL's clock read before the first GitLab page, and pruning
+// compares it against issue_cache.gitlab_observed_at so both sides of that decision
+// sit in the same clock domain -- a card a webhook reconciled while this read was in
+// flight is stamped later than StartedAt and so survives. SyncedAt is the app's wall
+// clock and only stamps updated_at.
+type BoardObservation struct {
+	Lists []List
+	Cards []Card
+	// Retained are issues GitLab reported that could not be placed on a lane. They are
+	// neither written nor pruned, so a card stays visible as last known while someone
+	// fixes the issue in GitLab.
+	Retained  []int64
+	Revision  string
+	StartedAt time.Time
+	SyncedAt  time.Time
+}
+
 type Mutation struct {
 	Card              Card
 	Operation         Operation

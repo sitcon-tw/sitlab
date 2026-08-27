@@ -112,6 +112,9 @@ type repoFake struct {
 	webhook          *board.WebhookDelivery
 	webhookCompleted bool
 	reconciled       *board.Card
+	observation      board.BoardObservation
+	quarantined      []int64
+	sweepStartedAt   time.Time
 }
 
 func (f *repoFake) Snapshot(context.Context) (directory.Snapshot, error) { return f.directory, nil }
@@ -120,8 +123,19 @@ func (f *repoFake) ReplaceDirectory(_ context.Context, snapshot directory.Snapsh
 	f.directory = snapshot
 	return nil
 }
-func (f *repoFake) ReplaceBoard(_ context.Context, _ []board.List, cards []board.Card, _ string, _ time.Time) error {
-	f.cards = cards
+func (f *repoFake) ReplaceBoard(_ context.Context, observation board.BoardObservation) error {
+	f.cards = observation.Cards
+	f.observation = observation
+	return nil
+}
+func (f *repoFake) SweepStartedAt(context.Context) (time.Time, error) {
+	if f.sweepStartedAt.IsZero() {
+		f.sweepStartedAt = time.Date(2026, 7, 14, 8, 0, 0, 0, time.UTC)
+	}
+	return f.sweepStartedAt, nil
+}
+func (f *repoFake) QuarantineCard(_ context.Context, issueIID int64, _ time.Time, _ string, _ time.Time) error {
+	f.quarantined = append(f.quarantined, issueIID)
 	return nil
 }
 func (*repoFake) RecordSyncFailure(context.Context, string, time.Time, string) error { return nil }
@@ -208,19 +222,63 @@ func TestRefreshBoardMapsNativeStatusesAndSkipsUnknownTeams(t *testing.T) {
 	}
 }
 
-func TestRefreshBoardRejectsUnmappedNativeStatus(t *testing.T) {
+func TestUnmappedStatusQuarantinesOneCardWithoutFailingTheBatch(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 18, 8, 0, 0, 0, time.UTC)
-	gitlab := &gitLabFake{issues: []GitLabIssue{{
-		IssueIID: 9, GitLabIssueID: 90, Title: "[開發組] 取消工作",
-		Labels: []string{"Team::開發組"}, GitLabStatusName: "Won't do", UpdatedAt: now,
-	}}}
+	gitlab := &gitLabFake{issues: []GitLabIssue{
+		{
+			IssueIID: 9, GitLabIssueID: 90, Title: "[開發組] 取消工作",
+			Labels: []string{"Team::開發組"}, GitLabStatusName: "Won't do", UpdatedAt: now,
+		},
+		{
+			IssueIID: 10, GitLabIssueID: 100, Title: "[開發組] 正常工作",
+			Labels: []string{"Team::開發組"}, GitLabStatusName: "Doing", UpdatedAt: now,
+		},
+	}}
 	repo := &repoFake{directory: directory.Snapshot{Teams: []directory.Team{{
 		Key: "development", TitlePrefix: "[開發組]", GitLabLabel: "Team::開發組", Active: true,
 	}}}}
 	service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
-	if err := service.RefreshBoard(context.Background()); err == nil {
-		t.Fatal("RefreshBoard() accepted an unmapped native status")
+
+	if err := service.RefreshBoard(context.Background()); err != nil {
+		t.Fatalf("RefreshBoard() error = %v, want one bad issue not to fail the whole board", err)
+	}
+	if len(repo.cards) != 1 || repo.cards[0].IssueIID != 10 {
+		t.Fatalf("merged cards = %#v, want only the mappable issue", repo.cards)
+	}
+	if len(repo.quarantined) != 1 || repo.quarantined[0] != 9 {
+		t.Fatalf("quarantined = %v, want [9]", repo.quarantined)
+	}
+	// Retained keeps the unmappable card out of the prune set, so it stays on the
+	// board as last known instead of vanishing while someone fixes GitLab.
+	if len(repo.observation.Retained) != 1 || repo.observation.Retained[0] != 9 {
+		t.Fatalf("retained = %v, want [9]", repo.observation.Retained)
+	}
+}
+
+func TestRefreshBoardReadsTheSweepStartBeforeFetchingGitLab(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 18, 8, 0, 0, 0, time.UTC)
+	gitlab := &gitLabFake{issues: []GitLabIssue{{
+		IssueIID: 11, GitLabIssueID: 110, Title: "[開發組] 工作",
+		Labels: []string{"Team::開發組"}, GitLabStatusName: "Doing", UpdatedAt: now,
+	}}}
+	repo := &repoFake{
+		directory: directory.Snapshot{Teams: []directory.Team{{
+			Key: "development", TitlePrefix: "[開發組]", GitLabLabel: "Team::開發組", Active: true,
+		}}},
+		sweepStartedAt: time.Date(2026, time.August, 18, 7, 59, 0, 0, time.UTC),
+	}
+	service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
+	if err := service.RefreshBoard(context.Background()); err != nil {
+		t.Fatalf("RefreshBoard() error = %v", err)
+	}
+	if !repo.observation.StartedAt.Equal(repo.sweepStartedAt) {
+		t.Fatalf("observation StartedAt = %v, want the PostgreSQL clock read %v", repo.observation.StartedAt, repo.sweepStartedAt)
+	}
+	if !repo.observation.StartedAt.Before(repo.observation.SyncedAt) {
+		t.Fatalf("StartedAt %v must precede SyncedAt %v, or a concurrent webhook reconcile looks prunable",
+			repo.observation.StartedAt, repo.observation.SyncedAt)
 	}
 }
 

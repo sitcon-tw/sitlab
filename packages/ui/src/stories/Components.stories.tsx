@@ -4,10 +4,14 @@ import { useState } from "react";
 import {
 	Badge,
 	Button,
+	Chip,
 	ConfirmDialog,
 	EmptyState,
 	IconButton,
 	LinearProgress,
+	Menu,
+	MenuDivider,
+	MenuItem,
 	Panel,
 	SegmentedButton,
 	SelectField,
@@ -49,6 +53,22 @@ function ComponentCatalog() {
 						]}
 					/>
 					<LinearProgress label="Syncing" />
+				</div>
+			</Panel>
+			<Panel title="Menu and chips" description="Menus trap focus, roam with arrow keys, and close on Escape.">
+				<div className="storybook-row">
+					<Menu label="Account" trigger={<Button variant="outlined">Open menu</Button>}>
+						<MenuItem leading={<Archive size="1.125rem" aria-hidden="true" />}>Archive</MenuItem>
+						<MenuItem>Duplicate</MenuItem>
+						<MenuItem selected>Pinned</MenuItem>
+						<MenuDivider />
+						<MenuItem disabled>Delete</MenuItem>
+					</Menu>
+					<Chip label="Removable" variant="input" onRemove={() => {}} removeLabel="Remove" removeIcon={<span aria-hidden="true">×</span>} />
+					<Chip label="Filter" variant="filter" selected />
+					<Button asChild variant="text">
+						<a href="#anchor-as-button">Anchor as button</a>
+					</Button>
 				</div>
 			</Panel>
 			<Panel title="Fields">

@@ -206,7 +206,37 @@ func (r *Repository) ReplaceDirectory(ctx context.Context, snapshot domaindirect
 	})
 }
 
-func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List, cards []domainboard.Card, revision string, syncedAt time.Time) error {
+// SweepStartedAt reads PostgreSQL's clock so a full-board read can be bounded in the
+// same clock domain the prune guard compares against.
+func (r *Repository) SweepStartedAt(ctx context.Context) (time.Time, error) {
+	var startedAt time.Time
+	if err := postgres.Executor(ctx, r.pool).QueryRow(ctx, `SELECT now()`).Scan(&startedAt); err != nil {
+		return time.Time{}, fmt.Errorf("read sweep start: %w", err)
+	}
+	return startedAt.UTC(), nil
+}
+
+// QuarantineCard records an issue the mapper could not place on the board. Keying the
+// row by the GitLab timestamp we rejected means it is retried only once someone edits
+// the issue, instead of on every poll.
+func (r *Repository) QuarantineCard(ctx context.Context, issueIID int64, gitLabUpdatedAt time.Time, reason string, at time.Time) error {
+	_, err := postgres.Executor(ctx, r.pool).Exec(ctx, `
+		INSERT INTO board_sync_rejects (issue_iid, gitlab_updated_at, reason, attempts, first_seen_at, last_seen_at)
+		VALUES ($1, $2, $3, 1, $4, $4)
+		ON CONFLICT (issue_iid) DO UPDATE
+		SET gitlab_updated_at = EXCLUDED.gitlab_updated_at,
+		    reason = EXCLUDED.reason,
+		    attempts = board_sync_rejects.attempts + 1,
+		    last_seen_at = EXCLUDED.last_seen_at
+	`, issueIID, gitLabUpdatedAt, reason, at)
+	if err != nil {
+		return fmt.Errorf("quarantine GitLab issue %d: %w", issueIID, err)
+	}
+	return nil
+}
+
+func (r *Repository) ReplaceBoard(ctx context.Context, observation domainboard.BoardObservation) error {
+	lists, cards, revision, syncedAt := observation.Lists, observation.Cards, observation.Revision, observation.SyncedAt
 	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		var currentRevision string
 		var hadError bool
@@ -255,15 +285,11 @@ func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List,
 		for index := range cards {
 			observations = append(observations, cardObservation{IssueIID: cards[index].IssueIID, Card: &cards[index]})
 		}
-		merge, err := applyCardObservations(ctx, tx, observations, true, syncedAt)
-		if err != nil {
+		if _, err := applyCardObservations(ctx, tx, observationBatch{
+			Observations: observations, Complete: true, Retained: observation.Retained,
+			StartedAt: observation.StartedAt, ObservedAt: syncedAt,
+		}); err != nil {
 			return err
-		}
-		mergeIncomplete := merge.Incomplete
-
-		revisionToStore := revision
-		if mergeIncomplete && snapshotErr == nil {
-			revisionToStore = currentRevision
 		}
 		_, err = tx.Exec(ctx, `
 			INSERT INTO sync_snapshots
@@ -275,7 +301,7 @@ func (r *Repository) ReplaceBoard(ctx context.Context, lists []domainboard.List,
 			    last_attempt_at = EXCLUDED.last_attempt_at,
 			    last_error = NULL,
 			    updated_at = EXCLUDED.updated_at
-		`, revisionToStore, syncedAt)
+		`, revision, syncedAt)
 		if err != nil {
 			return err
 		}

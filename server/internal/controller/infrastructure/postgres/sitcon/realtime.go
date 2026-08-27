@@ -136,7 +136,10 @@ func webhookBackoff(attempt int32) time.Duration {
 func (r *Repository) ReconcileIssue(ctx context.Context, issueIID int64, card *domainboard.Card, reconciledAt time.Time) (bool, error) {
 	changed := false
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
-		merge, err := applyCardObservations(ctx, tx, []cardObservation{{IssueIID: issueIID, Card: card}}, false, reconciledAt)
+		merge, err := applyCardObservations(ctx, tx, observationBatch{
+			Observations: []cardObservation{{IssueIID: issueIID, Card: card}},
+			ObservedAt:   reconciledAt,
+		})
 		if err != nil {
 			return err
 		}

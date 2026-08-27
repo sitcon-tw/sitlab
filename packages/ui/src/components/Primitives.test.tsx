@@ -1,11 +1,12 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Button } from "./Button";
 import { DataTable } from "./DataTable";
 import { Dialog } from "./Dialog";
 import { EmptyState } from "./EmptyState";
+import { Menu, MenuDivider, MenuItem } from "./Menu";
 import { Tabs } from "./Tabs";
 
 function DialogHarness() {
@@ -49,6 +50,45 @@ describe("overlay and collection primitives", () => {
 		await user.keyboard("{ArrowRight}");
 		expect(within(tablist).getByRole("tab", { name: "Done" })).toHaveAttribute("aria-selected", "true");
 		expect(screen.getByText("Completed tasks")).toBeVisible();
+	});
+
+	// The board previously used <details> popovers closed by writing
+	// ref.current.open = false: no focus trap, no roving tabindex, no Escape.
+	it("traps focus in a menu, roves with arrow keys, and restores focus on Escape", async () => {
+		const user = userEvent.setup();
+		const onSelect = vi.fn();
+		render(
+			<Menu label="Account" trigger={<Button>Open menu</Button>}>
+				<MenuItem onSelect={onSelect}>Archive</MenuItem>
+				<MenuItem>Duplicate</MenuItem>
+				<MenuDivider />
+				<MenuItem disabled>Delete</MenuItem>
+			</Menu>
+		);
+		const trigger = screen.getByRole("button", { name: "Open menu" });
+		await user.click(trigger);
+
+		const menu = await screen.findByRole("menu");
+		expect(menu).toContainElement(document.activeElement as HTMLElement);
+		await user.keyboard("{ArrowDown}");
+		expect(within(menu).getByRole("menuitem", { name: "Archive" })).toHaveFocus();
+		await user.keyboard("{ArrowDown}");
+		expect(within(menu).getByRole("menuitem", { name: "Duplicate" })).toHaveFocus();
+
+		await user.keyboard("{Escape}");
+		await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+		expect(trigger).toHaveFocus();
+	});
+
+	it("renders asChild buttons as the caller's element", () => {
+		render(
+			<Button asChild variant="text">
+				<a href="#somewhere">Open GitLab</a>
+			</Button>
+		);
+		const link = screen.getByRole("link", { name: "Open GitLab" });
+		expect(link.tagName).toBe("A");
+		expect(link).toHaveClass("md-button", "md-button--text");
 	});
 
 	it("renders an accessible table and delegates its empty state", () => {

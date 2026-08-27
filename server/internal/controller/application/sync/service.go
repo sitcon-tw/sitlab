@@ -99,6 +99,14 @@ func (s *Service) RefreshBoard(ctx context.Context) error {
 	ctx, span := s.tracer.Start(ctx, "sync.board")
 	defer span.End()
 	now := s.now().UTC()
+	// Read PostgreSQL's clock before the first GitLab page. A webhook that reconciles
+	// a card while this read is in flight stamps it later than this instant, which is
+	// how the merge tells "GitLab dropped it" from "we learned about it more recently
+	// than this read could see".
+	startedAt, err := s.repo.SweepStartedAt(ctx)
+	if err != nil {
+		return technical(span, "read board sweep start", err)
+	}
 	directorySnapshot, err := s.repo.Snapshot(ctx)
 	if err != nil {
 		return technical(span, "load directory for board", err)
@@ -109,20 +117,33 @@ func (s *Service) RefreshBoard(ctx context.Context) error {
 		return technical(span, "load GitLab issues", err)
 	}
 	cards := make([]board.Card, 0, len(issues))
+	retained := make([]int64, 0)
 	positions := make(map[string]int32)
 	for _, issue := range issues {
 		card, ok, mapErr := mapIssue(issue, directorySnapshot, DefaultBoardLists, positions)
 		if mapErr != nil {
-			s.recordFailure(ctx, "board", now, mapErr)
-			return technical(span, "map GitLab work item status", mapErr)
+			// One issue set to a status no lane maps to used to abort the whole
+			// refresh, so a single mis-set issue froze every card and showed the
+			// entire team an offline board. Quarantine it instead and keep going;
+			// the card stays as we last knew it until someone moves the issue on.
+			// A lifecycle genuinely missing a required status is a different
+			// failure and still fails the GitLab read outright.
+			retained = append(retained, issue.IssueIID)
+			if quarantineErr := s.repo.QuarantineCard(ctx, issue.IssueIID, issue.UpdatedAt.UTC(), mapErr.Error(), now); quarantineErr != nil {
+				return technical(span, "quarantine unmapped GitLab issue", quarantineErr)
+			}
+			span.RecordError(mapErr)
+			continue
 		}
 		if !ok {
 			continue
 		}
 		cards = append(cards, card)
 	}
-	revision := boardRevision(issues)
-	if err := s.repo.ReplaceBoard(ctx, DefaultBoardLists, cards, revision, now); err != nil {
+	if err := s.repo.ReplaceBoard(ctx, board.BoardObservation{
+		Lists: DefaultBoardLists, Cards: cards, Retained: retained,
+		Revision: boardRevision(issues), StartedAt: startedAt, SyncedAt: now,
+	}); err != nil {
 		return technical(span, "replace board snapshot", err)
 	}
 	return nil

@@ -32,7 +32,12 @@ type Repository interface {
 	Snapshot(context.Context) (directory.Snapshot, error)
 	Board(context.Context) (board.Snapshot, error)
 	ReplaceDirectory(context.Context, directory.Snapshot) error
-	ReplaceBoard(context.Context, []board.List, []board.Card, string, time.Time) error
+	ReplaceBoard(context.Context, board.BoardObservation) error
+	// SweepStartedAt reads PostgreSQL's clock. A full-board read must take it before
+	// its first GitLab page so that concurrent webhook reconciles are not mistaken for
+	// cards GitLab has dropped.
+	SweepStartedAt(context.Context) (time.Time, error)
+	QuarantineCard(ctx context.Context, issueIID int64, gitLabUpdatedAt time.Time, reason string, at time.Time) error
 	RecordSyncFailure(context.Context, string, time.Time, string) error
 	ClaimOperation(context.Context, time.Time) (board.PendingOperation, error)
 	CompleteOperation(context.Context, board.PendingOperation, board.CanonicalIssue, time.Time) error

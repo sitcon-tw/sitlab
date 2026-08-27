@@ -14,6 +14,8 @@ export { SelectField, TextAreaField, TextField } from "./components/Field";
 export type { SelectFieldProps, SelectOption, TextAreaFieldProps, TextFieldProps } from "./components/Field";
 export { IconButton } from "./components/IconButton";
 export type { IconButtonProps, IconButtonVariant } from "./components/IconButton";
+export { Menu, MenuDivider, MenuItem } from "./components/Menu";
+export type { MenuItemProps, MenuProps } from "./components/Menu";
 export { PageShell } from "./components/PageShell";
 export type { PageShellProps } from "./components/PageShell";
 export { Panel } from "./components/Panel";

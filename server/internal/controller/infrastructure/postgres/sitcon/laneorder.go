@@ -13,10 +13,14 @@ import (
 
 // cardState is the part of a cached card that ordering and merge decisions read.
 type cardState struct {
-	ListKey         string
-	Position        int32
-	SyncState       domainboard.OperationState
-	GitLabUpdatedAt *time.Time
+	ListKey   string
+	Position  int32
+	SyncState domainboard.OperationState
+	// GitLabUpdatedAt is GitLab's own clock, compared only against other GitLab
+	// timestamps. GitLabObservedAt is PostgreSQL's, and records when a GitLab read
+	// last confirmed the card exists.
+	GitLabUpdatedAt  *time.Time
+	GitLabObservedAt *time.Time
 }
 
 // laneOrders holds each lane's manual card order, most recent slot first. PostgreSQL
@@ -48,7 +52,7 @@ func loadLaneOrders(ctx context.Context, tx pgx.Tx, listKeys []string) (map[int6
 	orders := make(laneOrders, len(listKeys))
 	for _, listKey := range listKeys {
 		rows, err := tx.Query(ctx, `
-			SELECT issue_iid, list_key, position, sync_state, gitlab_updated_at
+			SELECT issue_iid, list_key, position, sync_state, gitlab_updated_at, gitlab_observed_at
 			FROM issue_cache
 			WHERE list_key = $1
 			ORDER BY position, issue_iid
@@ -61,7 +65,7 @@ func loadLaneOrders(ctx context.Context, tx pgx.Tx, listKeys []string) (map[int6
 		for rows.Next() {
 			var issueIID int64
 			var state cardState
-			if err := rows.Scan(&issueIID, &state.ListKey, &state.Position, &state.SyncState, &state.GitLabUpdatedAt); err != nil {
+			if err := rows.Scan(&issueIID, &state.ListKey, &state.Position, &state.SyncState, &state.GitLabUpdatedAt, &state.GitLabObservedAt); err != nil {
 				rows.Close()
 				return nil, nil, err
 			}
