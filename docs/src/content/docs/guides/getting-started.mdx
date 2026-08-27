@@ -44,6 +44,8 @@ The web server at `http://localhost:5173` proxies `/api` to the backend at `http
 
 For isolated browser design checks, run `VITE_SITCON_DEMO=true just web-dev`. This explicitly loads a test-only fixture and must not be used as a production data source.
 
+Delta sync is enabled by default. During the staged rollout, build the web app with `VITE_SITCON_SYNC_DELTA=false` to restore the legacy bootstrap revision stream and five-second full polling as a temporary kill switch.
+
 ## Production-shaped stack
 
 ```bash

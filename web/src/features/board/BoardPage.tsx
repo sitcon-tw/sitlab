@@ -13,6 +13,7 @@ import {
 	Menu,
 	MenuDivider,
 	MenuItem,
+	Panel,
 	SegmentedButton,
 	SelectField,
 	Spinner,
@@ -39,7 +40,6 @@ import {
 	Save,
 	Send,
 	Settings,
-	SquareTerminal,
 	Users,
 	X
 } from "lucide-react";
@@ -83,6 +83,7 @@ import {
 } from "./model";
 import { parseQuickAction, quickActionCommands, type QuickAction } from "./quickActions";
 import { SaveIndicator } from "./SaveIndicator";
+import { shouldApplyIncomingCard } from "./syncActions";
 import { TagSwatch } from "./TagSwatch";
 import { useBoardDrag } from "./useBoardDrag";
 import { useFieldSaveState, type FieldSave, type FieldSaveState, type SaveField } from "./useFieldSaveState";
@@ -94,6 +95,7 @@ export interface BoardPageProps {
 	updateBootstrap: (update: (current: Bootstrap) => Bootstrap) => void;
 	backgroundOffline: boolean;
 	onDraggingChange?: (dragging: boolean) => void;
+	inflightOperations?: React.MutableRefObject<Map<string, () => void>>;
 }
 
 type CardPatch = Partial<
@@ -119,7 +121,7 @@ const boardPointerSensor = PointerSensor.configure({
 	}
 });
 
-export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDraggingChange = noopDraggingChange }: BoardPageProps) {
+export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDraggingChange = noopDraggingChange, inflightOperations }: BoardPageProps) {
 	const [initialView] = useState(() => parseBoardViewState(window.location.search, bootstrap));
 	const [membersOpen, setMembersOpen] = useState(false);
 	const [detailIid, setDetailIid] = useState<number | null>(null);
@@ -128,7 +130,8 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 	const [filterLabels, setFilterLabels] = useState<string[]>(initialView.labels);
 	const [sortMode, setSortMode] = useState<BoardSortMode>(initialView.sortMode);
 	const [undo, setUndo] = useState<{ cardIid: number; assigneeIds: number[]; assigneeNames: string[] } | null>(null);
-	const localRetries = useRef(new Map<string, () => void>());
+	const internalRetries = useRef(new Map<string, () => void>());
+	const localRetries = inflightOperations ?? internalRetries;
 	const save = useFieldSaveState();
 	const labelsQuery = useProjectLabels();
 	const labelMetadata = useProjectLabelMap();
@@ -191,7 +194,16 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 			...current,
 			board: {
 				...current.board,
-				cards: current.board.cards.map((item) => (item.issueIid === issueIid && item.pendingOperationId === operationId ? card : item))
+				cards: current.board.cards.map((item) =>
+					item.issueIid === issueIid &&
+					shouldApplyIncomingCard(item, operationId, {
+						dragging: false,
+						inflightOperationIds: localRetries.current,
+						requiredLocalOperationId: operationId
+					})
+						? card
+						: item
+				)
 			}
 		}));
 	};
@@ -1148,15 +1160,17 @@ function CardDetail({
 				<CardComments card={card} />
 				<footer className={styles.detailActions}>
 					{card.webUrl ? (
-						<a href={card.webUrl} target="_blank" rel="noreferrer">
-							<ExternalLink size="0.875rem" aria-hidden="true" /> GitLab Issue
-						</a>
+						<Button asChild variant="text" leadingIcon={<ExternalLink size="1rem" aria-hidden="true" />}>
+							<a href={card.webUrl} target="_blank" rel="noreferrer">
+								GitLab Issue
+							</a>
+						</Button>
 					) : (
 						<span />
 					)}
-					<button type="submit" disabled={!title.trim()}>
-						<Save size="0.875rem" aria-hidden="true" /> 儲存細節
-					</button>
+					<Button type="submit" variant="filled" disabled={!title.trim()} leadingIcon={<Save size="1rem" aria-hidden="true" />}>
+						儲存細節
+					</Button>
 					<SaveIndicator save={save.get(card.issueIid, "details")} name="標題與描述" />
 				</footer>
 			</form>
@@ -1454,13 +1468,10 @@ function QuickActionComposer({ bootstrap, card, onAction }: { bootstrap: Bootstr
 
 	return (
 		<section className={styles.quickActions}>
-			<label htmlFor={inputId}>
-				<SquareTerminal size="0.875rem" aria-hidden="true" />
-				<span>Quick action</span>
-			</label>
 			<div className={styles.commandInput}>
-				<input
+				<TextField
 					id={inputId}
+					label="Quick action"
 					role="combobox"
 					aria-autocomplete="list"
 					aria-expanded={suggestions.length > 0}
@@ -1469,6 +1480,7 @@ function QuickActionComposer({ bootstrap, card, onAction }: { bootstrap: Bootstr
 					value={value}
 					autoComplete="off"
 					placeholder="/"
+					error={error ?? undefined}
 					onChange={(event) => {
 						setValue(event.target.value);
 						setError(null);
@@ -1491,29 +1503,29 @@ function QuickActionComposer({ bootstrap, card, onAction }: { bootstrap: Bootstr
 						}
 					}}
 				/>
-				<button type="button" disabled={!value.trim()} onClick={execute}>
+				<Button variant="filled" disabled={!value.trim()} onClick={execute}>
 					執行
-				</button>
+				</Button>
 				{suggestions.length ? (
-					<div id={menuId} className={styles.commandMenu} role="listbox" aria-label="Quick Actions">
+					<div id={menuId} className={`md-menu ${styles.commandMenu}`} role="listbox" aria-label="Quick Actions">
 						{suggestions.map((suggestion, index) => (
 							<button
 								type="button"
 								role="option"
 								id={`${menuId}-${index}`}
 								aria-selected={index === activeIndex}
+								className="md-menu-item md-state-layer"
 								key={suggestion.command}
 								onMouseDown={(event) => event.preventDefault()}
 								onClick={() => choose(index)}
 							>
-								<code>{suggestion.usage}</code>
-								<span>{suggestion.label}</span>
+								<code className="md-menu-item__label">{suggestion.usage}</code>
+								<span className="md-typescale-body-small">{suggestion.label}</span>
 							</button>
 						))}
 					</div>
 				) : null}
 			</div>
-			{error ? <p role="alert">{error}</p> : null}
 		</section>
 	);
 }
@@ -1543,18 +1555,24 @@ function DirectoryConflict({ bootstrap, updateBootstrap }: Pick<BoardPageProps, 
 	};
 
 	return (
-		<aside className={styles.conflict} aria-label="組別目錄有更新">
+		<Panel className={styles.conflict} variant="filled" aria-label="組別目錄有更新">
 			<div>
-				<strong>GitLab 目錄將你列為「{directoryName}」</strong>
-				<span>目前的預設是「{currentName}」。</span>
+				<strong className="md-typescale-label-large">GitLab 目錄將你列為「{directoryName}」</strong>
+				<span className="md-typescale-body-medium">目前的預設是「{currentName}」。</span>
 			</div>
-			<button type="button" disabled={saving} onClick={() => void switchToDirectory()}>
-				<Check size="0.875rem" aria-hidden="true" /> {saving ? "更新中..." : `改用${directoryName}`}
-			</button>
-			<button type="button" onClick={keep}>
+			<Button
+				variant="outlined"
+				loading={saving}
+				loadingLabel="更新中"
+				leadingIcon={<Check size="1rem" aria-hidden="true" />}
+				onClick={() => void switchToDirectory()}
+			>
+				改用{directoryName}
+			</Button>
+			<Button variant="text" onClick={keep}>
 				保留{currentName}
-			</button>
-		</aside>
+			</Button>
+		</Panel>
 	);
 }
 
