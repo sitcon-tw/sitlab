@@ -296,25 +296,14 @@
 	--md-sys-typescale-label-small-line-height: 1rem;
 	--md-sys-typescale-label-small-tracking: 0.03125rem;
 	--md-sys-typescale-label-small-weight: 500;
-	/* Legacy non-color aliases. Kept so 2,500 lines of CSS modules keep working
-	 * while web/ migrates onto --md-sys-*. Do not reference these in new code. */
+	/* Documentation-shell compatibility shim, non-color half. See above. */
 	--pt-font-body: var(--md-ref-typeface-plain);
 	--pt-font-mono: var(--md-ref-typeface-mono);
 	--pt-radius-sm: var(--md-sys-shape-corner-extra-small);
-	--pt-radius-md: var(--md-sys-shape-corner-medium);
-	--pt-space-1: var(--md-space-1);
-	--pt-space-2: var(--md-space-2);
 	--pt-space-3: var(--md-space-3);
 	--pt-space-4: var(--md-space-4);
-	--pt-space-5: var(--md-space-5);
 	--pt-space-6: var(--md-space-6);
-	--pt-space-8: var(--md-space-8);
-	--pt-control-sm: 2rem;
-	--pt-control-md: 2.5rem;
-	--pt-control-lg: 3rem;
 	--md-content-max: 90rem;
-	--pt-transition: var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
-	--sb-motion-fast: var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
 
 	/* The rem base for every dimension in the repo. Changing it shifts all of them. */
 	font: 16px/1.5 var(--md-ref-typeface-plain);
@@ -388,60 +377,25 @@
 	--sb-surface-raised: var(--md-sys-color-surface-container-lowest);
 	--sb-surface-subtle: var(--md-sys-color-surface-container-highest);
 	--sb-control: var(--md-sys-color-surface-container-low);
-	--sb-text: var(--md-sys-color-on-surface);
-	--sb-text-muted: var(--md-sys-color-on-surface-variant);
 	/* MD3 has no third text tier; outline alone is 4.25:1 on surface, under AA for text.
 	 * Hold a distinguishable, accessible tier until Stage C re-derives de-emphasis
 	 * from the type scale. */
 	--sb-text-subtle: color-mix(in srgb, var(--md-sys-color-on-surface-variant) 50%, var(--md-sys-color-outline));
-	--sb-on-brand: var(--md-sys-color-on-primary);
-	--sb-border: var(--md-sys-color-outline-variant);
-	--sb-border-strong: var(--md-sys-color-outline);
-	--sb-brand: var(--md-sys-color-primary);
-	--sb-brand-hover: var(--md-sys-color-primary);
-	--sb-focus: var(--md-sys-color-secondary);
-	--sb-positive: var(--md-sys-color-primary);
-	--sb-positive-muted: var(--md-sys-color-primary-container);
-	--sb-info: var(--md-sys-color-tertiary);
-	--sb-info-muted: var(--md-sys-color-tertiary-container);
-	--sb-warning: var(--md-sys-color-warning);
-	--sb-warning-muted: var(--md-sys-color-warning-container);
-	--sb-warning-border: var(--md-sys-color-outline);
-	--sb-critical: var(--md-sys-color-error);
-	--sb-critical-muted: var(--md-sys-color-error-container);
-	--sb-avatar-bg: var(--md-sys-color-primary-container);
-	--sb-avatar-text: var(--md-sys-color-on-primary-container);
-	--sb-shadow-card: var(--md-sys-elevation-level1);
-	--sb-shadow-overlay: var(--md-sys-elevation-level3);
 
-	/* Legacy --pt-* aliases. docs/ consumes a subset of these directly. */
+	/* Documentation-shell compatibility shim. docs/ is an Astro site outside this
+	 * design system and reads these names directly; do not use them in web/ or
+	 * packages/ui. */
 	--pt-background: var(--sb-page);
 	--pt-surface: var(--sb-surface);
 	--pt-surface-raised: var(--sb-surface-raised);
 	--pt-surface-subtle: var(--sb-surface-subtle);
-	--pt-surface-hover: var(--sb-lane);
 	--pt-text: var(--sb-text);
 	--pt-text-muted: var(--sb-text-muted);
-	--pt-text-subtle: var(--sb-text-subtle);
-	--pt-text-inverse: var(--sb-on-brand);
 	--pt-border: var(--sb-border);
-	--pt-border-strong: var(--sb-border-strong);
 	--pt-primary: var(--sb-brand);
 	--pt-primary-hover: var(--sb-brand-hover);
-	--pt-primary-muted: var(--sb-positive-muted);
 	--pt-focus: var(--sb-focus);
-	--pt-danger: var(--sb-critical);
-	--pt-danger-muted: var(--sb-critical-muted);
-	--pt-warning: var(--sb-warning);
-	--pt-warning-muted: var(--sb-warning-muted);
-	--pt-success: var(--sb-positive);
-	--pt-success-muted: var(--sb-positive-muted);
 	--pt-info: var(--sb-info);
-	--pt-info-muted: var(--sb-info-muted);
-	--pt-danger-hover: var(--md-sys-color-error);
-	--pt-focus-ring: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-secondary) 40%, transparent);
-	--pt-shadow-overlay: var(--md-sys-elevation-level3);
-	--pt-overlay: color-mix(in srgb, var(--md-sys-color-scrim) 32%, transparent);
 }
 
 :root[data-theme="dark"] {
@@ -506,60 +460,25 @@
 	--sb-surface-raised: var(--md-sys-color-surface-container-high);
 	--sb-surface-subtle: var(--md-sys-color-surface-container-highest);
 	--sb-control: var(--md-sys-color-surface-container-high);
-	--sb-text: var(--md-sys-color-on-surface);
-	--sb-text-muted: var(--md-sys-color-on-surface-variant);
 	/* MD3 has no third text tier; outline alone is 4.25:1 on surface, under AA for text.
 	 * Hold a distinguishable, accessible tier until Stage C re-derives de-emphasis
 	 * from the type scale. */
 	--sb-text-subtle: color-mix(in srgb, var(--md-sys-color-on-surface-variant) 50%, var(--md-sys-color-outline));
-	--sb-on-brand: var(--md-sys-color-on-primary);
-	--sb-border: var(--md-sys-color-outline-variant);
-	--sb-border-strong: var(--md-sys-color-outline);
-	--sb-brand: var(--md-sys-color-primary);
-	--sb-brand-hover: var(--md-sys-color-primary);
-	--sb-focus: var(--md-sys-color-secondary);
-	--sb-positive: var(--md-sys-color-primary);
-	--sb-positive-muted: var(--md-sys-color-primary-container);
-	--sb-info: var(--md-sys-color-tertiary);
-	--sb-info-muted: var(--md-sys-color-tertiary-container);
-	--sb-warning: var(--md-sys-color-warning);
-	--sb-warning-muted: var(--md-sys-color-warning-container);
-	--sb-warning-border: var(--md-sys-color-outline);
-	--sb-critical: var(--md-sys-color-error);
-	--sb-critical-muted: var(--md-sys-color-error-container);
-	--sb-avatar-bg: var(--md-sys-color-primary-container);
-	--sb-avatar-text: var(--md-sys-color-on-primary-container);
-	--sb-shadow-card: var(--md-sys-elevation-level1);
-	--sb-shadow-overlay: var(--md-sys-elevation-level3);
 
-	/* Legacy --pt-* aliases. docs/ consumes a subset of these directly. */
+	/* Documentation-shell compatibility shim. docs/ is an Astro site outside this
+	 * design system and reads these names directly; do not use them in web/ or
+	 * packages/ui. */
 	--pt-background: var(--sb-page);
 	--pt-surface: var(--sb-surface);
 	--pt-surface-raised: var(--sb-surface-raised);
 	--pt-surface-subtle: var(--sb-surface-subtle);
-	--pt-surface-hover: var(--sb-lane);
 	--pt-text: var(--sb-text);
 	--pt-text-muted: var(--sb-text-muted);
-	--pt-text-subtle: var(--sb-text-subtle);
-	--pt-text-inverse: var(--sb-on-brand);
 	--pt-border: var(--sb-border);
-	--pt-border-strong: var(--sb-border-strong);
 	--pt-primary: var(--sb-brand);
 	--pt-primary-hover: var(--sb-brand-hover);
-	--pt-primary-muted: var(--sb-positive-muted);
 	--pt-focus: var(--sb-focus);
-	--pt-danger: var(--sb-critical);
-	--pt-danger-muted: var(--sb-critical-muted);
-	--pt-warning: var(--sb-warning);
-	--pt-warning-muted: var(--sb-warning-muted);
-	--pt-success: var(--sb-positive);
-	--pt-success-muted: var(--sb-positive-muted);
 	--pt-info: var(--sb-info);
-	--pt-info-muted: var(--sb-info-muted);
-	--pt-danger-hover: var(--md-sys-color-error);
-	--pt-focus-ring: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-secondary) 40%, transparent);
-	--pt-shadow-overlay: var(--md-sys-elevation-level3);
-	--pt-overlay: color-mix(in srgb, var(--md-sys-color-scrim) 32%, transparent);
 }
 
 *,

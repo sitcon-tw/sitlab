@@ -19,7 +19,7 @@ There is no agent runtime in this template. Do not add probe, assignment, remote
 - `api/**/*.tsp` owns the HTTP wire contract.
 - `server/db/migrations` owns the database schema.
 - `.sitcon/board-directory.yml` owns the production team directory.
-- `packages/ui/src/styles/tokens.css` owns browser design tokens.
+- `packages/ui/src/styles/` owns browser design tokens and the Material Design 3 primitive stylesheet: `tokens.css` owns `--md-ref-*` and `--md-sys-*` and is the only stylesheet allowed to contain concrete colors, `md3.css` owns primitive component CSS, and `index.css` is the published entry.
 - `Justfile` owns cross-language task names.
 - `ARCHITECTURE.md` and architecture tests own dependency direction.
 
@@ -33,6 +33,7 @@ Generated OpenAPI and TypeScript files are committed review artifacts. Never han
 - Do not duplicate API DTOs by hand in the web app.
 - Keep business errors stable and technical causes available to structured logs and traces.
 - Add abstractions only after the reference slice proves they reduce real duplication or coupling.
+- Follow `design.md`'s Material Design 3 conformance rules; a new deviation must be listed there with its reason.
 - Update the relevant guide whenever a command, boundary, config key, or ownership rule changes.
 
 ## Commands
