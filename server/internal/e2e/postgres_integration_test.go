@@ -226,7 +226,7 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 		OperationID: labelOperationID, ActorUserID: user.ID, IssueIID: canonical.Card.IssueIID,
 		Labels: []string{"Team::行政組", "Backend"},
 	})
-	if err != nil || labelsChanged.Card.TeamKey != "administration" || labelsChanged.Card.ListKey != "doing" ||
+	if err != nil || labelsChanged.Card.TeamKey != "administration" || labelsChanged.Card.ListKey != "inbox" ||
 		len(labelsChanged.Card.AssigneeGitLabUserIDs) != 0 || labelsChanged.Operation.Kind != domainboard.OperationUpdateLabels {
 		t.Fatalf("label mutation = %#v, err = %v", labelsChanged, err)
 	}
@@ -236,7 +236,7 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	}
 	processed, err = syncService.ProcessOne(ctx)
 	if err != nil || !processed || gitlab.lastMutation == nil ||
-		!contains(gitlab.lastMutation.Labels, "Team::行政組") || contains(gitlab.lastMutation.Labels, "Status::Doing") || !contains(gitlab.lastMutation.Labels, "Backend") || gitlab.lastMutation.GitLabStatusName != "Doing" {
+		!contains(gitlab.lastMutation.Labels, "Team::行政組") || contains(gitlab.lastMutation.Labels, "Status::Doing") || !contains(gitlab.lastMutation.Labels, "Backend") || gitlab.lastMutation.GitLabStatusName != "Inbox" {
 		t.Fatalf("process labels = %v, %v, mutation=%#v", processed, err, gitlab.lastMutation)
 	}
 
