@@ -59,6 +59,43 @@ func TestProjectWebhookQueuesSignedIssueEvent(t *testing.T) {
 	}
 }
 
+func TestProjectWebhookAcceptsConfidentialIssueHook(t *testing.T) {
+	// GitLab routes confidential issues through confidential_issue_hooks, so it sends
+	// "Confidential Issue Hook" for them. Dropping those would leave confidential
+	// cards stale until a full reconciliation sweep.
+	for _, testCase := range []struct {
+		event  string
+		queued bool
+	}{
+		{event: "Issue Hook", queued: true},
+		{event: "Confidential Issue Hook", queued: true},
+		{event: "Pipeline Hook", queued: false},
+	} {
+		t.Run(testCase.event, func(t *testing.T) {
+			now := time.Now().UTC().Truncate(time.Second)
+			token := testSigningToken()
+			body := []byte(`{"object_kind":"issue","event_type":"issue","project":{"path_with_namespace":"sitcon-tw/2027"},"object_attributes":{"iid":77,"type":"Issue"}}`)
+			request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/webhooks/gitlab/project", strings.NewReader(string(body)))
+			request.Header = signedWebhookHeaders(token, "delivery-77", now, body)
+			request.Header.Set("X-Gitlab-Event", testCase.event)
+			recorder := httptest.NewRecorder()
+			sync := &webhookSyncFake{}
+			h := handler{sync: sync, webhooks: WebhookConfig{ProjectSigningToken: token, ProjectPath: "sitcon-tw/2027"}}
+			h.receiveProjectWebhook(recorder, request)
+			if recorder.Code != http.StatusAccepted {
+				t.Fatalf("response = %d, body = %s", recorder.Code, recorder.Body.String())
+			}
+			queued := sync.delivery.IssueIID != nil
+			if queued != testCase.queued {
+				t.Fatalf("queued = %t, want %t (delivery = %#v)", queued, testCase.queued, sync.delivery)
+			}
+			if queued && *sync.delivery.IssueIID != 77 {
+				t.Fatalf("issue IID = %d, want 77", *sync.delivery.IssueIID)
+			}
+		})
+	}
+}
+
 func TestGroupWebhookQueuesSignedMemberEvent(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	token := testSigningToken()

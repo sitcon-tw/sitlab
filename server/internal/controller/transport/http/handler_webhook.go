@@ -70,7 +70,7 @@ func (h handler) receiveWebhook(w http.ResponseWriter, r *http.Request, scope, s
 			writeError(w, r, apperror.Malformed("webhook project does not match the configured project"))
 			return
 		}
-		if r.Header.Get("X-Gitlab-Event") != "Issue Hook" || payload.ObjectKind != "issue" ||
+		if !isIssueHook(r.Header.Get("X-Gitlab-Event")) || payload.ObjectKind != "issue" ||
 			(payload.ObjectAttributes.Type != "" && payload.ObjectAttributes.Type != "Issue") {
 			metricResult = "ignored"
 			writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "duplicate": false})
@@ -141,4 +141,13 @@ func verifyGitLabWebhook(signingToken string, headers http.Header, body []byte, 
 		}
 	}
 	return fmt.Errorf("webhook signature does not match")
+}
+
+// isIssueHook reports whether an X-Gitlab-Event names a project issue hook. GitLab
+// routes confidential issues through a separate trigger, so a project with
+// confidential_issues_events enabled delivers "Confidential Issue Hook" for those
+// work items. Both carry the same issue payload shape, and both must be mirrored or
+// confidential cards stay invisible until a full reconciliation sweep.
+func isIssueHook(event string) bool {
+	return event == "Issue Hook" || event == "Confidential Issue Hook"
 }
