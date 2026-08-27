@@ -822,48 +822,17 @@
 	text-align: center;
 }
 
-.cardDetail label,
 .detailAssignees {
 	display: grid;
-	gap: 0.375rem;
+	gap: var(--md-space-2);
 }
 
-.cardDetail label > span,
 .detailAssignees > span,
 .detailDescriptionHeader > span {
-	color: var(--sb-text-subtle);
-	font-size: 0.6875rem;
-	font-weight: 750;
-	text-transform: uppercase;
-}
-
-.cardDetail input:not([type="checkbox"]),
-.cardDetail select,
-.cardDetail textarea {
-	width: 100%;
-	min-width: 0;
-	color: var(--md-sys-color-on-surface);
-	background: var(--sb-control);
-	border: 1px solid var(--md-sys-color-outline-variant);
-	border-radius: var(--md-sys-shape-corner-extra-small);
-}
-
-.cardDetail input:not([type="checkbox"]),
-.cardDetail select {
-	height: 2.5rem;
-	padding: 0 0.75rem;
-}
-
-.cardDetail textarea {
-	min-height: 10rem;
-	padding: 0.75rem;
-	line-height: 1.55;
-	resize: vertical;
-}
-
-.detailTitle input {
-	font-size: 1rem;
-	font-weight: 750;
+	font-size: var(--md-sys-typescale-body-small-size);
+	line-height: var(--md-sys-typescale-body-small-line-height);
+	color: var(--md-sys-color-on-surface-variant);
+	letter-spacing: var(--md-sys-typescale-body-small-tracking);
 }
 
 .detailDescription {
@@ -980,7 +949,8 @@
 .detailGrid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 0.75rem;
+	gap: var(--md-space-4);
+	align-items: start;
 }
 
 .detailAssignees .assigneeControl {
@@ -995,7 +965,8 @@
 .detailDates {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 0.75rem;
+	gap: var(--md-space-4);
+	align-items: start;
 }
 
 .detailTags,
@@ -1021,18 +992,6 @@
 	font-size: 0.8125rem;
 }
 
-.comments > header > span {
-	display: grid;
-	min-width: 1.5rem;
-	height: 1.5rem;
-	place-items: center;
-	color: var(--sb-text-subtle);
-	background: var(--sb-surface-subtle);
-	border-radius: var(--md-sys-shape-corner-extra-small);
-	font-size: 0.6875rem;
-	font-weight: 750;
-}
-
 .tagList {
 	display: flex;
 	flex-wrap: wrap;
@@ -1051,79 +1010,9 @@
 	font-size: 0.75rem;
 }
 
-.tagPicker {
-	position: relative;
-}
-
-.tagPicker > summary {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.25rem;
-	height: 2rem;
-	padding: 0 0.625rem;
-	color: var(--md-sys-color-on-surface-variant);
-	background: var(--sb-control);
-	border: 1px solid var(--md-sys-color-outline-variant);
-	border-radius: var(--md-sys-shape-corner-extra-small);
-	cursor: pointer;
-	font-size: 0.75rem;
-	font-weight: 700;
-	list-style: none;
-}
-
-.tagPicker > summary::-webkit-details-marker {
-	display: none;
-}
-
 .tagMenu {
-	position: absolute;
-	top: calc(100% + 0.375rem);
-	right: 0;
-	z-index: 5;
-	display: grid;
-	gap: 0.375rem;
-	width: min(20rem, calc(100vw - 4rem));
-	padding: 0.5rem;
-	background: var(--sb-surface-raised);
-	border: 1px solid var(--md-sys-color-outline-variant);
-	border-radius: var(--md-sys-shape-corner-small);
-	box-shadow: var(--md-sys-elevation-level3);
-}
-
-.tagMenu input {
-	height: 2.25rem !important;
-}
-
-.tagMenu > div {
-	display: grid;
-	max-height: 15rem;
+	max-height: 18rem;
 	overflow-y: auto;
-}
-
-.tagMenu button {
-	display: grid;
-	grid-template-columns: 0.625rem minmax(0, 1fr);
-	align-items: center;
-	gap: 0.5rem;
-	min-height: 2.25rem;
-	padding: 0.375rem 0.5rem;
-	color: var(--md-sys-color-on-surface-variant);
-	background: transparent;
-	border: 0;
-	border-radius: var(--md-sys-shape-corner-extra-small);
-	text-align: left;
-}
-
-.tagMenu button:hover {
-	color: var(--md-sys-color-on-surface);
-	background: var(--sb-surface-subtle);
-}
-
-.tagMenu p {
-	margin: 0;
-	padding: 0.625rem 0.5rem;
-	color: var(--sb-text-subtle);
-	font-size: 0.75rem;
 }
 
 .commentList {
@@ -1168,16 +1057,6 @@
 	text-decoration: none;
 }
 
-.comment header span {
-	padding: 0.125rem 0.375rem;
-	color: var(--sb-text-subtle);
-	background: var(--sb-control);
-	border: 1px solid var(--md-sys-color-outline-variant);
-	border-radius: var(--md-sys-shape-corner-extra-small);
-	font-size: 0.625rem;
-	font-weight: 700;
-}
-
 .comment header time {
 	margin-left: auto;
 	color: var(--sb-text-subtle);
@@ -1216,10 +1095,6 @@
 	gap: 0.5rem;
 }
 
-.commentComposer textarea {
-	min-height: 6rem;
-}
-
 .commentComposer > p {
 	margin: 0;
 	color: var(--md-sys-color-error);
@@ -1239,10 +1114,6 @@
 	border-radius: var(--md-sys-shape-corner-extra-small);
 	font-size: 0.75rem;
 	font-weight: 750;
-}
-
-.commentComposer > button {
-	justify-self: end;
 }
 
 .commentComposer > button:disabled {
@@ -1497,14 +1368,9 @@
 .markdownPreview a:focus-visible,
 .detailActions a:focus-visible,
 .detailActions button:focus-visible,
-.tagPicker > summary:focus-visible,
-.tagMenu button:focus-visible,
 .comment header a:focus-visible,
-.commentComposer > button:focus-visible,
 .commentError button:focus-visible,
-.cardDetail input:not([type="checkbox"]):focus-visible,
-.cardDetail select:focus-visible,
-.cardDetail textarea:focus-visible {
+.cardDetail :focus-visible:where(a) {
 	outline: 2px solid var(--md-sys-color-secondary);
 	outline-offset: 2px;
 }
@@ -1701,29 +1567,16 @@
 	grid-area: manage;
 }
 
-.tagMenuFooter {
-	display: grid;
-	gap: 0.125rem;
-	padding-top: 0.375rem;
-	margin-top: 0.375rem;
-	border-top: 1px solid var(--md-sys-color-outline-variant);
+.detailField {
+	position: relative;
+	min-width: 0;
 }
 
-.tagMenuFooter button {
-	display: flex;
-	gap: 0.375rem;
-	align-items: center;
-	width: 100%;
-	padding: 0.375rem 0.5rem;
-	font-size: 0.8125rem;
-	color: var(--md-sys-color-on-surface-variant);
-	text-align: start;
-	background: none;
-	border: 0;
-	border-radius: var(--md-sys-shape-corner-extra-small);
-}
-
-.tagMenuFooter button:hover {
-	color: var(--md-sys-color-on-surface);
-	background: var(--sb-surface-subtle);
+/* Material puts a character counter at the field's trailing supporting edge;
+   the save indicator rides the same spot. */
+.fieldSave {
+	position: absolute;
+	top: 0.125rem;
+	right: 0;
+	pointer-events: none;
 }

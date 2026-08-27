@@ -589,8 +589,9 @@ describe("SITCON Board interactions", () => {
 			expect.arrayContaining(["Team::開發組", "Priority::High"])
 		);
 
-		await user.click(within(tags as HTMLElement).getByText("新增"));
-		await user.click(await within(tags as HTMLElement).findByRole("option", { name: /Team::設計組/ }));
+		await user.click(within(tags as HTMLElement).getByRole("button", { name: "新增 Label" }));
+		const labelPicker = await screen.findByRole("dialog", { name: "新增 Label" });
+		await user.click(within(labelPicker).getByRole("button", { name: /Team::設計組/ }));
 		expect(updateLabels).toHaveBeenLastCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), expect.not.arrayContaining(["Team::開發組"]));
 		expect(vi.mocked(updateLabels).mock.calls.at(-1)?.[2]).toContain("Team::設計組");
 	});

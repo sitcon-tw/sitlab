@@ -311,6 +311,23 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/events/sync": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Stream authenticated board deltas from a checkpoint */
+		get: operations["streamSyncEvents"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/health/live": {
 		parameters: {
 			query?: never;
@@ -409,6 +426,23 @@ export interface paths {
 		put?: never;
 		/** Retry a failed durable operation */
 		post: operations["retryOperation"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/sync": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Replay board changes since a checkpoint */
+		get: operations["getSyncDelta"];
+		put?: never;
+		post?: never;
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -597,6 +631,21 @@ export interface components {
 			card: components["schemas"]["BoardCard"];
 			operation: components["schemas"]["DurableOperation"];
 		};
+		/** @description A lane's manual card order. Recorded per lane rather than per card because one drag renumbers every card in up to two lanes. */
+		CardOrder: {
+			listKey: string;
+			issueIids: number[];
+		};
+		CardOrderSyncAction: {
+			/** @enum {string} */
+			entity: "cardOrder";
+			order: components["schemas"]["CardOrder"];
+		} & WithRequired<components["schemas"]["SyncAction"], "entity">;
+		CardSyncAction: {
+			/** @enum {string} */
+			entity: "card";
+			card: components["schemas"]["BoardCard"] | null;
+		} & WithRequired<components["schemas"]["SyncAction"], "entity">;
 		CreateCardCommentRequest: {
 			body: string;
 		};
@@ -736,12 +785,27 @@ export interface components {
 			/** @enum {string} */
 			status: "ok";
 		};
+		ListSyncAction: {
+			/** @enum {string} */
+			entity: "list";
+			list: components["schemas"]["BoardList"] | null;
+		} & WithRequired<components["schemas"]["SyncAction"], "entity">;
+		MemberSyncAction: {
+			/** @enum {string} */
+			entity: "member";
+			member: components["schemas"]["DirectoryMember"] | null;
+		} & WithRequired<components["schemas"]["SyncAction"], "entity">;
 		MoveCardRequest: {
 			operationId: components["schemas"]["uuid"];
 			listKey: string;
 			/** Format: int32 */
 			position: number;
 		};
+		PreferenceSyncAction: {
+			/** @enum {string} */
+			entity: "preference";
+			preferences: components["schemas"]["UserPreferences"];
+		} & WithRequired<components["schemas"]["SyncAction"], "entity">;
 		PreferencesResponse: {
 			preferences: components["schemas"]["UserPreferences"];
 		};
@@ -791,7 +855,8 @@ export interface components {
 				| "OPERATION_CONFLICT"
 				| "SNAPSHOT_NOT_READY"
 				| "GITLAB_UNAVAILABLE"
-				| "GITLAB_INVALID_WEBHOOK";
+				| "GITLAB_INVALID_WEBHOOK"
+				| "SYNC_CHECKPOINT_TOO_OLD";
 			detail?: string;
 			requestId?: string;
 			errors?: components["schemas"]["ProblemError"][];
@@ -847,6 +912,33 @@ export interface components {
 		RetryOperationResponse: {
 			operation: components["schemas"]["DurableOperation"];
 		};
+		/** @description One recorded change. Payloads are full snapshots, so applying the same action twice is a no-op and the newest action for an entity subsumes every earlier one. */
+		SyncAction: {
+			entity: string;
+			/** @description Monotonic checkpoint. Gapless and issued in commit order. */
+			syncId: string;
+			entityId: string;
+			/** @enum {string} */
+			operation: "upsert" | "delete";
+			actorGitLabUserId: number | null;
+			/** Format: date-time */
+			occurredAt: string;
+		};
+		SyncDeltaResponse: {
+			/** @description The checkpoint reached. Store it and send it back as `since` next time. */
+			checkpoint: string;
+			actions: (
+				| components["schemas"]["CardSyncAction"]
+				| components["schemas"]["CardOrderSyncAction"]
+				| components["schemas"]["ListSyncAction"]
+				| components["schemas"]["TeamSyncAction"]
+				| components["schemas"]["MemberSyncAction"]
+				| components["schemas"]["PreferenceSyncAction"]
+				| components["schemas"]["SyncStatusSyncAction"]
+			)[];
+			/** @description More actions remain past this batch; request again from the new checkpoint. */
+			hasMore: boolean;
+		};
 		SyncStatus: {
 			/** @enum {string} */
 			state: "synced" | "syncing" | "offline";
@@ -854,6 +946,16 @@ export interface components {
 			lastSuccessAt: string;
 			message: string | null;
 		};
+		SyncStatusSyncAction: {
+			/** @enum {string} */
+			entity: "syncStatus";
+			sync: components["schemas"]["SyncStatus"];
+		} & WithRequired<components["schemas"]["SyncAction"], "entity">;
+		TeamSyncAction: {
+			/** @enum {string} */
+			entity: "team";
+			team: components["schemas"]["DirectoryTeam"] | null;
+		} & WithRequired<components["schemas"]["SyncAction"], "entity">;
 		UpdateCardAssigneeRequest: {
 			operationId: components["schemas"]["uuid"];
 			assigneeGitLabUserIds: number[];
@@ -2134,6 +2236,55 @@ export interface operations {
 			};
 		};
 	};
+	streamSyncEvents: {
+		parameters: {
+			query?: {
+				since?: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description The request has succeeded. */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"text/event-stream": string;
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
 	getLiveness: {
 		parameters: {
 			query?: never;
@@ -2626,6 +2777,74 @@ export interface operations {
 			};
 		};
 	};
+	getSyncDelta: {
+		parameters: {
+			query: {
+				since: string;
+				limit?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description The request has succeeded. */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["SyncDeltaResponse"];
+				};
+			};
+			/** @description The server could not understand the request due to invalid syntax. */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The request conflicts with the current state of the server. */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
 	refreshSnapshots: {
 		parameters: {
 			query?: never;
@@ -2815,3 +3034,6 @@ export interface operations {
 		};
 	};
 }
+type WithRequired<T, K extends keyof T> = T & {
+	[P in K]-?: T[P];
+};

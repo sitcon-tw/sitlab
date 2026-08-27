@@ -61,7 +61,7 @@ function FieldFrame({
 				</p>
 			) : null}
 			{error ? (
-				<p className="md-field__supporting md-field__supporting--error" id={`${id}-error`}>
+				<p className="md-field__supporting md-field__supporting--error" id={`${id}-error`} role="alert">
 					{error}
 				</p>
 			) : null}

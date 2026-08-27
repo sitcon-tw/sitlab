@@ -15,6 +15,7 @@ import {
 	MenuItem,
 	SegmentedButton,
 	SelectField,
+	Spinner,
 	StaticChip,
 	TextAreaField,
 	TextField,
@@ -1060,10 +1061,7 @@ function CardDetail({
 				<p className={styles.srOnly} role="status" aria-live="polite">
 					{save.announcement}
 				</p>
-				<label className={styles.detailTitle}>
-					<span>標題</span>
-					<input value={title} maxLength={255} onChange={(event) => setTitle(event.target.value)} />
-				</label>
+				<TextField className={styles.detailTitle} label="標題" value={title} maxLength={255} onChange={(event) => setTitle(event.target.value)} />
 				<section className={styles.detailDescription}>
 					<header className={styles.detailDescriptionHeader}>
 						<span>描述</span>
@@ -1079,13 +1077,7 @@ function CardDetail({
 						/>
 					</header>
 					{descriptionMode === "edit" ? (
-						<textarea
-							aria-label="描述"
-							value={description}
-							onChange={(event) => setDescription(event.target.value)}
-							placeholder="工作內容、驗收條件、相關連結..."
-							rows={8}
-						/>
+						<TextAreaField label="描述" value={description} onChange={(event) => setDescription(event.target.value)} rows={8} />
 					) : (
 						<div className={styles.markdownPreview} aria-label="描述預覽">
 							{description.trim() ? (
@@ -1108,30 +1100,28 @@ function CardDetail({
 					)}
 				</section>
 				<div className={styles.detailGrid}>
-					<label>
-						<span>
-							組別 <SaveIndicator save={save.get(card.issueIid, "team")} name="組別" />
+					<div className={styles.detailField}>
+						<SelectField
+							label="組別"
+							value={card.teamKey}
+							onChange={(event) => onTeam(event.target.value)}
+							options={teams.map((team) => ({ value: team.key, label: team.name }))}
+						/>
+						<span className={styles.fieldSave}>
+							<SaveIndicator save={save.get(card.issueIid, "team")} name="組別" />
 						</span>
-						<select aria-label="組別" value={card.teamKey} onChange={(event) => onTeam(event.target.value)}>
-							{teams.map((team) => (
-								<option key={team.key} value={team.key}>
-									{team.name}
-								</option>
-							))}
-						</select>
-					</label>
-					<label>
-						<span>
-							狀態 <SaveIndicator save={save.get(card.issueIid, "status")} name="狀態" />
+					</div>
+					<div className={styles.detailField}>
+						<SelectField
+							label="狀態"
+							value={card.listKey}
+							onChange={(event) => onMove(event.target.value)}
+							options={lists.map((list) => ({ value: list.key, label: list.name }))}
+						/>
+						<span className={styles.fieldSave}>
+							<SaveIndicator save={save.get(card.issueIid, "status")} name="狀態" />
 						</span>
-						<select aria-label="狀態" value={card.listKey} onChange={(event) => onMove(event.target.value)}>
-							{lists.map((list) => (
-								<option key={list.key} value={list.key}>
-									{list.name}
-								</option>
-							))}
-						</select>
-					</label>
+					</div>
 					<div className={styles.detailAssignees}>
 						<span>
 							Assignee <SaveIndicator save={save.get(card.issueIid, "assignee")} name="Assignee" />
@@ -1139,18 +1129,18 @@ function CardDetail({
 						<AssigneePicker bootstrap={bootstrap} teamKey={card.teamKey} value={card.assigneeGitLabUserIds} onChange={onAssignee} label="變更 Assignee" />
 					</div>
 					<div className={styles.detailDates}>
-						<label>
-							<span>
-								Start <SaveIndicator save={save.get(card.issueIid, "startDate")} name="Start" />
+						<div className={styles.detailField}>
+							<TextField type="date" label="Start" value={card.startDate ?? ""} onChange={(event) => onStartDate(event.target.value || null)} />
+							<span className={styles.fieldSave}>
+								<SaveIndicator save={save.get(card.issueIid, "startDate")} name="Start" />
 							</span>
-							<input type="date" aria-label="Start" value={card.startDate ?? ""} onChange={(event) => onStartDate(event.target.value || null)} />
-						</label>
-						<label>
-							<span>
-								Due <SaveIndicator save={save.get(card.issueIid, "dueDate")} name="Due" />
+						</div>
+						<div className={styles.detailField}>
+							<TextField type="date" label="Due" value={card.dueDate ?? ""} onChange={(event) => onDueDate(event.target.value || null)} />
+							<span className={styles.fieldSave}>
+								<SaveIndicator save={save.get(card.issueIid, "dueDate")} name="Due" />
 							</span>
-							<input type="date" aria-label="Due" value={card.dueDate ?? ""} onChange={(event) => onDueDate(event.target.value || null)} />
-						</label>
+						</div>
 					</div>
 				</div>
 				<CardTags card={card} bootstrap={bootstrap} onChange={onLabels} save={save.get(card.issueIid, "labels")} />
@@ -1188,7 +1178,11 @@ function CardTags({
 	const [query, setQuery] = useState("");
 	const [managerOpen, setManagerOpen] = useState(false);
 	const [managerSeed, setManagerSeed] = useState("");
-	const picker = useRef<HTMLDetailsElement>(null);
+	const [pickerOpen, setPickerOpen] = useState(false);
+	const changePickerOpen = (next: boolean) => {
+		setPickerOpen(next);
+		if (!next) setQuery("");
+	};
 	const labelsQuery = useProjectLabels();
 	const teamLabels = new Set(bootstrap.teams.filter((team) => team.active).map((team) => team.gitLabLabel));
 	const labelMetadata = new Map(labelsQuery.data?.map((label) => [label.name, label]));
@@ -1210,7 +1204,7 @@ function CardTags({
 		const next = card.labels.filter((current) => nextScope === "general" || scope(current) !== nextScope);
 		onChange([...next, label]);
 		setQuery("");
-		if (picker.current) picker.current.open = false;
+		setPickerOpen(false);
 	};
 	const remove = (label: string) => {
 		onChange(card.labels.filter((current) => current !== label));
@@ -1219,7 +1213,7 @@ function CardTags({
 	const openManager = (seed: string) => {
 		setManagerSeed(seed);
 		setManagerOpen(true);
-		if (picker.current) picker.current.open = false;
+		setPickerOpen(false);
 	};
 
 	return (
@@ -1228,39 +1222,59 @@ function CardTags({
 				<header>
 					<h3 id="card-labels-heading">Labels</h3>
 					<SaveIndicator save={save} name="Labels" />
-					<details className={styles.tagPicker} ref={picker}>
-						<summary aria-label="新增 Label" title="新增 Label">
-							<Plus size="0.875rem" aria-hidden="true" /> 新增
-						</summary>
-						<div className={styles.tagMenu}>
-							<input aria-label="搜尋 Label" value={query} onChange={(event) => setQuery(event.target.value)} />
-							<div role="listbox" aria-label="可用 Labels">
-								{available.map((label) => (
-									<button key={label.name} type="button" role="option" aria-selected="false" onClick={() => add(label.name)}>
-										<TagSwatch label={label} />
-										<span>{label.name}</span>
-									</button>
-								))}
-								{labelsQuery.isLoading ? <p role="status">載入中...</p> : null}
-								{labelsQuery.isError ? (
-									<button type="button" onClick={() => void labelsQuery.refetch()}>
-										<RefreshCw size="0.8125rem" aria-hidden="true" /> 重新載入
-									</button>
-								) : null}
-								{labelsQuery.isSuccess && available.length === 0 ? <p>沒有可用的 Label</p> : null}
-							</div>
-							<div className={styles.tagMenuFooter}>
+					<Dialog
+						open={pickerOpen}
+						onOpenChange={changePickerOpen}
+						title="新增 Label"
+						description="從專案既有的 Labels 中選擇"
+						trigger={
+							<Button variant="text" aria-label="新增 Label" leadingIcon={<Plus size="1.125rem" aria-hidden="true" />} title="新增 Label">
+								新增
+							</Button>
+						}
+						footer={
+							<>
 								{normalizedQuery && !(labelsQuery.data ?? []).some((label) => label.name === query.trim()) ? (
-									<button type="button" onClick={() => openManager(query.trim())}>
-										<Plus size="0.8125rem" aria-hidden="true" /> 建立「{query.trim()}」
-									</button>
+									<Button variant="text" leadingIcon={<Plus size="1.125rem" aria-hidden="true" />} onClick={() => openManager(query.trim())}>
+										建立「{query.trim()}」
+									</Button>
 								) : null}
-								<button type="button" onClick={() => openManager("")}>
-									<Settings size="0.8125rem" aria-hidden="true" /> 管理 Labels
-								</button>
-							</div>
-						</div>
-					</details>
+								<Button variant="text" leadingIcon={<Settings size="1.125rem" aria-hidden="true" />} onClick={() => openManager("")}>
+									管理 Labels
+								</Button>
+							</>
+						}
+					>
+						<TextField label="搜尋 Label" value={query} onChange={(event) => setQuery(event.target.value)} />
+						<ul className={`md-list ${styles.tagMenu}`} aria-label="可用 Labels">
+							{available.map((label) => (
+								<li key={label.name}>
+									<button type="button" className="md-list-item md-state-layer" onClick={() => add(label.name)}>
+										<span className="md-list-item__leading">
+											<TagSwatch label={label} />
+										</span>
+										<span className="md-list-item__text">
+											<span className="md-list-item__headline">{label.name}</span>
+											{label.description ? <span className="md-list-item__supporting">{label.description}</span> : null}
+										</span>
+									</button>
+								</li>
+							))}
+							{labelsQuery.isLoading ? (
+								<li>
+									<Spinner size="sm" label="載入 Label 中" />
+								</li>
+							) : null}
+							{labelsQuery.isError ? (
+								<li>
+									<Button variant="text" leadingIcon={<RefreshCw size="1.125rem" aria-hidden="true" />} onClick={() => void labelsQuery.refetch()}>
+										重新載入
+									</Button>
+								</li>
+							) : null}
+							{labelsQuery.isSuccess && available.length === 0 ? <li className={styles.noResults}>沒有可用的 Label</li> : null}
+						</ul>
+					</Dialog>
 				</header>
 				<div className={styles.tagList}>
 					{card.labels.map((label) => {
@@ -1329,7 +1343,7 @@ function CardComments({ card }: { card: BoardCard }) {
 		<section className={styles.comments} aria-labelledby="card-comments-heading">
 			<header>
 				<h3 id="card-comments-heading">Comment</h3>
-				{commentsQuery.data ? <span>{commentsQuery.data.length}</span> : null}
+				{commentsQuery.data ? <Badge tone="neutral">{commentsQuery.data.length}</Badge> : null}
 			</header>
 			{commentsQuery.isLoading ? <p className={styles.commentState}>載入中...</p> : null}
 			{commentsQuery.isError ? (
@@ -1350,7 +1364,7 @@ function CardComments({ card }: { card: BoardCard }) {
 								<a href={comment.author.profileUrl} target="_blank" rel="noreferrer">
 									{comment.author.displayName}
 								</a>
-								{comment.system ? <span>系統活動</span> : null}
+								{comment.system ? <StaticChip variant="assist" label="系統活動" /> : null}
 								<time dateTime={comment.createdAt}>{formatDateTime(comment.createdAt)}</time>
 							</header>
 							<div className={styles.commentBody}>
@@ -1361,10 +1375,11 @@ function CardComments({ card }: { card: BoardCard }) {
 				))}
 			</div>
 			<div className={styles.commentComposer}>
-				<textarea
-					aria-label="Comment"
+				<TextAreaField
+					label="Comment"
 					rows={4}
 					value={body}
+					{...(commentMutation.isError ? { error: errorMessage(commentMutation.error, "Comment 送出失敗，請重試。") } : {})}
 					onChange={(event) => {
 						setBody(event.target.value);
 						if (commentMutation.isError) commentMutation.reset();
@@ -1376,10 +1391,16 @@ function CardComments({ card }: { card: BoardCard }) {
 						}
 					}}
 				/>
-				{commentMutation.isError ? <p role="alert">{errorMessage(commentMutation.error, "Comment 送出失敗，請重試。")}</p> : null}
-				<button type="button" disabled={!body.trim() || commentMutation.isPending || card.issueIid <= 0} onClick={submit}>
-					<Send size="0.875rem" aria-hidden="true" /> {commentMutation.isPending ? "送出中" : "送出 Comment"}
-				</button>
+				<Button
+					variant="filled"
+					disabled={!body.trim() || card.issueIid <= 0}
+					loading={commentMutation.isPending}
+					loadingLabel="送出中"
+					leadingIcon={<Send size="1.125rem" aria-hidden="true" />}
+					onClick={submit}
+				>
+					送出 Comment
+				</Button>
 			</div>
 		</section>
 	);
