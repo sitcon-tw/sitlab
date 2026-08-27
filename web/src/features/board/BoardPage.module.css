@@ -262,13 +262,6 @@
 
 .quickNotice button,
 .undo button,
-.syncError button {
-	color: var(--md-sys-color-primary);
-	background: transparent;
-	border: 0;
-	font-weight: 750;
-}
-
 .undo span {
 	flex: 1;
 }
@@ -390,20 +383,10 @@
 
 .laneHeader h2 {
 	margin: 0;
-	font-size: 0.8125rem;
-	font-weight: 800;
-}
-
-.laneHeader span {
-	display: grid;
-	min-width: 1.375rem;
-	height: 1.375rem;
-	place-items: center;
-	color: var(--sb-text-subtle);
-	background: var(--sb-surface-subtle);
-	border-radius: var(--md-sys-shape-corner-full);
-	font-size: 0.6875rem;
-	font-weight: 750;
+	font-size: var(--md-sys-typescale-title-small-size);
+	font-weight: var(--md-sys-typescale-title-small-weight);
+	line-height: var(--md-sys-typescale-title-small-line-height);
+	letter-spacing: var(--md-sys-typescale-title-small-tracking);
 }
 
 .cardList {
@@ -419,7 +402,6 @@
 	gap: 0.625rem;
 	padding: var(--md-space-3);
 	background: var(--sb-surface);
-	border: 1px solid var(--md-sys-color-outline-variant);
 	border-radius: var(--md-sys-shape-corner-medium);
 	box-shadow: var(--md-sys-elevation-level1);
 	isolation: isolate;
@@ -479,27 +461,8 @@
 	transform: rotate(1deg);
 }
 
-.dragHandle {
-	display: grid;
-	width: 1.625rem;
-	height: 1.625rem;
-	padding: 0;
-	place-items: center;
-	color: var(--sb-text-subtle);
-	background: transparent;
-	border: 0;
-	border-radius: var(--md-sys-shape-corner-extra-small);
-	cursor: grab;
-	touch-action: none;
-}
-
 .dragHandle:active {
 	cursor: grabbing;
-}
-
-.dragHandle:disabled {
-	cursor: not-allowed;
-	opacity: 0.32;
 }
 
 .cardOrderControls {
@@ -510,37 +473,6 @@
 
 .cardOrderControls[data-visible="false"] {
 	visibility: hidden;
-}
-
-.cardOrderControls button {
-	display: grid;
-	width: 1.625rem;
-	height: 1.625rem;
-	padding: 0;
-	place-items: center;
-	color: var(--sb-text-subtle);
-	background: transparent;
-	border: 1px solid transparent;
-	border-radius: var(--md-sys-shape-corner-extra-small);
-}
-
-.cardOrderControls button:hover:not(:disabled) {
-	color: var(--md-sys-color-on-surface);
-	background: var(--sb-surface-subtle);
-	border-color: var(--md-sys-color-outline-variant);
-}
-
-.cardOrderControls button:disabled {
-	opacity: 0.32;
-	cursor: not-allowed;
-}
-
-.cardTopline a {
-	display: grid;
-	width: 1.625rem;
-	height: 1.625rem;
-	place-items: center;
-	color: var(--sb-text-subtle);
 }
 
 .cardTitle {
@@ -562,18 +494,20 @@
 	min-height: 0;
 	margin: 0;
 	overflow-wrap: anywhere;
-	font-size: 0.875rem;
-	font-weight: 720;
-	line-height: 1.45;
+	font-size: var(--md-sys-typescale-title-medium-size);
+	font-weight: var(--md-sys-typescale-title-medium-weight);
+	line-height: var(--md-sys-typescale-title-medium-line-height);
+	letter-spacing: var(--md-sys-typescale-title-medium-tracking);
 }
 
 .cardTitle p {
 	display: -webkit-box;
 	margin: 0;
 	overflow: hidden;
-	color: var(--sb-text-subtle);
-	font-size: 0.75rem;
-	line-height: 1.45;
+	font-size: var(--md-sys-typescale-body-medium-size);
+	line-height: var(--md-sys-typescale-body-medium-line-height);
+	color: var(--md-sys-color-on-surface-variant);
+	letter-spacing: var(--md-sys-typescale-body-medium-tracking);
 	-webkit-box-orient: vertical;
 	-webkit-line-clamp: 2;
 }
@@ -587,22 +521,30 @@
 
 .cardDate {
 	display: flex;
+	gap: var(--md-space-1);
 	align-items: center;
-	gap: 0.25rem;
-	color: var(--sb-text-subtle);
+	height: 2rem;
+	padding: 0 var(--md-space-2);
+	color: var(--md-sys-color-on-surface-variant);
+	border: 1px solid var(--md-sys-color-outline);
+	border-radius: var(--md-sys-shape-corner-small);
 }
 
 .cardDate[data-overdue="true"] {
 	color: var(--md-sys-color-error);
+	border-color: var(--md-sys-color-error);
 }
 
 .cardDate input {
-	width: 7.2rem;
-	height: 1.875rem;
-	padding: 0 0.25rem;
+	width: 7rem;
+	padding: 0;
+	font-size: var(--md-sys-typescale-label-large-size);
+	font-weight: var(--md-sys-typescale-label-large-weight);
+	line-height: var(--md-sys-typescale-label-large-line-height);
+	color: inherit;
+	letter-spacing: var(--md-sys-typescale-label-large-tracking);
 	background: transparent;
-	border-color: transparent;
-	font-size: 0.6875rem;
+	border: 0;
 }
 
 .syncError {
@@ -1535,16 +1477,10 @@
 .quickCreate input:focus-visible,
 .assigneeControl:focus-visible,
 .assigneeCompact:focus-visible,
-.quickMoreButton:focus-visible,
-.createButton:focus-visible,
 .card select:focus-visible,
 .card input:focus-visible,
-.card a:focus-visible,
-.cardOrderControls button:focus-visible,
-.dragHandle:focus-visible,
 .quickNotice button:focus-visible,
 .undo button:focus-visible,
-.syncError button:focus-visible,
 .conflict button:focus-visible,
 .pickerSearch button:focus-visible,
 .memberOption:focus-visible,
@@ -1559,7 +1495,6 @@
 .commandInput > button:focus-visible,
 .commandMenu button:focus-visible,
 .markdownPreview a:focus-visible,
-.pickerFooter button:focus-visible,
 .detailActions a:focus-visible,
 .detailActions button:focus-visible,
 .tagPicker > summary:focus-visible,

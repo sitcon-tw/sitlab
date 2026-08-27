@@ -1,5 +1,5 @@
 import { Slot, Slottable } from "@radix-ui/react-slot";
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 import { classNames } from "../lib/classNames";
 import { useRipple } from "../lib/useRipple";
 
@@ -15,6 +15,7 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
 	selected?: boolean;
 	/** Render the caller's element instead of a <button>, e.g. an <a>. */
 	asChild?: boolean;
+	ref?: Ref<HTMLButtonElement>;
 }
 
 export function IconButton({

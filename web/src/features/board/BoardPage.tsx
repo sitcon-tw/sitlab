@@ -484,7 +484,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 								<DroppableLane listKey={list.key} key={list.key}>
 									<header className={styles.laneHeader}>
 										<h2>{list.name}</h2>
-										<span>{listCards.length}</span>
+										<Badge tone="neutral">{listCards.length}</Badge>
 									</header>
 									<div className={styles.cardList}>
 										{listCards.map((card, index) => (
@@ -893,43 +893,40 @@ function CardItem({
 	return (
 		<article ref={ref} className={styles.card} data-sync={card.syncState === "failed" ? "failed" : undefined} data-dragging={isDragSource || undefined}>
 			<div className={styles.cardTopline}>
-				<button
+				<IconButton
 					ref={handleRef}
-					type="button"
+					size="sm"
 					className={styles.dragHandle}
-					aria-label={`拖曳 ${title}`}
+					label={`拖曳 ${title}`}
 					title={manualOrder ? "拖曳調整卡片位置" : "切換至手動順序後拖曳"}
 					disabled={!manualOrder}
-				>
-					<GripVertical size="0.9375rem" aria-hidden="true" />
-				</button>
+					icon={<GripVertical size="1.125rem" aria-hidden="true" />}
+				/>
 				<span>#{card.issueIid > 0 ? card.issueIid : "new"}</span>
 				<div className={styles.cardOrderControls} data-visible={manualOrder} role="group" aria-label={`${title} 的手動順序`}>
-					<button
+					<IconButton
 						ref={moveUpRef}
-						type="button"
-						aria-label={`上移 ${title}`}
+						size="sm"
+						label={`上移 ${title}`}
 						title="上移卡片"
 						disabled={!manualOrder || !onMoveUp}
+						icon={<ArrowUp size="1.125rem" aria-hidden="true" />}
 						onClick={() => moveAndKeepFocus("up")}
-					>
-						<ArrowUp size="0.875rem" aria-hidden="true" />
-					</button>
-					<button
+					/>
+					<IconButton
 						ref={moveDownRef}
-						type="button"
-						aria-label={`下移 ${title}`}
+						size="sm"
+						label={`下移 ${title}`}
 						title="下移卡片"
 						disabled={!manualOrder || !onMoveDown}
+						icon={<ArrowDown size="1.125rem" aria-hidden="true" />}
 						onClick={() => moveAndKeepFocus("down")}
-					>
-						<ArrowDown size="0.875rem" aria-hidden="true" />
-					</button>
+					/>
 				</div>
 				{card.webUrl ? (
-					<a href={card.webUrl} target="_blank" rel="noreferrer" aria-label={`在 GitLab 開啟 ${title}`} title="在 GitLab 開啟">
-						<ExternalLink size="0.875rem" aria-hidden="true" />
-					</a>
+					<IconButton asChild size="sm" label={`在 GitLab 開啟 ${title}`} title="在 GitLab 開啟" icon={<ExternalLink size="1.125rem" aria-hidden="true" />}>
+						<a href={card.webUrl} target="_blank" rel="noreferrer" />
+					</IconButton>
 				) : null}
 			</div>
 			<button type="button" className={styles.cardTitle} onClick={onOpen}>
@@ -954,9 +951,9 @@ function CardItem({
 			{card.syncState === "failed" ? (
 				<div className={styles.syncError} role="alert">
 					<span>{card.syncError || "同步失敗"}</span>
-					<button type="button" onClick={onRetry}>
-						<RefreshCw size="0.8125rem" aria-hidden="true" /> 重試
-					</button>
+					<Button variant="text" tone="error" size="sm" leadingIcon={<RefreshCw size="1.125rem" aria-hidden="true" />} onClick={onRetry}>
+						重試
+					</Button>
 				</div>
 			) : null}
 		</article>
