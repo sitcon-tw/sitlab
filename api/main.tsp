@@ -24,6 +24,7 @@ using OpenAPI;
 @tagMetadata("Bootstrap", #{ description: "Complete initial state for a loading-free first render." })
 @tagMetadata("Directory", #{ description: "Normalized SITCON teams and GitLab project members." })
 @tagMetadata("Cards", #{ description: "Optimistic GitLab issue board mutations." })
+@tagMetadata("Labels", #{ description: "GitLab project label catalog and management." })
 @tagMetadata("Sync", #{ description: "Durable operations and background snapshot refresh." })
 @tagMetadata("Realtime", #{ description: "Signed GitLab webhooks and authenticated snapshot events." })
 namespace SitconBoard;

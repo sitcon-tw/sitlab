@@ -15,6 +15,10 @@
 			"description": "Durable operations and background snapshot refresh."
 		},
 		{
+			"name": "Labels",
+			"description": "GitLab project label catalog and management."
+		},
+		{
 			"name": "Cards",
 			"description": "Optimistic GitLab issue board mutations."
 		},
@@ -474,61 +478,6 @@
 						}
 					}
 				},
-				"security": [
-					{
-						"SessionCookieAuth": []
-					}
-				]
-			}
-		},
-		"/cards/labels": {
-			"get": {
-				"operationId": "listProjectLabels",
-				"summary": "List labels available in the GitLab project",
-				"parameters": [],
-				"responses": {
-					"200": {
-						"description": "The request has succeeded.",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProjectLabelsResponse"
-								}
-							}
-						}
-					},
-					"401": {
-						"description": "Access is unauthorized.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					},
-					"503": {
-						"description": "Service unavailable.",
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProblemDetails"
-								}
-							}
-						}
-					}
-				},
-				"tags": ["Cards"],
 				"security": [
 					{
 						"SessionCookieAuth": []
@@ -1599,6 +1548,373 @@
 				"tags": ["System"]
 			}
 		},
+		"/labels": {
+			"get": {
+				"operationId": "listProjectLabels",
+				"summary": "List labels available in the GitLab project",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "The request has succeeded.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectLabelsResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Labels"],
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			},
+			"post": {
+				"operationId": "createProjectLabel",
+				"summary": "Create a GitLab project label as the current user",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"201": {
+						"description": "The request has succeeded and a new resource has been created as a result.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectLabel"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The server could not understand the request due to invalid syntax.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with the current state of the server.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Labels"],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateProjectLabelRequest"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
+		"/labels/{labelId}": {
+			"put": {
+				"operationId": "updateProjectLabel",
+				"summary": "Rename or restyle a GitLab project label as the current user",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/ProjectLabelPath"
+					},
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The request has succeeded.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectLabel"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The server could not understand the request due to invalid syntax.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with the current state of the server.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Labels"],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateProjectLabelRequest"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			},
+			"delete": {
+				"operationId": "deleteProjectLabel",
+				"summary": "Delete a GitLab project label as the current user",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/ProjectLabelPath"
+					},
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "There is no content to send for this request, but the headers may be useful. "
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Labels"],
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
 		"/me/preferences": {
 			"put": {
 				"operationId": "updateMyPreferences",
@@ -2071,6 +2387,15 @@
 				"schema": {
 					"$ref": "#/components/schemas/uuid"
 				}
+			},
+			"ProjectLabelPath": {
+				"name": "labelId",
+				"in": "path",
+				"required": true,
+				"schema": {
+					"type": "integer",
+					"format": "int64"
+				}
 			}
 		},
 		"schemas": {
@@ -2509,6 +2834,38 @@
 					}
 				}
 			},
+			"CreateProjectLabelRequest": {
+				"type": "object",
+				"required": ["name", "color", "description"],
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 255
+					},
+					"color": {
+						"type": "string",
+						"pattern": "^#[0-9A-Fa-f]{6}$"
+					},
+					"description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				},
+				"examples": [
+					{
+						"name": "Priority::High",
+						"color": "#D73A4A",
+						"description": "Needs prompt attention"
+					}
+				]
+			},
 			"CurrentUser": {
 				"type": "object",
 				"required": ["id", "gitLabUserId", "username", "displayName", "avatarUrl", "profileUrl", "accessLevel"],
@@ -2886,7 +3243,8 @@
 							"VALUE_TOO_SHORT",
 							"VALUE_TOO_LONG",
 							"UNKNOWN_TEAM",
-							"UNKNOWN_MEMBER"
+							"UNKNOWN_MEMBER",
+							"RESERVED_LABEL"
 						]
 					},
 					"message": {
@@ -2906,8 +3264,12 @@
 			},
 			"ProjectLabel": {
 				"type": "object",
-				"required": ["name", "color", "textColor", "description"],
+				"required": ["id", "name", "color", "textColor", "description"],
 				"properties": {
+					"id": {
+						"type": "integer",
+						"format": "int64"
+					},
 					"name": {
 						"type": "string"
 					},
@@ -2932,6 +3294,7 @@
 				},
 				"examples": [
 					{
+						"id": 10,
 						"name": "priority::high",
 						"color": "#D73A4A",
 						"textColor": "#FFFFFF",
@@ -3108,6 +3471,38 @@
 				"examples": [
 					{
 						"defaultTeamKey": "development"
+					}
+				]
+			},
+			"UpdateProjectLabelRequest": {
+				"type": "object",
+				"required": ["name", "color", "description"],
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 255
+					},
+					"color": {
+						"type": "string",
+						"pattern": "^#[0-9A-Fa-f]{6}$"
+					},
+					"description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				},
+				"examples": [
+					{
+						"name": "Priority::Urgent",
+						"color": "#B60205",
+						"description": null
 					}
 				]
 			},

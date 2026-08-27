@@ -47,7 +47,8 @@ alias ProblemFieldErrorCode =
 	| "VALUE_TOO_SHORT"
 	| "VALUE_TOO_LONG"
 	| "UNKNOWN_TEAM"
-	| "UNKNOWN_MEMBER";
+	| "UNKNOWN_MEMBER"
+	| "RESERVED_LABEL";
 
 @example(#{ code: "REQUIRED", message: "title is required", location: "body.title" })
 model ProblemError {
@@ -160,6 +161,11 @@ model CSRFHeader {
 model IssueIidPath {
 	@path
 	issueIid: int64;
+}
+
+model ProjectLabelPath {
+	@path
+	labelId: int64;
 }
 
 model OperationIdPath {

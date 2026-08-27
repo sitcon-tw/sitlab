@@ -140,23 +140,6 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
-	"/cards/labels": {
-		parameters: {
-			query?: never;
-			header?: never;
-			path?: never;
-			cookie?: never;
-		};
-		/** List labels available in the GitLab project */
-		get: operations["listProjectLabels"];
-		put?: never;
-		post?: never;
-		delete?: never;
-		options?: never;
-		head?: never;
-		patch?: never;
-		trace?: never;
-	};
 	"/cards/{issueIid}/assignee": {
 		parameters: {
 			query?: never;
@@ -357,6 +340,42 @@ export interface paths {
 		put?: never;
 		post?: never;
 		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/labels": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List labels available in the GitLab project */
+		get: operations["listProjectLabels"];
+		put?: never;
+		/** Create a GitLab project label as the current user */
+		post: operations["createProjectLabel"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/labels/{labelId}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Rename or restyle a GitLab project label as the current user */
+		put: operations["updateProjectLabel"];
+		post?: never;
+		/** Delete a GitLab project label as the current user */
+		delete: operations["deleteProjectLabel"];
 		options?: never;
 		head?: never;
 		patch?: never;
@@ -594,6 +613,18 @@ export interface components {
 		};
 		/**
 		 * @example {
+		 *       "name": "Priority::High",
+		 *       "color": "#D73A4A",
+		 *       "description": "Needs prompt attention"
+		 *     }
+		 */
+		CreateProjectLabelRequest: {
+			name: string;
+			color: string;
+			description: string | null;
+		};
+		/**
+		 * @example {
 		 *       "id": "11111111-1111-1111-1111-111111111111",
 		 *       "gitLabUserId": 123456,
 		 *       "username": "yorukot",
@@ -784,12 +815,14 @@ export interface components {
 				| "VALUE_TOO_SHORT"
 				| "VALUE_TOO_LONG"
 				| "UNKNOWN_TEAM"
-				| "UNKNOWN_MEMBER";
+				| "UNKNOWN_MEMBER"
+				| "RESERVED_LABEL";
 			message: string;
 			location?: string;
 		};
 		/**
 		 * @example {
+		 *       "id": 10,
 		 *       "name": "priority::high",
 		 *       "color": "#D73A4A",
 		 *       "textColor": "#FFFFFF",
@@ -797,6 +830,8 @@ export interface components {
 		 *     }
 		 */
 		ProjectLabel: {
+			/** Format: int64 */
+			id: number;
 			name: string;
 			color: string;
 			textColor: string;
@@ -854,6 +889,18 @@ export interface components {
 		};
 		/**
 		 * @example {
+		 *       "name": "Priority::Urgent",
+		 *       "color": "#B60205",
+		 *       "description": null
+		 *     }
+		 */
+		UpdateProjectLabelRequest: {
+			name: string;
+			color: string;
+			description: string | null;
+		};
+		/**
+		 * @example {
 		 *       "defaultTeamKey": "development",
 		 *       "confirmedAt": "2026-07-14T08:00:00Z",
 		 *       "directoryTeamKeys": [
@@ -885,6 +932,7 @@ export interface components {
 		"GitLabWebhookHeaders.webhookTimestamp": string;
 		IssueIidPath: number;
 		OperationIdPath: components["schemas"]["uuid"];
+		ProjectLabelPath: number;
 	};
 	requestBodies: never;
 	headers: never;
@@ -1233,53 +1281,6 @@ export interface operations {
 			};
 			/** @description Client error */
 			422: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Server error */
-			500: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-			/** @description Service unavailable. */
-			503: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/problem+json": components["schemas"]["ProblemDetails"];
-				};
-			};
-		};
-	};
-	listProjectLabels: {
-		parameters: {
-			query?: never;
-			header?: never;
-			path?: never;
-			cookie?: never;
-		};
-		requestBody?: never;
-		responses: {
-			/** @description The request has succeeded. */
-			200: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["ProjectLabelsResponse"];
-				};
-			};
-			/** @description Access is unauthorized. */
-			401: {
 				headers: {
 					[name: string]: unknown;
 				};
@@ -2169,6 +2170,318 @@ export interface operations {
 				};
 				content: {
 					"application/json": components["schemas"]["HealthResponse"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	listProjectLabels: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description The request has succeeded. */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ProjectLabelsResponse"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	createProjectLabel: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CreateProjectLabelRequest"];
+			};
+		};
+		responses: {
+			/** @description The request has succeeded and a new resource has been created as a result. */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ProjectLabel"];
+				};
+			};
+			/** @description The server could not understand the request due to invalid syntax. */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The request conflicts with the current state of the server. */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	updateProjectLabel: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path: {
+				labelId: components["parameters"]["ProjectLabelPath"];
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["UpdateProjectLabelRequest"];
+			};
+		};
+		responses: {
+			/** @description The request has succeeded. */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ProjectLabel"];
+				};
+			};
+			/** @description The server could not understand the request due to invalid syntax. */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The request conflicts with the current state of the server. */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	deleteProjectLabel: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path: {
+				labelId: components["parameters"]["ProjectLabelPath"];
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description There is no content to send for this request, but the headers may be useful. */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
 				};
 			};
 			/** @description Service unavailable. */

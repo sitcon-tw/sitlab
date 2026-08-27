@@ -139,7 +139,12 @@ function LabelFilter({ value, onChange }: { value: string[]; onChange: (labels: 
 				<div className={styles.pickerList}>
 					{value.map((label) =>
 						labels.some((candidate) => candidate.name === label) ? null : (
-							<LabelOption key={label} label={metadata.get(label) ?? { name: label, color: "", textColor: "", description: null }} selected onToggle={toggle} />
+							<LabelOption
+								key={label}
+								label={metadata.get(label) ?? { id: 0, name: label, color: "", textColor: "", description: null }}
+								selected
+								onToggle={toggle}
+							/>
 						)
 					)}
 					{labels.map((label) => (

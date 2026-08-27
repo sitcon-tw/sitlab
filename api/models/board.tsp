@@ -81,8 +81,9 @@ model CardMutationResponse {
 	operation: DurableOperation;
 }
 
-@example(#{ name: "priority::high", color: "#D73A4A", textColor: "#FFFFFF", description: "Needs prompt attention" })
+@example(#{ id: 10, name: "priority::high", color: "#D73A4A", textColor: "#FFFFFF", description: "Needs prompt attention" })
 model ProjectLabel {
+	id: int64;
 	name: string;
 
 	@pattern("^#[0-9A-Fa-f]{6}$")
@@ -121,6 +122,30 @@ model CardComment {
 
 model ProjectLabelsResponse {
 	labels: ProjectLabel[];
+}
+
+@example(#{ name: "Priority::High", color: "#D73A4A", description: "Needs prompt attention" })
+model CreateProjectLabelRequest {
+	@minLength(1)
+	@maxLength(255)
+	name: string;
+
+	@pattern("^#[0-9A-Fa-f]{6}$")
+	color: string;
+
+	description: string | null;
+}
+
+@example(#{ name: "Priority::Urgent", color: "#B60205", description: null })
+model UpdateProjectLabelRequest {
+	@minLength(1)
+	@maxLength(255)
+	name: string;
+
+	@pattern("^#[0-9A-Fa-f]{6}$")
+	color: string;
+
+	description: string | null;
 }
 
 model CardCommentsResponse {

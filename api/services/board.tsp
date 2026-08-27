@@ -16,16 +16,61 @@ interface BootstrapService {
 	getBootstrap(): OkJson<BootstrapResponse> | UnauthorizedProblem | ServiceUnavailableProblem | InternalServerProblem;
 }
 
+@tag("Labels")
+@useAuth(SessionCookieAuth)
+@route("/labels")
+interface LabelService {
+	@operationId("listProjectLabels")
+	@summary("List labels available in the GitLab project")
+	@get
+	listProjectLabels(): OkJson<ProjectLabelsResponse> | UnauthorizedProblem | ServiceUnavailableProblem | InternalServerProblem;
+
+	@operationId("createProjectLabel")
+	@summary("Create a GitLab project label as the current user")
+	@post
+	createProjectLabel(...CSRFHeader, @body body: CreateProjectLabelRequest):
+		| CreatedJson<ProjectLabel>
+		| BadRequestProblem
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| ConflictProblem
+		| UnprocessableEntityProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
+
+	@operationId("updateProjectLabel")
+	@summary("Rename or restyle a GitLab project label as the current user")
+	@put
+	@route("/{labelId}")
+	updateProjectLabel(...ProjectLabelPath, ...CSRFHeader, @body body: UpdateProjectLabelRequest):
+		| OkJson<ProjectLabel>
+		| BadRequestProblem
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| ConflictProblem
+		| UnprocessableEntityProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
+
+	@operationId("deleteProjectLabel")
+	@summary("Delete a GitLab project label as the current user")
+	@delete
+	@route("/{labelId}")
+	deleteProjectLabel(...ProjectLabelPath, ...CSRFHeader):
+		| NoContent
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| UnprocessableEntityProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
+}
+
 @tag("Cards")
 @useAuth(SessionCookieAuth)
 @route("/cards")
 interface CardService {
-	@operationId("listProjectLabels")
-	@summary("List labels available in the GitLab project")
-	@get
-	@route("/labels")
-	listProjectLabels(): OkJson<ProjectLabelsResponse> | UnauthorizedProblem | ServiceUnavailableProblem | InternalServerProblem;
-
 	@operationId("createCard")
 	@summary("Optimistically create a card")
 	@post
