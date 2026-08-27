@@ -14,7 +14,7 @@ export interface SegmentedButtonProps<Value extends string> {
 	options: Array<SegmentedOption<Value>>;
 	value: Value;
 	onChange: (value: Value) => void;
-	className?: string;
+	className?: string | undefined;
 }
 
 /** MD3 single-select segmented button. */

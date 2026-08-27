@@ -3,7 +3,7 @@ import { Avatar } from "@/shared/Avatar";
 import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { DragDropProvider, DragOverlay, PointerSensor, useDroppable } from "@dnd-kit/react";
 import { useSortable } from "@dnd-kit/react/sortable";
-import { Dialog, Drawer } from "@project-template/ui";
+import { Dialog, Drawer, SegmentedButton, StaticChip } from "@project-template/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	ArrowDown,
@@ -641,14 +641,16 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 
 	return (
 		<form className={styles.quickCreate} onSubmit={submit}>
-			<div className={styles.createModes} role="group" aria-label="開卡模式">
-				<button type="button" aria-pressed={mode === "single"} onClick={() => setMode("single")}>
-					單一組別
-				</button>
-				<button type="button" aria-pressed={mode === "leaders"} onClick={() => setMode("leaders")}>
-					所有組長
-				</button>
-			</div>
+			<SegmentedButton
+				className={styles.createModes}
+				label="開卡模式"
+				value={mode}
+				onChange={setMode}
+				options={[
+					{ value: "single", label: "單一組別" },
+					{ value: "leaders", label: "所有組長" }
+				]}
+			/>
 			{mode === "single" ? (
 				<>
 					<label className={styles.srOnly} htmlFor="quick-team">
@@ -1045,14 +1047,16 @@ function CardDetail({
 				<section className={styles.detailDescription}>
 					<header className={styles.detailDescriptionHeader}>
 						<span>描述</span>
-						<div className={styles.descriptionModes} role="group" aria-label="描述顯示模式">
-							<button type="button" aria-pressed={descriptionMode === "edit"} onClick={() => setDescriptionMode("edit")}>
-								編輯
-							</button>
-							<button type="button" aria-pressed={descriptionMode === "preview"} onClick={() => setDescriptionMode("preview")}>
-								預覽
-							</button>
-						</div>
+						<SegmentedButton
+							className={styles.descriptionModes}
+							label="描述顯示模式"
+							value={descriptionMode}
+							onChange={setDescriptionMode}
+							options={[
+								{ value: "edit", label: "編輯" },
+								{ value: "preview", label: "預覽" }
+							]}
+						/>
 					</header>
 					{descriptionMode === "edit" ? (
 						<textarea
@@ -1242,19 +1246,25 @@ function CardTags({
 					{card.labels.map((label) => {
 						const locked = scope(label) === "team" && selectedTeamCount <= 1;
 						return (
-							<span className={styles.tagChip} key={label}>
-								<TagSwatch label={labelMetadata.get(label)} />
-								<span>{label}</span>
-								<button
-									type="button"
-									aria-label={`移除 Label ${label}`}
-									title={locked ? "Team Tag 必須保留一個" : `移除 ${label}`}
-									disabled={locked}
-									onClick={() => remove(label)}
-								>
-									<X size="0.75rem" aria-hidden="true" />
-								</button>
-							</span>
+							<StaticChip
+								key={label}
+								className={styles.tagChip}
+								variant="input"
+								label={label}
+								leading={<TagSwatch label={labelMetadata.get(label)} />}
+								trailing={
+									<button
+										type="button"
+										className="md-chip__remove"
+										aria-label={`移除 Label ${label}`}
+										title={locked ? "Team Tag 必須保留一個" : `移除 ${label}`}
+										disabled={locked}
+										onClick={() => remove(label)}
+									>
+										<X size="0.75rem" aria-hidden="true" />
+									</button>
+								}
+							/>
 						);
 					})}
 					{card.labels.length === 0 ? <span className={styles.emptyTags}>尚無 Label</span> : null}
