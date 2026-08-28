@@ -5,6 +5,9 @@
 !example.env
 .idea/
 .vscode/
+.agents/
+.claude/skills/
+.pnpm-store/
 node_modules/
 coverage/
 dist/
