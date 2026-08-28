@@ -64,9 +64,7 @@
 	display: grid;
 	grid-template-columns: minmax(7.5rem, 9rem) minmax(7.5rem, 9rem) minmax(12rem, 1fr) minmax(8rem, 11rem) minmax(8rem, 10rem) 2.5rem 2.75rem;
 	align-items: start;
-	grid-template-areas:
-		"mode team title assignee date more create"
-		"notice notice notice notice notice notice notice";
+	grid-template-areas: "mode team title assignee date more create";
 	gap: 0.625rem;
 	width: min(100%, 82rem);
 	margin: 0 auto 1.25rem;
@@ -315,7 +313,7 @@
 }
 
 .quickNotice {
-	grid-area: notice;
+	grid-column: 1 / -1;
 	display: flex;
 	align-items: center;
 	gap: 0.5rem;
@@ -1296,8 +1294,7 @@
 			"mode mode mode mode mode mode"
 			"title title title title title title"
 			"team team assignee assignee assignee assignee"
-			"date date date date more create"
-			"notice notice notice notice notice notice";
+			"date date date date more create";
 	}
 }
 

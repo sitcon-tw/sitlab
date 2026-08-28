@@ -168,7 +168,14 @@ test.describe("SITCON Board demo visual audit", () => {
 				const rect = element.getBoundingClientRect();
 				return { top: rect.top, height: rect.height };
 			});
-			return { boxes, inputOutlineStyle: getComputedStyle(input).outlineStyle };
+			const formRect = form?.getBoundingClientRect();
+			const firstTop = Math.min(...boxes.map((box) => box.top));
+			const lastBottom = Math.max(...boxes.map((box) => box.top + box.height));
+			return {
+				boxes,
+				inputOutlineStyle: getComputedStyle(input).outlineStyle,
+				verticalInsets: formRect ? { top: firstTop - formRect.top, bottom: formRect.bottom - lastBottom } : null
+			};
 		});
 
 		const first = layout.boxes[0]!;
@@ -177,6 +184,8 @@ test.describe("SITCON Board demo visual audit", () => {
 			expect(Math.abs(box.top - first.top)).toBeLessThanOrEqual(1);
 			expect(Math.abs(box.height - first.height)).toBeLessThanOrEqual(1);
 		}
+		expect(layout.verticalInsets).not.toBeNull();
+		expect(Math.abs(layout.verticalInsets!.top - layout.verticalInsets!.bottom)).toBeLessThanOrEqual(1);
 		expect(layout.inputOutlineStyle).toBe("none");
 	});
 
