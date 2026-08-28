@@ -3,7 +3,7 @@ import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 import { classNames } from "../lib/classNames";
 import { useRipple } from "../lib/useRipple";
 
-export type IconButtonVariant = "standard" | "filled" | "tonal" | "outlined";
+export type IconButtonVariant = "standard" | "filled" | "tonal";
 
 export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-label"> {
 	label: string;

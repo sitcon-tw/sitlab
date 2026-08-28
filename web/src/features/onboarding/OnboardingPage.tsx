@@ -99,7 +99,7 @@ function TeamChoice({
 }) {
 	const members = activeMembers(bootstrap).filter((member) => member.teamKeys.includes(team.key));
 	return (
-		<Panel className={styles.team} variant="outlined" data-selected={selected}>
+		<Panel className={styles.team} data-selected={selected}>
 			<div className={styles.teamSummary}>
 				<label className={`md-list-item md-list-item--two-line ${styles.teamSelect}`}>
 					<input type="radio" className="md-radio" name="primary-team" checked={selected} onChange={onSelect} />

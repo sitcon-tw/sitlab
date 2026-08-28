@@ -1,6 +1,6 @@
 # Material Design conversion — handover
 
-> Historical note: this document records the original strict MD3 conversion. The current approved visual direction keeps the component and accessibility work while adapting Simfiment's warm neutral surfaces, Inter typography, stronger tokenized hierarchy, and rounded containers. SITCON green remains primary, and all elevation shadows now resolve to `none`; tonal layering and quiet outlines provide separation in both themes. `design.md` and `tokens.css` are authoritative when a historical statement below conflicts.
+> Historical note: this document records the original strict MD3 conversion. The current approved visual direction keeps the component and accessibility work while adapting Simfiment's warm neutral surfaces, Inter typography, stronger tokenized hierarchy, and rounded containers. SITCON green remains primary, and all elevation shadows now resolve to `none`; tonal layering, spacing, and state layers provide separation in both themes, while visible outlines are reserved for functional controls and states. `design.md` and `tokens.css` are authoritative when a historical statement below conflicts.
 
 Status on branch `sync-engine-foundations`; the last committed conversion phase is `778649c`.
 

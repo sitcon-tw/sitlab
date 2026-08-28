@@ -7,7 +7,6 @@
 .header {
 	color: var(--sb-header-text);
 	background: var(--sb-header);
-	border-bottom: 1px solid color-mix(in srgb, var(--sb-header-text) 16%, transparent);
 }
 
 .header span {
@@ -49,7 +48,6 @@
 }
 
 .team[data-selected="true"] {
-	border-color: var(--md-sys-color-primary);
 	background: color-mix(in srgb, var(--md-sys-color-primary-container) 36%, var(--sb-surface));
 }
 
@@ -87,10 +85,6 @@
 
 .expand {
 	margin-inline-end: var(--md-space-2);
-}
-
-.memberList {
-	border-top: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .footer {

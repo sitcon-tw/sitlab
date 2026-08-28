@@ -4,7 +4,7 @@ import { classNames } from "../lib/classNames";
 import { useRipple } from "../lib/useRipple";
 import { Spinner } from "./Spinner";
 
-export type ButtonVariant = "filled" | "tonal" | "outlined" | "text" | "elevated";
+export type ButtonVariant = "filled" | "tonal" | "text" | "elevated";
 export type ButtonTone = "primary" | "error";
 export type ButtonSize = "sm" | "md" | "lg";
 

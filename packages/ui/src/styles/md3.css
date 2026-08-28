@@ -42,8 +42,8 @@
  *
  * MD3 defines the state layer as the surface's own *content* color at a fixed
  * opacity. `background-color: currentColor` expresses that without a token per
- * variant: a filled button's currentColor is on-primary, an outlined button's
- * is primary, a card's is on-surface.
+ * variant: a filled button's currentColor is on-primary, a tonal button's is
+ * on-secondary-container, and a card's is on-surface.
  *
  * `isolation: isolate` creates a stacking context so `z-index: -1` paints above
  * the host's own background but below its label. `overflow: hidden` clips the
@@ -134,8 +134,9 @@
 /* --- Divider -------------------------------------------------------------- */
 
 .md-divider {
-	height: 1px;
-	background: var(--md-sys-color-outline-variant);
+	height: 0;
+	margin-block: var(--md-space-1);
+	background: none;
 	border: 0;
 }
 
@@ -318,7 +319,6 @@
 	min-width: 7rem;
 	padding: var(--md-space-2) 0;
 	background: var(--md-sys-color-surface-container-low);
-	border: 1px solid var(--md-sys-color-outline-variant);
 	border-radius: var(--md-sys-shape-corner-small);
 }
 
@@ -498,7 +498,6 @@
 	isolation: isolate;
 	transition:
 		background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
-		border-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
 		transform var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
 }
 
@@ -531,16 +530,6 @@
 .md-button--elevated {
 	color: var(--md-sys-color-primary);
 	background-color: var(--md-sys-color-surface-container-low);
-}
-
-.md-button--outlined {
-	color: var(--md-sys-color-primary);
-	background-color: var(--md-sys-color-surface-container-lowest);
-	border: 1px solid var(--md-sys-color-outline-variant);
-}
-
-.md-button--outlined:focus-visible:not(:disabled) {
-	border-color: var(--md-sys-color-primary);
 }
 
 .md-button--text {
@@ -580,7 +569,7 @@
 }
 
 /* MD3 disables per part: 38% content, 12% container, both over on-surface. A
- * blanket opacity would also fade the focus outline and the shadow. */
+ * blanket opacity would also fade the focus outline and tonal container. */
 .md-button:disabled {
 	color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
 	cursor: not-allowed;
@@ -590,10 +579,6 @@
 .md-button--tonal:disabled,
 .md-button--elevated:disabled {
 	background-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
-}
-
-.md-button--outlined:disabled {
-	border-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
 }
 
 /* --- Icon button ---------------------------------------------------------- */
@@ -611,9 +596,7 @@
 	border: none;
 	border-radius: var(--md-sys-shape-corner-full);
 	isolation: isolate;
-	transition:
-		background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
-		border-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+	transition: background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
 }
 
 /* 48dp touch target that does not affect layout. Growing the box instead would
@@ -649,12 +632,6 @@
 	background-color: var(--md-sys-color-secondary-container);
 }
 
-.md-icon-button--outlined {
-	color: var(--md-sys-color-on-surface-variant);
-	background: var(--md-sys-color-surface-container-lowest);
-	border: 1px solid var(--md-sys-color-outline-variant);
-}
-
 .md-icon-button--error {
 	color: var(--md-sys-color-error);
 }
@@ -683,10 +660,6 @@
 	background-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
 }
 
-.md-icon-button--outlined:disabled {
-	border-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
-}
-
 /* --- Chip ----------------------------------------------------------------- */
 
 .md-chip {
@@ -704,13 +677,11 @@
 	line-height: var(--md-sys-typescale-label-large-line-height);
 	color: var(--md-sys-color-on-surface-variant);
 	letter-spacing: var(--md-sys-typescale-label-large-tracking);
-	background: none;
-	border: 1px solid var(--md-sys-color-outline-variant);
+	background: var(--md-sys-color-surface-container-high);
+	border: 0;
 	border-radius: var(--md-sys-shape-corner-small);
 	isolation: isolate;
-	transition:
-		background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
-		border-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+	transition: background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
 }
 
 .md-chip__button {
@@ -732,7 +703,7 @@
 }
 
 .md-chip:has(.md-chip__button:disabled) {
-	border-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+	background-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
 }
 
 .md-chip__label {
@@ -757,20 +728,13 @@
 	padding-inline-start: var(--md-space-2);
 }
 
-.md-chip--suggestion,
-.md-chip--assist {
-	border-color: var(--md-sys-color-outline);
-}
-
 .md-chip--elevated {
 	background-color: var(--md-sys-color-surface-container-low);
-	border-color: transparent;
 }
 
 .md-chip[data-selected="true"] {
 	color: var(--md-sys-color-on-secondary-container);
 	background-color: var(--md-sys-color-secondary-container);
-	border-color: transparent;
 }
 
 /* The remove affordance is its own button, so it needs its own state layer and
@@ -1270,18 +1234,11 @@
 	display: block;
 	overflow: hidden;
 	background: var(--md-sys-color-surface-container-low);
-	border: 1px solid var(--md-sys-color-outline-variant);
 	border-radius: var(--md-sys-shape-corner-large);
 }
 
 .md-panel--filled {
 	background: var(--md-sys-color-surface-container-low);
-	border-color: transparent;
-}
-
-.md-panel--outlined {
-	background: var(--md-sys-color-surface-container-lowest);
-	border: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .md-panel--padded {
@@ -1315,7 +1272,6 @@
 
 .md-panel__body {
 	padding: var(--md-space-4);
-	border-top: 1px solid var(--md-sys-color-outline-variant);
 }
 
 /* --- Top app bar ---------------------------------------------------------- */
@@ -1486,7 +1442,6 @@
 	position: relative;
 	display: flex;
 	overflow-x: auto;
-	border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .md-tabs__list::after {
@@ -1559,7 +1514,6 @@
 	overflow-y: auto;
 	color: var(--md-sys-color-on-surface);
 	background: var(--md-sys-color-surface-container-low);
-	border: 1px solid var(--md-sys-color-outline-variant);
 	border-radius: var(--md-sys-shape-corner-extra-large);
 	transform: translate(-50%, -50%);
 }
@@ -1576,7 +1530,6 @@
 	overflow-y: auto;
 	color: var(--md-sys-color-on-surface);
 	background: var(--md-sys-color-surface);
-	border-left: 1px solid var(--md-sys-color-outline-variant);
 	border-start-start-radius: var(--md-sys-shape-corner-large);
 	border-end-start-radius: var(--md-sys-shape-corner-large);
 }
@@ -1587,10 +1540,6 @@
 	align-items: flex-start;
 	justify-content: space-between;
 	padding: var(--md-space-6);
-}
-
-.md-drawer .md-dialog__header {
-	border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .md-dialog__title {
@@ -1655,7 +1604,6 @@
 	padding: var(--md-space-3) var(--md-space-4);
 	color: var(--md-sys-color-inverse-on-surface);
 	background: var(--md-sys-color-inverse-surface);
-	border: 1px solid color-mix(in srgb, var(--md-sys-color-inverse-on-surface) 20%, transparent);
 	border-radius: var(--md-sys-shape-corner-medium);
 }
 

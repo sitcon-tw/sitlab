@@ -43,8 +43,9 @@
  * STATE  hover .08 · focus .10 · pressed .10 · dragged .16, applied as the
  *   surface's own content color through `background-color: currentColor`.
  *
- * ELEVATION  The product is intentionally shadow-free. Surface tone, a quiet
- *   outline, and state layers communicate hierarchy and interaction.
+ * ELEVATION  The product is intentionally shadow-free. Surface tone, spacing,
+ *   and state layers communicate hierarchy and interaction. Visible outlines
+ *   are reserved for controls, focus, semantic states, swatches, and tables.
  *
  * FOCUS  3dp secondary outline at a 2dp offset, provided once by md3.css.
  * ─────────────────────────────────────────────────────────────────────────────

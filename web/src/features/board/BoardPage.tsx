@@ -1594,7 +1594,7 @@ function DirectoryConflict({ bootstrap, updateBootstrap }: Pick<BoardPageProps, 
 				<span className="md-typescale-body-medium">目前的預設是「{currentName}」。</span>
 			</div>
 			<Button
-				variant="outlined"
+				variant="elevated"
 				loading={saving}
 				loadingLabel="更新中"
 				leadingIcon={<Check size="1rem" aria-hidden="true" />}

@@ -29,7 +29,6 @@ function ComponentCatalog() {
 			<Panel title="Buttons and states" description="Commands use explicit tone and stable dimensions.">
 				<div className="storybook-row">
 					<Button leadingIcon={<Plus size="1rem" aria-hidden="true" />}>Create task</Button>
-					<Button variant="outlined">Outlined</Button>
 					<Button variant="text">Text</Button>
 					<Button variant="tonal">Tonal</Button>
 					<Button variant="elevated">Elevated</Button>
@@ -40,7 +39,6 @@ function ComponentCatalog() {
 					<IconButton label="Archive" icon={<Archive size="1rem" aria-hidden="true" />} />
 					<IconButton label="Add" variant="filled" icon={<Plus size="1rem" aria-hidden="true" />} />
 					<IconButton label="Pin" variant="tonal" icon={<Archive size="1rem" aria-hidden="true" />} selected />
-					<IconButton label="More" variant="outlined" icon={<Plus size="1rem" aria-hidden="true" />} />
 				</div>
 				<div className="storybook-row">
 					<SegmentedButton
@@ -57,7 +55,7 @@ function ComponentCatalog() {
 			</Panel>
 			<Panel title="Menu and chips" description="Menus trap focus, roam with arrow keys, and close on Escape.">
 				<div className="storybook-row">
-					<Menu label="Account" trigger={<Button variant="outlined">Open menu</Button>}>
+					<Menu label="Account" trigger={<Button variant="elevated">Open menu</Button>}>
 						<MenuItem leading={<Archive size="1.125rem" aria-hidden="true" />}>Archive</MenuItem>
 						<MenuItem>Duplicate</MenuItem>
 						<MenuItem selected>Pinned</MenuItem>

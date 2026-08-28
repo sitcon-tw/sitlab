@@ -1,7 +1,7 @@
 import type { HTMLAttributes, ReactNode } from "react";
 import { classNames } from "../lib/classNames";
 
-export type PanelVariant = "elevated" | "filled" | "outlined";
+export type PanelVariant = "elevated" | "filled";
 
 export interface PanelProps extends HTMLAttributes<HTMLElement> {
 	title?: string;
