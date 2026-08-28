@@ -301,6 +301,46 @@ func TestIdempotentOperationReturnsExistingResult(t *testing.T) {
 	}
 }
 
+func TestMoveSeparatesStatusChangesFromManualPosition(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name             string
+		position         *int32
+		expectedPosition int32
+		expectsPayload   bool
+	}{
+		{name: "status change preserves manual position", expectedPosition: 2},
+		{name: "manual move preserves requested position", position: int32Pointer(3), expectedPosition: 3, expectsPayload: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			repo := &repositoryFake{
+				board: Snapshot{Lists: []domain.List{
+					{Key: "todo", GitLabStatusName: "To do"},
+					{Key: "doing", GitLabStatusName: "Doing"},
+				}},
+				card: domain.Card{IssueIID: 42, TeamKey: "development", ListKey: "todo", Position: 2},
+			}
+			service := newTestService(repo)
+			result, err := service.Move(context.Background(), MoveInput{
+				OperationID: testOperationID, ActorUserID: testActorID, IssueIID: 42,
+				ListKey: "doing", Position: tt.position,
+			})
+			if err != nil {
+				t.Fatalf("Move() error = %v", err)
+			}
+			if result.Card.ListKey != "doing" || result.Card.Position != tt.expectedPosition || result.Card.GitLabStatusName != "Doing" {
+				t.Fatalf("Move() card = %#v", result.Card)
+			}
+			_, hasPosition := repo.updateMutation.Payload["position"]
+			if hasPosition != tt.expectsPayload {
+				t.Fatalf("Move() position payload present = %t, want %t", hasPosition, tt.expectsPayload)
+			}
+		})
+	}
+}
+
 func TestOperationIDCannotBeReusedForAnotherKind(t *testing.T) {
 	t.Parallel()
 	existing := Result{Operation: domain.Operation{ID: testOperationID, Kind: domain.OperationCreateCard}}
@@ -315,10 +355,12 @@ func TestMoveRejectsUnknownList(t *testing.T) {
 	repo := &repositoryFake{board: Snapshot{Lists: []domain.List{{Key: "todo"}}}, card: domain.Card{IssueIID: 42}}
 	service := newTestService(repo)
 	_, err := service.Move(context.Background(), MoveInput{
-		OperationID: testOperationID, ActorUserID: testActorID, IssueIID: 42, ListKey: "unknown", Position: 0,
+		OperationID: testOperationID, ActorUserID: testActorID, IssueIID: 42, ListKey: "unknown", Position: int32Pointer(0),
 	})
 	assertAppError(t, err, apperror.KindInvalid, "VALIDATION_FAILED")
 }
+
+func int32Pointer(value int32) *int32 { return &value }
 
 func TestRetryMapsRepositoryErrors(t *testing.T) {
 	t.Parallel()

@@ -1810,7 +1810,7 @@
 		"/cards/{issueIid}/position": {
 			"put": {
 				"operationId": "moveCard",
-				"summary": "Optimistically move or close a card",
+				"summary": "Optimistically change a card status or manual position",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/IssueIidPath"
@@ -4360,7 +4360,7 @@
 			},
 			"MoveCardRequest": {
 				"type": "object",
-				"required": ["operationId", "listKey", "position"],
+				"required": ["operationId", "listKey"],
 				"properties": {
 					"operationId": {
 						"$ref": "#/components/schemas/uuid"

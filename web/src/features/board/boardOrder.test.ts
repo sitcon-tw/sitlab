@@ -1,6 +1,14 @@
 import { demoBootstrap } from "@/test/demoBootstrap";
 import { describe, expect, it } from "vitest";
-import { canonicalPositionForVisibleOrder, groupCardIds, groupVisibleCardIds, locateCard, planCardMove } from "./boardOrder";
+import {
+	canonicalPositionForVisibleOrder,
+	groupCardIds,
+	groupCardsForStatusPreview,
+	groupVisibleCardIds,
+	locateCard,
+	planCardDrop,
+	planCardMove
+} from "./boardOrder";
 
 describe("board order", () => {
 	const cards = structuredClone(demoBootstrap.board.cards);
@@ -13,10 +21,34 @@ describe("board order", () => {
 		expect(locateCard(groups, 131)).toEqual({ listKey: "doing", index: 1 });
 	});
 
-	it("captures the currently rendered order before switching a drag to manual sorting", () => {
+	it("captures the currently rendered order when a drag starts", () => {
 		const visible = [cards.find((card) => card.issueIid === 131)!, cards.find((card) => card.issueIid === 130)!];
 
 		expect(groupVisibleCardIds(visible, listKeys).doing).toEqual([131, 130]);
+	});
+
+	it("previews a status move using the active non-manual sort", () => {
+		const source = cards.find((card) => card.issueIid === 130)!;
+		const target = cards.find((card) => card.issueIid === 127)!;
+		const previewCards = [
+			{ ...source, dueDate: "2026-07-22" },
+			{ ...target, dueDate: "2026-07-20" }
+		];
+
+		const groups = groupCardsForStatusPreview(previewCards, listKeys, source.issueIid, target.listKey, "due-asc");
+
+		expect(groups[target.listKey]).toEqual([target.issueIid, source.issueIid]);
+		expect(groups[source.listKey]).toEqual([]);
+	});
+
+	it("emits status-only drops outside the source lane", () => {
+		const groups = groupCardIds(cards, listKeys);
+		groups.todo = [...(groups.todo ?? []), 130];
+		groups.doing = (groups.doing ?? []).filter((issueIid) => issueIid !== 130);
+
+		expect(planCardDrop(cards, groups, 130, "doing", "due-asc")).toEqual({ listKey: "todo" });
+		expect(planCardDrop(cards, groupCardIds(cards, listKeys), 130, "doing", "due-asc")).toBeNull();
+		expect(planCardDrop(cards, groups, 130, "doing", "manual")).toEqual({ listKey: "todo", position: expect.any(Number) });
 	});
 
 	it("plans a same-lane reorder with contiguous positions", () => {

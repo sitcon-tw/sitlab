@@ -315,7 +315,7 @@ interface CardService {
 		| InternalServerProblem;
 
 	@operationId("moveCard")
-	@summary("Optimistically move or close a card")
+	@summary("Optimistically change a card status or manual position")
 	@put
 	@route("/{issueIid}/position")
 	moveCard(...IssueIidPath, ...CSRFHeader, @body body: MoveCardRequest):

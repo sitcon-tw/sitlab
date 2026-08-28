@@ -214,7 +214,7 @@ func (s *Service) UpdateLabels(ctx context.Context, input UpdateLabelsInput) (Re
 
 func (s *Service) Move(ctx context.Context, input MoveInput) (Result, error) {
 	return s.update(ctx, input.OperationID, input.ActorUserID, input.IssueIID, domain.OperationMoveCard, func(card *domain.Card, directorySnapshot domaindirectory.Snapshot, boardSnapshot Snapshot) (map[string]any, error) {
-		if input.Position < 0 {
+		if input.Position != nil && *input.Position < 0 {
 			return nil, invalidField("position", "INVALID_VALUE", "must be zero or greater")
 		}
 		list, found := boardListByKey(boardSnapshot.Lists, input.ListKey)
@@ -225,10 +225,17 @@ func (s *Service) Move(ctx context.Context, input MoveInput) (Result, error) {
 		if !found {
 			return nil, unknownTeam("teamKey")
 		}
-		card.ListKey, card.Position = input.ListKey, input.Position
+		card.ListKey = input.ListKey
+		if input.Position != nil {
+			card.Position = *input.Position
+		}
 		card.GitLabStatusName = list.GitLabStatusName
 		card.Labels = canonicalCardLabels(card.Labels, team.GitLabLabel, list, directorySnapshot.Teams, boardSnapshot.Lists)
-		return map[string]any{"listKey": input.ListKey, "position": input.Position, "labels": card.Labels}, nil
+		payload := map[string]any{"listKey": input.ListKey, "labels": card.Labels}
+		if input.Position != nil {
+			payload["position"] = *input.Position
+		}
+		return payload, nil
 	})
 }
 

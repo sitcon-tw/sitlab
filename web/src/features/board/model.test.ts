@@ -39,4 +39,15 @@ describe("board defaults", () => {
 
 		expect(cards.sort((a, b) => compareBoardCards(a, b, sortMode)).map((card) => card.issueIid)).toEqual(expected);
 	});
+
+	it("uses GitLab IID instead of manual position to break non-manual ties", () => {
+		const template = demoBootstrap.board.cards[0]!;
+		const cards: BoardCard[] = [
+			{ ...template, issueIid: 2, position: 0, dueDate: "2026-07-20" },
+			{ ...template, issueIid: 1, position: 1, dueDate: "2026-07-20" }
+		];
+
+		expect([...cards].sort((a, b) => compareBoardCards(a, b, "manual")).map((card) => card.issueIid)).toEqual([2, 1]);
+		expect([...cards].sort((a, b) => compareBoardCards(a, b, "due-asc")).map((card) => card.issueIid)).toEqual([1, 2]);
+	});
 });

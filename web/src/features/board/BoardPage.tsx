@@ -4,6 +4,7 @@ import { SitconLogo } from "@/shared/SitconLogo";
 import { useTheme } from "@/shared/useTheme";
 import type { DroppableInput } from "@dnd-kit/dom";
 import { PointerActivationConstraints } from "@dnd-kit/dom";
+import { SortableKeyboardPlugin } from "@dnd-kit/dom/sortable";
 import { DragDropProvider, DragOverlay, PointerSensor, useDroppable } from "@dnd-kit/react";
 import { useSortable } from "@dnd-kit/react/sortable";
 import {
@@ -130,6 +131,7 @@ type CreateCardInput = {
 };
 
 const noopDraggingChange = () => undefined;
+const STATUS_MOVE_SORTABLE_PLUGINS = [SortableKeyboardPlugin];
 type BoardCollisionDetector = NonNullable<DroppableInput["collisionDetector"]>;
 const POINTER_INTERSECTION_TYPE = 2 as const;
 const HIGH_COLLISION_PRIORITY = 3 as const;
@@ -408,10 +410,46 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 		runCardMutation(card, { labels }, "labels", (operationId) => updateLabels(card, operationId, labels));
 	};
 
-	const handleMove = (card: BoardCard, listKey: string) => {
+	const handleStatusMove = (card: BoardCard, listKey: string) => {
 		if (card.listKey === listKey) return;
-		const position = cards.filter((item) => item.listKey === listKey && item.issueIid !== card.issueIid).length;
-		handlePosition(card, listKey, position);
+		const labels = canonicalClientLabels(bootstrap, card.labels, card.teamKey);
+		const operationId = crypto.randomUUID();
+		const updatedAt = new Date().toISOString();
+		updateBootstrap((current) => ({
+			...current,
+			board: {
+				...current.board,
+				cards: current.board.cards.map((item) =>
+					item.issueIid === card.issueIid
+						? { ...item, listKey, labels, syncState: "pending", syncError: null, pendingOperationId: operationId, updatedAt }
+						: item
+				)
+			}
+		}));
+
+		const execute = () => {
+			moveCard(card, operationId, listKey)
+				.then((result) => {
+					localRetries.current.delete(operationId);
+					replaceCardForOperation(card.issueIid, operationId, result.card);
+					save.settle(operationId, "saved");
+				})
+				.catch((cause: unknown) => {
+					localRetries.current.set(operationId, execute);
+					const message = errorMessage(cause, "卡片狀態尚未同步，請重試。");
+					patchCardForOperation(card.issueIid, operationId, {
+						listKey,
+						labels,
+						syncState: "failed",
+						syncError: message,
+						pendingOperationId: operationId
+					});
+					save.settle(operationId, "failed", message);
+				});
+		};
+		localRetries.current.set(operationId, execute);
+		save.begin(card.issueIid, "status", operationId);
+		execute();
 	};
 
 	const handlePosition = (card: BoardCard, listKey: string, requestedPosition: number) => {
@@ -472,16 +510,15 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 		cards,
 		visibleCards: boardOrderedCards,
 		listKeys: lists.map((list) => list.key),
+		sortMode,
 		onMove: (cardIid, listKey, position) => {
 			const card = cards.find((item) => item.issueIid === cardIid);
-			if (card) handlePosition(card, listKey, position);
+			if (!card) return;
+			if (position === undefined) handleStatusMove(card, listKey);
+			else handlePosition(card, listKey, position);
 		},
 		onDraggingChange
 	});
-	const handleDragStart: typeof drag.onDragStart = (event) => {
-		drag.onDragStart(event);
-		if (sortMode !== "manual") setSortMode("manual");
-	};
 	const draggedCard = drag.activeCardIid === null ? null : (cards.find((card) => card.issueIid === drag.activeCardIid) ?? null);
 	const cardsForList = (listKey: string) => {
 		if (!drag.dragGroups) return filteredCards.filter((card) => card.listKey === listKey).sort((a, b) => compareBoardCards(a, b, sortMode));
@@ -565,7 +602,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 				{viewMode === "board" ? (
 					<DragDropProvider
 						sensors={(defaults) => [...defaults.filter((sensor) => sensor !== PointerSensor), boardPointerSensor]}
-						onDragStart={handleDragStart}
+						onDragStart={drag.onDragStart}
 						onDragOver={drag.onDragOver}
 						onDragEnd={drag.onDragEnd}
 					>
@@ -588,6 +625,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 													onAssignee={(memberIds) => handleAssignee(card, memberIds)}
 													onDueDate={(dueDate) => handleDueDate(card, dueDate)}
 													sortableIndex={index}
+													manualSorting={sortMode === "manual"}
 													onRetry={() => handleRetry(card)}
 													labelMetadata={labelMetadata}
 												/>
@@ -632,7 +670,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 					total={orderedCards.length}
 					onDetails={(title, description) => handleDetails(detailCard, title, description)}
 					onTeam={(teamKey) => handleTeam(detailCard, teamKey)}
-					onMove={(listKey) => handleMove(detailCard, listKey)}
+					onMove={(listKey) => handleStatusMove(detailCard, listKey)}
 					onAssignee={(memberIds) => handleAssignee(detailCard, memberIds)}
 					onStartDate={(startDate) => handleStartDate(detailCard, startDate)}
 					onDueDate={(dueDate) => handleDueDate(detailCard, dueDate)}
@@ -980,6 +1018,7 @@ function CardItem({
 	onAssignee,
 	onDueDate,
 	sortableIndex,
+	manualSorting,
 	onRetry,
 	labelMetadata
 }: {
@@ -989,6 +1028,7 @@ function CardItem({
 	onAssignee: (memberIds: number[]) => void;
 	onDueDate: (dueDate: string | null) => void;
 	sortableIndex: number;
+	manualSorting: boolean;
 	onRetry: () => void;
 	labelMetadata: Map<string, ProjectLabel>;
 }) {
@@ -996,6 +1036,7 @@ function CardItem({
 		id: card.issueIid,
 		index: sortableIndex,
 		group: card.listKey,
+		...(manualSorting ? {} : { plugins: STATUS_MOVE_SORTABLE_PLUGINS }),
 		type: "card",
 		accept: "card",
 		collisionDetector: pointerIntersection
@@ -1012,7 +1053,7 @@ function CardItem({
 					size="sm"
 					className={styles.dragHandle}
 					label={`拖曳 ${title}`}
-					title="拖曳調整卡片位置"
+					title={manualSorting ? "拖曳調整卡片位置" : "拖曳變更卡片狀態"}
 					icon={<GripVertical size="1.125rem" aria-hidden="true" />}
 				/>
 				<span>#{card.issueIid > 0 ? card.issueIid : "new"}</span>

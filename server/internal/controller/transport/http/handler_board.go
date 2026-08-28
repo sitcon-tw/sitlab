@@ -247,7 +247,7 @@ func (h handler) moveCard(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		OperationID string `json:"operationId"`
 		ListKey     string `json:"listKey"`
-		Position    int32  `json:"position"`
+		Position    *int32 `json:"position"`
 	}
 	if err := decodeJSON(w, r, &body); err != nil {
 		writeError(w, r, err)

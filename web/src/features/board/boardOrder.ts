@@ -1,4 +1,4 @@
-import { compareBoardCards, type BoardCard } from "./model";
+import { compareBoardCards, type BoardCard, type BoardSortMode } from "./model";
 
 export type CardGroups = Record<string, number[]>;
 
@@ -15,6 +15,11 @@ export interface CardMovePlan {
 	patches: CardPositionPatch[];
 }
 
+export interface CardDropIntent {
+	listKey: string;
+	position?: number;
+}
+
 /** Captures the exact order currently rendered, including an active non-manual sort. */
 export function groupVisibleCardIds(cards: BoardCard[], listKeys: string[]): CardGroups {
 	return Object.fromEntries(listKeys.map((listKey) => [listKey, cards.filter((card) => card.listKey === listKey).map((card) => card.issueIid)]));
@@ -24,6 +29,20 @@ export function groupCardIds(cards: BoardCard[], listKeys: string[]): CardGroups
 	return groupVisibleCardIds(
 		[...cards].sort((a, b) => compareBoardCards(a, b, "manual")),
 		listKeys
+	);
+}
+
+/** Moves one visible card between lanes and reapplies the active non-manual sort. */
+export function groupCardsForStatusPreview(cards: BoardCard[], listKeys: string[], cardIid: number, listKey: string, sortMode: BoardSortMode): CardGroups {
+	const moved = cards.map((card) => (card.issueIid === cardIid ? { ...card, listKey } : card));
+	return Object.fromEntries(
+		listKeys.map((key) => [
+			key,
+			moved
+				.filter((card) => card.listKey === key)
+				.sort((a, b) => compareBoardCards(a, b, sortMode))
+				.map((card) => card.issueIid)
+		])
 	);
 }
 
@@ -53,6 +72,14 @@ export function canonicalPositionForVisibleOrder(cards: BoardCard[], groups: Car
 		if (previousIndex >= 0) return previousIndex + 1;
 	}
 	return destination.length;
+}
+
+export function planCardDrop(cards: BoardCard[], groups: CardGroups, cardIid: number, sourceListKey: string, sortMode: BoardSortMode): CardDropIntent | null {
+	const target = locateCard(groups, cardIid);
+	if (!target) return null;
+	if (sortMode !== "manual") return target.listKey === sourceListKey ? null : { listKey: target.listKey };
+	const position = canonicalPositionForVisibleOrder(cards, groups, cardIid, target.listKey);
+	return position === null ? null : { listKey: target.listKey, position };
 }
 
 export function planCardMove(cards: BoardCard[], cardIid: number, listKey: string, requestedPosition: number): CardMovePlan | null {

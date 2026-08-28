@@ -20,6 +20,8 @@ export type GanttScale = "day" | "week";
 export type BoardSortMode = "manual" | "due-asc" | "due-desc" | "start-asc" | "start-desc" | "updated-desc" | "updated-asc";
 
 export function compareBoardCards(a: BoardCard, b: BoardCard, sortMode: BoardSortMode) {
+	if (sortMode === "manual") return a.position - b.position || a.issueIid - b.issueIid;
+
 	let result = 0;
 	switch (sortMode) {
 		case "due-asc":
@@ -41,7 +43,7 @@ export function compareBoardCards(a: BoardCard, b: BoardCard, sortMode: BoardSor
 			result = a.updatedAt.localeCompare(b.updatedAt);
 			break;
 	}
-	return result || a.position - b.position || a.issueIid - b.issueIid;
+	return result || a.issueIid - b.issueIid;
 }
 
 function compareOptionalDates(a: string | null, b: string | null, direction: 1 | -1) {

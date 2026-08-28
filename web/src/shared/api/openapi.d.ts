@@ -305,7 +305,7 @@ export interface paths {
 			cookie?: never;
 		};
 		get?: never;
-		/** Optimistically move or close a card */
+		/** Optimistically change a card status or manual position */
 		put: operations["moveCard"];
 		post?: never;
 		delete?: never;
@@ -925,7 +925,7 @@ export interface components {
 			operationId: components["schemas"]["uuid"];
 			listKey: string;
 			/** Format: int32 */
-			position: number;
+			position?: number;
 		};
 		PreferenceSyncAction: {
 			/** @enum {string} */

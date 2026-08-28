@@ -129,12 +129,13 @@ export async function createComment(card: BoardCard, body: string): Promise<Card
 	);
 }
 
-export async function moveCard(card: BoardCard, operationId: string, listKey: string, position: number) {
-	if (demo) return demoMutation(card, { listKey, position }, operationId);
+export async function moveCard(card: BoardCard, operationId: string, listKey: string, position?: number) {
+	if (demo) return demoMutation(card, position === undefined ? { listKey } : { listKey, position }, operationId);
+	const body = position === undefined ? { operationId, listKey } : { operationId, listKey, position };
 	return expectData(
 		await api.PUT("/cards/{issueIid}/position", {
 			params: { path: { issueIid: card.issueIid }, header: { "X-CSRF-Token": await getCsrfToken() } },
-			body: { operationId, listKey, position }
+			body
 		})
 	);
 }

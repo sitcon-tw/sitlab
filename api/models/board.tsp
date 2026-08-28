@@ -312,7 +312,7 @@ model MoveCardRequest {
 	listKey: string;
 
 	@minValue(0)
-	position: int32;
+	position?: int32;
 }
 
 model RetryOperationResponse {

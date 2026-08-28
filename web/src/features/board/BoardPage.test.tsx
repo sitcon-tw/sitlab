@@ -458,7 +458,7 @@ describe("SITCON Board interactions", () => {
 		expect(within(doingLane).queryByRole("button", { name: /^(上移|下移) / })).not.toBeInTheDocument();
 		const handle = within(doingLane).getByRole("button", { name: "拖曳 [設計組] 製作工作人員識別證" });
 		expect(handle).toBeEnabled();
-		expect(handle).toHaveAttribute("title", "拖曳調整卡片位置");
+		expect(handle).toHaveAttribute("title", "拖曳變更卡片狀態");
 	});
 
 	it("keeps team and status controls in card details and moves optimistically", async () => {
@@ -478,6 +478,7 @@ describe("SITCON Board interactions", () => {
 		expect(doingLane).not.toBeNull();
 		expect(within(doingLane as HTMLElement).getByRole("heading", { name: title })).toBeVisible();
 		expect(moveCard).toHaveBeenCalledOnce();
+		expect(vi.mocked(moveCard).mock.calls[0]).toHaveLength(3);
 	});
 
 	it("shows an in-place saving indicator that settles to saved without moving focus", async () => {
@@ -570,7 +571,7 @@ describe("SITCON Board interactions", () => {
 			card: BoardCard;
 			operationId: string;
 			listKey: string;
-			position: number;
+			position: number | undefined;
 			resolve: (result: CardMutation) => void;
 		}> = [];
 		vi.mocked(moveCard).mockImplementation(
@@ -588,7 +589,7 @@ describe("SITCON Board interactions", () => {
 			card: {
 				...request.card,
 				listKey: request.listKey,
-				position: request.position,
+				position: request.position ?? 0,
 				syncState: "synced",
 				syncError: null,
 				pendingOperationId: null
@@ -781,7 +782,7 @@ describe("SITCON Board interactions", () => {
 		expect(input).toHaveValue("/close");
 		await user.keyboard("{Enter}");
 
-		expect(moveCard).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), "closed", expect.any(Number));
+		expect(moveCard).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), "closed");
 	});
 
 	it("selects more than one assignee", async () => {

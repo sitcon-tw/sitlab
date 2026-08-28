@@ -117,7 +117,10 @@ test.describe("SITCON Board demo visual audit", () => {
 					await scale.getByRole("button", { name: "週" }).click();
 					await expect(page).toHaveURL(/scale=week/);
 				}
-				const issueBackground = await gantt.locator('[class*="issueCell"]').first().evaluate((element) => getComputedStyle(element).backgroundColor);
+				const issueBackground = await gantt
+					.locator('[class*="issueCell"]')
+					.first()
+					.evaluate((element) => getComputedStyle(element).backgroundColor);
 				expect(issueBackground).not.toBe("rgba(0, 0, 0, 0)");
 				expect(issueBackground).not.toBe("transparent");
 
@@ -157,6 +160,8 @@ test.describe("SITCON Board demo visual audit", () => {
 		await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 12 });
 		await expect(page.locator('section[data-list="review"]')).toHaveAttribute("data-drag-over", "true");
 		await page.mouse.up();
+		await expect(sortControl).toHaveAttribute("data-value", "due-asc");
+		await expect(page.locator('section[data-list="review"]').getByRole("heading", { name: "[行銷組] 完成主視覺社群素材" })).toBeVisible();
 	});
 
 	test("quick create controls align and use one focus indicator", async ({ page }) => {
@@ -373,10 +378,15 @@ test.describe("SITCON Board demo visual audit", () => {
 		const venueTitle = "[場務組] 盤點會場網路設備";
 		const designCard = page.getByRole("heading", { name: designTitle }).locator("xpath=ancestor::article");
 		const venueCard = page.getByRole("heading", { name: venueTitle }).locator("xpath=ancestor::article");
-		await drag(page.getByRole("button", { name: `拖曳 ${designTitle}` }), venueCard, async () => {
-			await expect(sortControl).toHaveAttribute("data-value", "manual");
-		});
 		const doing = page.locator('section[data-list="doing"]');
+		const beforeNonManualDrop = await doing.getByRole("heading", { level: 3 }).allTextContents();
+		await drag(page.getByRole("button", { name: `拖曳 ${designTitle}` }), venueCard, async () => {
+			await expect(sortControl).toHaveAttribute("data-value", "due-asc");
+		});
+		await expect(doing.getByRole("heading", { level: 3 })).toHaveText(beforeNonManualDrop);
+		await sortControl.click();
+		await page.getByRole("menuitemcheckbox", { name: "手動順序" }).click();
+		await drag(page.getByRole("button", { name: `拖曳 ${designTitle}` }), venueCard);
 		await expect(doing.getByRole("heading", { level: 3 }).last()).toHaveText(designTitle);
 
 		const todoCard = page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }).locator("xpath=ancestor::article");

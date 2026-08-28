@@ -61,5 +61,5 @@ type MoveInput struct {
 	ActorUserID string
 	IssueIID    int64
 	ListKey     string
-	Position    int32
+	Position    *int32
 }
