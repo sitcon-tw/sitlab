@@ -1,10 +1,40 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
+import { demoBootstrap } from "../src/test/demoBootstrap";
 
 const demoEnabled = process.env.E2E_DEMO === "true";
 
 function docsAsset(filename: string) {
 	return fileURLToPath(new URL(`../../docs/assets/${filename}`, import.meta.url));
+}
+
+function closedLaneBootstrap(count: number) {
+	const bootstrap = structuredClone(demoBootstrap);
+	const closedList = bootstrap.board.lists.find((list) => list.closed)!;
+	const template = bootstrap.board.cards.find((card) => card.listKey === closedList.key)!;
+	bootstrap.board.cards = [
+		...bootstrap.board.cards.filter((card) => card.listKey !== closedList.key),
+		...Array.from({ length: count }, (_, index) => ({
+			...template,
+			issueIid: 2_000 + index,
+			title: `近期完成 ${index + 1}`,
+			position: index,
+			updatedAt: new Date(Date.UTC(2026, 6, 1, 0, index)).toISOString()
+		}))
+	];
+	return bootstrap;
+}
+
+async function injectBootstrap(page: Page, bootstrap: typeof demoBootstrap) {
+	await page.route("**/", async (route) => {
+		const response = await route.fetch();
+		const body = await response.text();
+		const serialized = JSON.stringify(bootstrap).replaceAll("<", "\\u003c");
+		await route.fulfill({
+			response,
+			body: body.replace('<div id="root"></div>', `<div id="root"></div><script id="__SITCON_BOOTSTRAP__" type="application/json">${serialized}</script>`)
+		});
+	});
 }
 
 async function chooseSelectField(page: Page, root: Page | Locator, label: string, option: string) {
@@ -95,6 +125,36 @@ test.describe("SITCON Board demo visual audit", () => {
 		await board.evaluate((element) => element.scrollTo({ left: element.scrollWidth }));
 		await expect.poll(() => board.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
 	});
+
+	for (const viewport of [
+		{ name: "desktop", width: 1440, height: 900 },
+		{ name: "narrow", width: 320, height: 720 }
+	]) {
+		test(`closed lane limits cards and reveals more at ${viewport.name} width`, async ({ page }) => {
+			await page.addInitScript(() => localStorage.setItem("sitcon-board-theme", "dark"));
+			await injectBootstrap(page, closedLaneBootstrap(55));
+			await page.setViewportSize(viewport);
+			await page.goto("/");
+
+			const closedLane = page.locator('section[data-list="closed"]');
+			await expect(closedLane.getByRole("article")).toHaveCount(50);
+			await expect(closedLane.getByRole("heading", { name: /近期完成 55$/ })).toBeVisible();
+			await expect(closedLane.getByRole("heading", { name: /近期完成 1$/ })).toHaveCount(0);
+			await expect(closedLane.getByText("已顯示最近 50 / 55 個 Issue")).toBeVisible();
+
+			const more = closedLane.getByRole("button", { name: "在 Done 顯示更多 5 個 Issue" });
+			await more.scrollIntoViewIfNeeded();
+			await expect(more).toBeVisible();
+			const layout = await page.evaluate(() => ({ viewport: window.innerWidth, documentWidth: document.documentElement.scrollWidth }));
+			expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewport);
+			await page.screenshot({ path: docsAsset(`sitcon-board-done-limit-dark-${viewport.name}.png`) });
+
+			await more.click();
+			await expect(closedLane.getByRole("article")).toHaveCount(55);
+			await expect(closedLane.getByRole("heading", { name: /近期完成 1$/ })).toBeVisible();
+			await expect(more).toHaveCount(0);
+		});
+	}
 
 	for (const theme of ["light", "dark"] as const) {
 		for (const viewport of [

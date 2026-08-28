@@ -761,6 +761,26 @@
 	letter-spacing: var(--md-sys-typescale-body-small-tracking);
 }
 
+.closedLaneMore {
+	display: grid;
+	gap: var(--md-space-1);
+	justify-items: center;
+	padding: var(--md-space-2) 0;
+	color: var(--sb-text-subtle);
+	text-align: center;
+}
+
+.closedLaneMore p {
+	margin: 0;
+	font-size: var(--md-sys-typescale-label-small-size);
+	line-height: var(--md-sys-typescale-label-small-line-height);
+	letter-spacing: var(--md-sys-typescale-label-small-tracking);
+}
+
+.closedLaneMore > button {
+	width: 100%;
+}
+
 .conflict {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto auto;

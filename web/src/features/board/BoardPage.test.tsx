@@ -802,6 +802,37 @@ describe("SITCON Board interactions", () => {
 		expect(within(dialog).getByText("已選擇 2 人")).toBeVisible();
 	});
 
+	it("shows the 50 most recently updated closed cards before revealing more", async () => {
+		const user = userEvent.setup();
+		const initial = structuredClone(demoBootstrap);
+		const closedList = initial.board.lists.find((list) => list.closed)!;
+		const template = initial.board.cards.find((card) => card.listKey === closedList.key)!;
+		const closedCards = Array.from({ length: 55 }, (_, index) => ({
+			...template,
+			issueIid: 2_000 + index,
+			title: `近期完成 ${index + 1}`,
+			position: index,
+			updatedAt: new Date(Date.UTC(2026, 6, 1, 0, index)).toISOString()
+		}));
+		initial.board.cards = [...initial.board.cards.filter((card) => card.listKey !== closedList.key), ...closedCards];
+		render(<Harness initial={initial} />);
+
+		const doneLane = screen.getByRole("heading", { name: closedList.name }).closest("section")!;
+		expect(within(doneLane).getAllByRole("article")).toHaveLength(50);
+		expect(within(doneLane).getByRole("heading", { name: /近期完成 55$/ })).toBeVisible();
+		expect(within(doneLane).queryByRole("heading", { name: /近期完成 1$/ })).not.toBeInTheDocument();
+		expect(within(doneLane).getByText("已顯示最近 50 / 55 個 Issue")).toBeVisible();
+
+		await user.click(within(doneLane).getByRole("button", { name: "在 Done 顯示更多 5 個 Issue" }));
+		expect(within(doneLane).getAllByRole("article")).toHaveLength(55);
+		expect(within(doneLane).getByRole("heading", { name: /近期完成 1$/ })).toBeVisible();
+		expect(within(doneLane).queryByRole("button", { name: /顯示更多/ })).not.toBeInTheDocument();
+
+		await user.type(screen.getByRole("searchbox", { name: "搜尋卡片" }), "近期完成");
+		await waitFor(() => expect(within(doneLane).getAllByRole("article")).toHaveLength(50));
+		expect(within(doneLane).getByText("已顯示最近 50 / 55 個 Issue")).toBeVisible();
+	});
+
 	it("switches to a URL-backed Gantt view with only open issues", async () => {
 		const user = userEvent.setup();
 		render(<Harness />);

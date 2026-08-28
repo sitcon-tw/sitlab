@@ -1,6 +1,15 @@
 import { demoBootstrap } from "@/test/demoBootstrap";
 import { describe, expect, it } from "vitest";
-import { compareBoardCards, preferredAssignees, taipeiDateAfter, teamLeaders, teamMembers, type BoardCard, type BoardSortMode } from "./model";
+import {
+	compareBoardCards,
+	limitRecentBoardCards,
+	preferredAssignees,
+	taipeiDateAfter,
+	teamLeaders,
+	teamMembers,
+	type BoardCard,
+	type BoardSortMode
+} from "./model";
 
 describe("board defaults", () => {
 	it("uses the current user only for their primary team", () => {
@@ -49,5 +58,17 @@ describe("board defaults", () => {
 
 		expect([...cards].sort((a, b) => compareBoardCards(a, b, "manual")).map((card) => card.issueIid)).toEqual([2, 1]);
 		expect([...cards].sort((a, b) => compareBoardCards(a, b, "due-asc")).map((card) => card.issueIid)).toEqual([1, 2]);
+	});
+
+	it("limits a lane to the most recently updated cards without changing presentation order", () => {
+		const template = demoBootstrap.board.cards[0]!;
+		const cards: BoardCard[] = [
+			{ ...template, issueIid: 3, updatedAt: "2026-07-14T02:00:00Z" },
+			{ ...template, issueIid: 1, updatedAt: "2026-07-14T01:00:00Z" },
+			{ ...template, issueIid: 2, updatedAt: "2026-07-14T03:00:00Z" }
+		];
+
+		expect(limitRecentBoardCards(cards, 2).map((card) => card.issueIid)).toEqual([3, 2]);
+		expect(limitRecentBoardCards(cards, 3)).toBe(cards);
 	});
 });

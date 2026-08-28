@@ -80,6 +80,7 @@ import { canonicalClientLabels, isDeprecatedLabel } from "./labels";
 import { MembersDrawer } from "./MembersDrawer";
 import {
 	compareBoardCards,
+	limitRecentBoardCards,
 	memberById,
 	preferredAssignees,
 	taipeiDateAfter,
@@ -131,6 +132,8 @@ type CreateCardInput = {
 };
 
 const noopDraggingChange = () => undefined;
+const CLOSED_LANE_PAGE_SIZE = 50;
+type ClosedLaneExpansion = { scopeKey: string; limits: Record<string, number> };
 const STATUS_MOVE_SORTABLE_PLUGINS = [SortableKeyboardPlugin];
 type BoardCollisionDetector = NonNullable<DroppableInput["collisionDetector"]>;
 const POINTER_INTERSECTION_TYPE = 2 as const;
@@ -167,6 +170,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 	const [sortMode, setSortMode] = useState<BoardSortMode>(initialView.sortMode);
 	const [viewMode, setViewMode] = useState<BoardViewMode>(initialView.viewMode);
 	const [ganttScale, setGanttScale] = useState<GanttScale>(initialView.ganttScale);
+	const [closedLaneExpansion, setClosedLaneExpansion] = useState<ClosedLaneExpansion>({ scopeKey: "", limits: {} });
 	const [undo, setUndo] = useState<{ cardIid: number; assigneeIds: number[]; assigneeNames: string[] } | null>(null);
 	const internalRetries = useRef(new Map<string, () => void>());
 	const localRetries = inflightOperations ?? internalRetries;
@@ -222,6 +226,8 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 	const detailCard = cards.find((card) => card.issueIid === detailIid) ?? null;
 	const detailIndex = detailCard ? orderedCards.findIndex((card) => card.issueIid === detailCard.issueIid) : -1;
 	const filtersActive = Boolean(filterQuery.trim() || filterTeamKey || filterMemberIds.length || filterLabels.length);
+	const closedLaneScopeKey = JSON.stringify([settledFilterQuery, filterTeamKey, filterMemberIds, filterLabels]);
+	const closedLaneLimits = closedLaneExpansion.scopeKey === closedLaneScopeKey ? closedLaneExpansion.limits : {};
 
 	useEffect(() => {
 		const search = serializeBoardViewState(window.location.search, {
@@ -527,6 +533,13 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 			return card ? [{ ...card, listKey }] : [];
 		});
 	};
+	const revealMoreClosedCards = (listKey: string, total: number) => {
+		setClosedLaneExpansion((current) => {
+			const limits = current.scopeKey === closedLaneScopeKey ? current.limits : {};
+			const nextLimit = Math.min((limits[listKey] ?? CLOSED_LANE_PAGE_SIZE) + CLOSED_LANE_PAGE_SIZE, total);
+			return { scopeKey: closedLaneScopeKey, limits: { ...limits, [listKey]: nextLimit } };
+		});
+	};
 
 	const handleRetry = (card: BoardCard) => {
 		if (!card.pendingOperationId) return;
@@ -608,12 +621,16 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 					>
 						<section className={styles.board} aria-label="SITCON 2027 工作看板">
 							{lists.map((list) => {
-								const listCards = cardsForList(list.key);
+								const allListCards = cardsForList(list.key);
+								const listCards = list.closed ? limitRecentBoardCards(allListCards, closedLaneLimits[list.key] ?? CLOSED_LANE_PAGE_SIZE) : allListCards;
+								const hiddenCardCount = allListCards.length - listCards.length;
+								const nextBatchSize = Math.min(CLOSED_LANE_PAGE_SIZE, hiddenCardCount);
+								const sortableIndexes = listCards === allListCards ? null : new Map(allListCards.map((card, index) => [card.issueIid, index]));
 								return (
 									<DroppableLane listKey={list.key} key={list.key}>
 										<header className={styles.laneHeader}>
 											<h2>{list.name}</h2>
-											<Badge tone="neutral">{listCards.length}</Badge>
+											<Badge tone="neutral">{allListCards.length}</Badge>
 										</header>
 										<div className={styles.cardList}>
 											{listCards.map((card, index) => (
@@ -624,13 +641,27 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 													onOpen={() => setDetailIid(card.issueIid)}
 													onAssignee={(memberIds) => handleAssignee(card, memberIds)}
 													onDueDate={(dueDate) => handleDueDate(card, dueDate)}
-													sortableIndex={index}
+													sortableIndex={sortableIndexes?.get(card.issueIid) ?? index}
 													manualSorting={sortMode === "manual"}
 													onRetry={() => handleRetry(card)}
 													labelMetadata={labelMetadata}
 												/>
 											))}
 											{listCards.length === 0 ? <p className={styles.emptyLane}>{filtersActive ? "沒有符合篩選的卡片" : "目前沒有卡片"}</p> : null}
+											{hiddenCardCount > 0 ? (
+												<div className={styles.closedLaneMore}>
+													<p>
+														已顯示最近 {listCards.length} / {allListCards.length} 個 Issue
+													</p>
+													<Button
+														variant="text"
+														aria-label={`在 ${list.name} 顯示更多 ${nextBatchSize} 個 Issue`}
+														onClick={() => revealMoreClosedCards(list.key, allListCards.length)}
+													>
+														顯示更多 {nextBatchSize} 個
+													</Button>
+												</div>
+											) : null}
 										</div>
 									</DroppableLane>
 								);

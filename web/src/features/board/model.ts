@@ -46,6 +46,17 @@ export function compareBoardCards(a: BoardCard, b: BoardCard, sortMode: BoardSor
 	return result || a.issueIid - b.issueIid;
 }
 
+export function limitRecentBoardCards(cards: BoardCard[], limit: number) {
+	if (cards.length <= limit) return cards;
+	const recentIssueIids = new Set(
+		[...cards]
+			.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.issueIid - a.issueIid)
+			.slice(0, limit)
+			.map((card) => card.issueIid)
+	);
+	return cards.filter((card) => recentIssueIids.has(card.issueIid));
+}
+
 function compareOptionalDates(a: string | null, b: string | null, direction: 1 | -1) {
 	if (a === null && b === null) return 0;
 	if (a === null) return 1;
