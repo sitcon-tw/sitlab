@@ -96,6 +96,42 @@ test.describe("SITCON Board demo visual audit", () => {
 		await expect.poll(() => board.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
 	});
 
+	for (const theme of ["light", "dark"] as const) {
+		for (const viewport of [
+			{ name: "desktop", width: 1440, height: 900 },
+			{ name: "narrow", width: 320, height: 720 }
+		]) {
+			test(`${theme} Gantt ${viewport.name} stays contained and opens details`, async ({ page }) => {
+				await page.addInitScript((selectedTheme) => localStorage.setItem("sitcon-board-theme", selectedTheme), theme);
+				await page.setViewportSize(viewport);
+				await page.goto("/?view=gantt");
+
+				const gantt = page.getByRole("region", { name: "SITCON 2027 甘特圖" });
+				await expect(gantt).toBeVisible();
+				await expect(page.getByRole("region", { name: "篩選甘特圖" }).getByRole("status")).toHaveText("6 / 6 個開啟 Issue");
+				await expect(gantt.getByText("完成主視覺社群素材")).toHaveCount(0);
+				await expect(page.getByRole("button", { name: "排序方式" })).toHaveCount(0);
+				const scale = gantt.getByRole("group", { name: "時間尺度" });
+				await expect(scale.getByRole("button", { name: "日" })).toHaveAttribute("aria-pressed", "true");
+				if (viewport.name === "narrow") {
+					await scale.getByRole("button", { name: "週" }).click();
+					await expect(page).toHaveURL(/scale=week/);
+				}
+				const issueBackground = await gantt.locator('[class*="issueCell"]').first().evaluate((element) => getComputedStyle(element).backgroundColor);
+				expect(issueBackground).not.toBe("rgba(0, 0, 0, 0)");
+				expect(issueBackground).not.toBe("transparent");
+
+				const layout = await page.evaluate(() => ({ viewport: window.innerWidth, documentWidth: document.documentElement.scrollWidth }));
+				expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewport);
+				await page.screenshot({ path: docsAsset(`sitcon-board-gantt-${theme}-${viewport.name}.png`), fullPage: true });
+
+				await gantt.getByRole("button", { name: /開啟 Issue #127/ }).focus();
+				await page.keyboard.press("Enter");
+				await expect(page.getByRole("dialog", { name: /127 卡片詳細資料/ })).toBeVisible();
+			});
+		}
+	}
+
 	test("drag targeting follows the pointer after horizontal scrolling", async ({ page }, testInfo) => {
 		test.skip(testInfo.project.name === "mobile", "Playwright mobile emulation does not expose a stable touch-drag gesture");
 		await page.setViewportSize({ width: 1440, height: 900 });

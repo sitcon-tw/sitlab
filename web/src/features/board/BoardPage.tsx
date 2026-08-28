@@ -23,14 +23,17 @@ import {
 	TextAreaField,
 	TextField,
 	ToastRegion,
-	TopAppBar
+	TopAppBar,
+	type SegmentedOption
 } from "@project-template/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+	ChartGantt,
 	Check,
 	ChevronLeft,
 	ChevronRight,
 	CloudOff,
+	Columns3,
 	Ellipsis,
 	ExternalLink,
 	GripVertical,
@@ -45,7 +48,7 @@ import {
 	Users,
 	X
 } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AssigneePicker } from "./AssigneePicker";
@@ -70,6 +73,7 @@ import styles from "./BoardPage.module.css";
 import { boardSearchTerms, createBoardSearchIndex, matchesBoardSearch } from "./boardSearch";
 import { CardLabels } from "./CardLabels";
 import { CardRelationships } from "./CardRelationships";
+import { createGanttViewModel, openBoardCards } from "./ganttModel";
 import { LabelManagerDialog } from "./LabelManagerDialog";
 import { canonicalClientLabels, isDeprecatedLabel } from "./labels";
 import { MembersDrawer } from "./MembersDrawer";
@@ -81,8 +85,10 @@ import {
 	teamLeaders,
 	type BoardCard,
 	type BoardSortMode,
+	type BoardViewMode,
 	type Bootstrap,
 	type CardComment,
+	type GanttScale,
 	type ProjectLabel
 } from "./model";
 import { parseQuickAction, quickActionCommands, type QuickAction } from "./quickActions";
@@ -93,6 +99,13 @@ import { useBoardDrag } from "./useBoardDrag";
 import { useFieldSaveState, type FieldSave, type FieldSaveState, type SaveField } from "./useFieldSaveState";
 import { useProjectLabelMap, useProjectLabels } from "./useProjectLabels";
 import { parseBoardViewState, serializeBoardViewState } from "./viewState";
+
+const GanttView = lazy(() => import("./GanttView"));
+
+const BOARD_VIEW_OPTIONS: Array<SegmentedOption<BoardViewMode>> = [
+	{ value: "board", label: "Board", icon: <Columns3 size="1.125rem" aria-hidden="true" /> },
+	{ value: "gantt", label: "Gantt", icon: <ChartGantt size="1.125rem" aria-hidden="true" /> }
+];
 
 export interface BoardPageProps {
 	bootstrap: Bootstrap;
@@ -150,6 +163,8 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 	const [filterMemberIds, setFilterMemberIds] = useState<number[]>(initialView.memberIds);
 	const [filterLabels, setFilterLabels] = useState<string[]>(initialView.labels);
 	const [sortMode, setSortMode] = useState<BoardSortMode>(initialView.sortMode);
+	const [viewMode, setViewMode] = useState<BoardViewMode>(initialView.viewMode);
+	const [ganttScale, setGanttScale] = useState<GanttScale>(initialView.ganttScale);
 	const [undo, setUndo] = useState<{ cardIid: number; assigneeIds: number[]; assigneeNames: string[] } | null>(null);
 	const internalRetries = useRef(new Map<string, () => void>());
 	const localRetries = inflightOperations ?? internalRetries;
@@ -194,10 +209,14 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 		[appliedLabels, cards, filterMemberIds, filterTeamKey, searchIndex, searchTerms]
 	);
 	const lists = useMemo(() => [...bootstrap.board.lists].sort((a, b) => a.position - b.position), [bootstrap.board.lists]);
-	const orderedCards = useMemo(
+	const boardOrderedCards = useMemo(
 		() => lists.flatMap((list) => filteredCards.filter((card) => card.listKey === list.key).sort((a, b) => compareBoardCards(a, b, sortMode))),
 		[filteredCards, lists, sortMode]
 	);
+	const openCards = useMemo(() => openBoardCards(cards, lists), [cards, lists]);
+	const ganttCards = useMemo(() => openBoardCards(filteredCards, lists), [filteredCards, lists]);
+	const ganttViewModel = useMemo(() => createGanttViewModel(ganttCards, bootstrap.teams, taipeiDateAfter(0)), [bootstrap.teams, ganttCards]);
+	const orderedCards = viewMode === "gantt" ? ganttViewModel.orderedCards : boardOrderedCards;
 	const detailCard = cards.find((card) => card.issueIid === detailIid) ?? null;
 	const detailIndex = detailCard ? orderedCards.findIndex((card) => card.issueIid === detailCard.issueIid) : -1;
 	const filtersActive = Boolean(filterQuery.trim() || filterTeamKey || filterMemberIds.length || filterLabels.length);
@@ -208,12 +227,14 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 			teamKey: filterTeamKey,
 			memberIds: filterMemberIds,
 			labels: filterLabels,
-			sortMode
+			sortMode,
+			viewMode,
+			ganttScale
 		});
 		const nextURL = `${window.location.pathname}${search}${window.location.hash}`;
 		if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== nextURL)
 			window.history.replaceState(window.history.state, "", nextURL);
-	}, [filterLabels, filterMemberIds, filterTeamKey, settledFilterQuery, sortMode]);
+	}, [filterLabels, filterMemberIds, filterTeamKey, ganttScale, settledFilterQuery, sortMode, viewMode]);
 
 	useEffect(() => {
 		const focusSearch = (event: KeyboardEvent) => {
@@ -449,7 +470,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 
 	const drag = useBoardDrag({
 		cards,
-		visibleCards: orderedCards,
+		visibleCards: boardOrderedCards,
 		listKeys: lists.map((list) => list.key),
 		onMove: (cardIid, listKey, position) => {
 			const card = cards.find((item) => item.issueIid === cardIid);
@@ -515,6 +536,10 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 						]}
 					/>
 				) : null}
+				<div className={styles.viewToolbar}>
+					<SegmentedButton label="工作檢視" options={BOARD_VIEW_OPTIONS} value={viewMode} onChange={setViewMode} className={styles.viewSwitcher} />
+					<p>{viewMode === "gantt" ? "查看開啟 Issue 的排程" : "依工作狀態推進 Issue"}</p>
+				</div>
 				<BoardFilters
 					bootstrap={bootstrap}
 					query={filterQuery}
@@ -522,8 +547,9 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 					memberIds={filterMemberIds}
 					labels={filterLabels}
 					sortMode={sortMode}
-					visibleCount={filteredCards.length}
-					totalCount={cards.length}
+					viewMode={viewMode}
+					visibleCount={viewMode === "gantt" ? ganttCards.length : filteredCards.length}
+					totalCount={viewMode === "gantt" ? openCards.length : cards.length}
 					onQueryChange={changeFilterQuery}
 					onTeamChange={setFilterTeamKey}
 					onMemberIdsChange={setFilterMemberIds}
@@ -536,43 +562,62 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 						setFilterLabels([]);
 					}}
 				/>
-				<DragDropProvider
-					sensors={(defaults) => [...defaults.filter((sensor) => sensor !== PointerSensor), boardPointerSensor]}
-					onDragStart={handleDragStart}
-					onDragOver={drag.onDragOver}
-					onDragEnd={drag.onDragEnd}
-				>
-					<section className={styles.board} aria-label="SITCON 2027 工作看板">
-						{lists.map((list) => {
-							const listCards = cardsForList(list.key);
-							return (
-								<DroppableLane listKey={list.key} key={list.key}>
-									<header className={styles.laneHeader}>
-										<h2>{list.name}</h2>
-										<Badge tone="neutral">{listCards.length}</Badge>
-									</header>
-									<div className={styles.cardList}>
-										{listCards.map((card, index) => (
-											<CardItem
-												key={card.issueIid}
-												card={card}
-												bootstrap={bootstrap}
-												onOpen={() => setDetailIid(card.issueIid)}
-												onAssignee={(memberIds) => handleAssignee(card, memberIds)}
-												onDueDate={(dueDate) => handleDueDate(card, dueDate)}
-												sortableIndex={index}
-												onRetry={() => handleRetry(card)}
-												labelMetadata={labelMetadata}
-											/>
-										))}
-										{listCards.length === 0 ? <p className={styles.emptyLane}>{filtersActive ? "沒有符合篩選的卡片" : "目前沒有卡片"}</p> : null}
-									</div>
-								</DroppableLane>
-							);
-						})}
-					</section>
-					<DragOverlay dropAnimation={null}>{draggedCard ? <CardDragPreview card={draggedCard} bootstrap={bootstrap} /> : null}</DragOverlay>
-				</DragDropProvider>
+				{viewMode === "board" ? (
+					<DragDropProvider
+						sensors={(defaults) => [...defaults.filter((sensor) => sensor !== PointerSensor), boardPointerSensor]}
+						onDragStart={handleDragStart}
+						onDragOver={drag.onDragOver}
+						onDragEnd={drag.onDragEnd}
+					>
+						<section className={styles.board} aria-label="SITCON 2027 工作看板">
+							{lists.map((list) => {
+								const listCards = cardsForList(list.key);
+								return (
+									<DroppableLane listKey={list.key} key={list.key}>
+										<header className={styles.laneHeader}>
+											<h2>{list.name}</h2>
+											<Badge tone="neutral">{listCards.length}</Badge>
+										</header>
+										<div className={styles.cardList}>
+											{listCards.map((card, index) => (
+												<CardItem
+													key={card.issueIid}
+													card={card}
+													bootstrap={bootstrap}
+													onOpen={() => setDetailIid(card.issueIid)}
+													onAssignee={(memberIds) => handleAssignee(card, memberIds)}
+													onDueDate={(dueDate) => handleDueDate(card, dueDate)}
+													sortableIndex={index}
+													onRetry={() => handleRetry(card)}
+													labelMetadata={labelMetadata}
+												/>
+											))}
+											{listCards.length === 0 ? <p className={styles.emptyLane}>{filtersActive ? "沒有符合篩選的卡片" : "目前沒有卡片"}</p> : null}
+										</div>
+									</DroppableLane>
+								);
+							})}
+						</section>
+						<DragOverlay dropAnimation={null}>{draggedCard ? <CardDragPreview card={draggedCard} bootstrap={bootstrap} /> : null}</DragOverlay>
+					</DragDropProvider>
+				) : (
+					<Suspense
+						fallback={
+							<div className={styles.ganttLoading} role="status">
+								<Spinner label="載入甘特圖" />
+							</div>
+						}
+					>
+						<GanttView
+							bootstrap={bootstrap}
+							viewModel={ganttViewModel}
+							filtersActive={filtersActive}
+							scale={ganttScale}
+							onScaleChange={setGanttScale}
+							onOpen={setDetailIid}
+						/>
+					</Suspense>
+				)}
 			</main>
 			{detailCard ? (
 				<CardDetail

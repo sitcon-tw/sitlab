@@ -15,6 +15,8 @@ export type LinkedWorkItem = components["schemas"]["LinkedWorkItem"];
 export type WorkItemLinkType = LinkedWorkItem["linkType"];
 export type WorkItemRelationshipKind = operations["searchRelationshipCandidates"]["parameters"]["query"]["kind"];
 
+export type BoardViewMode = "board" | "gantt";
+export type GanttScale = "day" | "week";
 export type BoardSortMode = "manual" | "due-asc" | "due-desc" | "start-asc" | "start-desc" | "updated-desc" | "updated-asc";
 
 export function compareBoardCards(a: BoardCard, b: BoardCard, sortMode: BoardSortMode) {

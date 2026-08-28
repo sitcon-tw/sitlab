@@ -1,4 +1,4 @@
-import type { BoardSortMode, Bootstrap } from "./model";
+import type { BoardSortMode, BoardViewMode, Bootstrap, GanttScale } from "./model";
 
 export interface BoardViewState {
 	query: string;
@@ -6,10 +6,12 @@ export interface BoardViewState {
 	memberIds: number[];
 	labels: string[];
 	sortMode: BoardSortMode;
+	viewMode: BoardViewMode;
+	ganttScale: GanttScale;
 }
 
 const sortModes = new Set<BoardSortMode>(["manual", "due-asc", "due-desc", "start-asc", "start-desc", "updated-desc", "updated-asc"]);
-const ownedParameters = ["q", "team", "member", "label", "sort"] as const;
+const ownedParameters = ["q", "team", "member", "label", "sort", "view", "scale"] as const;
 
 export function parseBoardViewState(search: string, bootstrap: Bootstrap): BoardViewState {
 	const parameters = new URLSearchParams(search);
@@ -33,7 +35,9 @@ export function parseBoardViewState(search: string, bootstrap: Bootstrap): Board
 				.map((value) => value.trim())
 				.filter(Boolean)
 		),
-		sortMode: requestedSort && sortModes.has(requestedSort) ? requestedSort : "due-asc"
+		sortMode: requestedSort && sortModes.has(requestedSort) ? requestedSort : "due-asc",
+		viewMode: parameters.get("view") === "gantt" ? "gantt" : "board",
+		ganttScale: parameters.get("scale") === "week" ? "week" : "day"
 	};
 }
 
@@ -45,6 +49,10 @@ export function serializeBoardViewState(currentSearch: string, state: BoardViewS
 	for (const memberId of unique(state.memberIds)) parameters.append("member", String(memberId));
 	for (const label of unique(state.labels.map((value) => value.trim()).filter(Boolean))) parameters.append("label", label);
 	if (state.sortMode !== "due-asc") parameters.set("sort", state.sortMode);
+	if (state.viewMode === "gantt") {
+		parameters.set("view", "gantt");
+		if (state.ganttScale === "week") parameters.set("scale", "week");
+	}
 	const query = parameters.toString();
 	return query ? `?${query}` : "";
 }

@@ -8,6 +8,7 @@ import {
 	activeMembers,
 	filterDirectoryMembers,
 	type BoardSortMode,
+	type BoardViewMode,
 	type Bootstrap,
 	type DirectoryMember,
 	type DirectoryTeam,
@@ -23,6 +24,7 @@ export interface BoardFiltersProps {
 	memberIds: number[];
 	labels: string[];
 	sortMode: BoardSortMode;
+	viewMode: BoardViewMode;
 	visibleCount: number;
 	totalCount: number;
 	onQueryChange: (query: string) => void;
@@ -50,6 +52,7 @@ export function BoardFilters({
 	memberIds,
 	labels,
 	sortMode,
+	viewMode,
 	visibleCount,
 	totalCount,
 	onQueryChange,
@@ -68,36 +71,39 @@ export function BoardFilters({
 		[bootstrap.members, memberIds]
 	);
 	const filtersActive = Boolean(query.trim() || teamKey || memberIds.length || labels.length);
-	const advancedCount = Number(Boolean(teamKey)) + Number(memberIds.length > 0) + Number(labels.length > 0) + Number(sortMode !== "due-asc");
+	const showSort = viewMode === "board";
+	const advancedCount = Number(Boolean(teamKey)) + Number(memberIds.length > 0) + Number(labels.length > 0) + Number(showSort && sortMode !== "due-asc");
 	const sortLabel = SORT_OPTIONS.find((option) => option.value === sortMode)?.label ?? "Due date：近到遠";
 
 	return (
 		<>
-			<section className={styles.filters} aria-label="篩選看板">
-				<Menu
-					label="排序方式"
-					className={styles.sortMenu}
-					trigger={
-						<button type="button" className={`${styles.sortControl} ${styles.desktopFilterControl}`} aria-label="排序方式" data-value={sortMode}>
-							<span className={styles.sortText}>
-								<span className={styles.sortLabel}>排序方式</span>
-								<span className={styles.sortValue}>{sortLabel}</span>
-							</span>
-							<ChevronDown className={styles.sortChevron} size="1.25rem" aria-hidden="true" />
-						</button>
-					}
-				>
-					{SORT_OPTIONS.map((option) => (
-						<MenuItem
-							key={option.value}
-							selected={sortMode === option.value}
-							leading={sortMode === option.value ? <Check size="1.125rem" aria-hidden="true" /> : <span aria-hidden="true" />}
-							onSelect={() => onSortModeChange(option.value)}
-						>
-							{option.label}
-						</MenuItem>
-					))}
-				</Menu>
+			<section className={styles.filters} aria-label={viewMode === "gantt" ? "篩選甘特圖" : "篩選看板"} data-view={viewMode}>
+				{showSort ? (
+					<Menu
+						label="排序方式"
+						className={styles.sortMenu}
+						trigger={
+							<button type="button" className={`${styles.sortControl} ${styles.desktopFilterControl}`} aria-label="排序方式" data-value={sortMode}>
+								<span className={styles.sortText}>
+									<span className={styles.sortLabel}>排序方式</span>
+									<span className={styles.sortValue}>{sortLabel}</span>
+								</span>
+								<ChevronDown className={styles.sortChevron} size="1.25rem" aria-hidden="true" />
+							</button>
+						}
+					>
+						{SORT_OPTIONS.map((option) => (
+							<MenuItem
+								key={option.value}
+								selected={sortMode === option.value}
+								leading={sortMode === option.value ? <Check size="1.125rem" aria-hidden="true" /> : <span aria-hidden="true" />}
+								onSelect={() => onSortModeChange(option.value)}
+							>
+								{option.label}
+							</MenuItem>
+						))}
+					</Menu>
+				) : null}
 
 				<SearchablePicker
 					className={`${styles.filterTeam} ${styles.desktopFilterControl}`}
@@ -169,11 +175,12 @@ export function BoardFilters({
 					leadingIcon={<SlidersHorizontal size="1.125rem" aria-hidden="true" />}
 					onClick={() => setCompactOpen(true)}
 				>
-					篩選與排序{advancedCount ? ` (${advancedCount})` : ""}
+					{showSort ? "篩選與排序" : "篩選"}
+					{advancedCount ? ` (${advancedCount})` : ""}
 				</Button>
 
 				<span className={styles.filterResult} role="status" aria-live="polite">
-					{visibleCount} / {totalCount} 張卡片
+					{visibleCount} / {totalCount} {viewMode === "gantt" ? "個開啟 Issue" : "張卡片"}
 				</span>
 				<IconButton
 					className={styles.clearFilters}
@@ -196,6 +203,7 @@ export function BoardFilters({
 				memberIds={memberIds}
 				labels={labels}
 				sortMode={sortMode}
+				showSort={showSort}
 				projectLabels={labelsQuery.data ?? []}
 				labelsLoading={labelsQuery.isLoading}
 				labelsError={labelsQuery.isError}
@@ -463,6 +471,7 @@ function CompactFiltersDialog(props: CompactFiltersDialogProps) {
 		memberIds,
 		labels,
 		sortMode,
+		showSort,
 		projectLabels,
 		labelsLoading,
 		labelsError,
@@ -490,8 +499,8 @@ function CompactFiltersDialog(props: CompactFiltersDialogProps) {
 		<Dialog
 			open={open}
 			onOpenChange={changeOpen}
-			title="篩選與排序"
-			description="選取後立即更新看板"
+			title={showSort ? "篩選與排序" : "篩選甘特圖"}
+			description={showSort ? "選取後立即更新看板" : "選取後立即更新甘特圖"}
 			footer={
 				<div className={styles.pickerFooter}>
 					<Button variant="text" disabled={!hasAdvancedFilters} onClick={onClearAdvanced}>
@@ -504,12 +513,14 @@ function CompactFiltersDialog(props: CompactFiltersDialogProps) {
 			}
 		>
 			<div className={styles.compactFilters}>
-				<SelectField
-					label="排序方式"
-					value={sortMode}
-					options={SORT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
-					onValueChange={(value) => onSortModeChange(value as BoardSortMode)}
-				/>
+				{showSort ? (
+					<SelectField
+						label="排序方式"
+						value={sortMode}
+						options={SORT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+						onValueChange={(value) => onSortModeChange(value as BoardSortMode)}
+					/>
+				) : null}
 				<CompactFilterSection title="組別" count={teamKey ? 1 : 0}>
 					<TextField type="search" label="搜尋組別" value={teamQuery} onChange={(event) => setTeamQuery(event.target.value)} />
 					<TeamOptions teams={teams} query={teamQuery} value={teamKey} onChange={onTeamChange} />
@@ -547,6 +558,7 @@ interface CompactFiltersDialogProps {
 	memberIds: number[];
 	labels: string[];
 	sortMode: BoardSortMode;
+	showSort: boolean;
 	projectLabels: ProjectLabel[];
 	labelsLoading: boolean;
 	labelsError: boolean;

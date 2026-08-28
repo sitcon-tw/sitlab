@@ -800,4 +800,37 @@ describe("SITCON Board interactions", () => {
 		expect(updateAssignee).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), [114, 115]);
 		expect(within(dialog).getByText("已選擇 2 人")).toBeVisible();
 	});
+
+	it("switches to a URL-backed Gantt view with only open issues", async () => {
+		const user = userEvent.setup();
+		render(<Harness />);
+
+		await user.click(screen.getByRole("button", { name: "Gantt" }));
+		const gantt = await screen.findByRole("region", { name: "SITCON 2027 甘特圖" });
+
+		expect(window.location.search).toContain("view=gantt");
+		expect(within(screen.getByRole("region", { name: "篩選甘特圖" })).getByRole("status")).toHaveTextContent("6 / 6 個開啟 Issue");
+		expect(screen.queryByRole("button", { name: "排序方式" })).not.toBeInTheDocument();
+		expect(within(gantt).queryByText("完成主視覺社群素材")).not.toBeInTheDocument();
+		const scale = within(gantt).getByRole("group", { name: "時間尺度" });
+		expect(within(scale).getByRole("button", { name: "日" })).toHaveAttribute("aria-pressed", "true");
+		await user.click(within(scale).getByRole("button", { name: "週" }));
+		expect(window.location.search).toContain("scale=week");
+
+		await user.click(within(gantt).getByRole("button", { name: /開啟 Issue #127/ }));
+		expect(screen.getByRole("dialog", { name: /127 卡片詳細資料/ })).toBeVisible();
+	});
+
+	it("keeps undated open issues in the Gantt unscheduled section", async () => {
+		const user = userEvent.setup();
+		const initial = structuredClone(demoBootstrap);
+		const undated = initial.board.cards.find((card) => card.issueIid === 129)!;
+		undated.startDate = null;
+		undated.dueDate = null;
+		render(<Harness initial={initial} />);
+
+		await user.click(screen.getByRole("button", { name: "Gantt" }));
+		const unscheduled = await screen.findByRole("region", { name: "未排程" });
+		expect(within(unscheduled).getByRole("button", { name: /確認議程講者資料/ })).toBeVisible();
+	});
 });
