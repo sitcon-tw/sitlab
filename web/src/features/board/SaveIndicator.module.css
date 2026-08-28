@@ -25,18 +25,8 @@
 	font-variant-numeric: tabular-nums;
 }
 
-.spin {
-	animation: save-indicator-spin 900ms linear infinite;
-}
-
-@keyframes save-indicator-spin {
-	to {
-		transform: rotate(360deg);
-	}
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.spin {
-		animation: none;
-	}
+.spinner {
+	width: 0.875rem;
+	height: 0.875rem;
+	color: inherit;
 }

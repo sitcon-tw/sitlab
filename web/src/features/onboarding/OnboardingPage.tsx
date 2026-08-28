@@ -2,7 +2,7 @@ import { savePreferences } from "@/features/board/boardApi";
 import { activeMembers, type Bootstrap, type DirectoryTeam } from "@/features/board/model";
 import { Avatar } from "@/shared/Avatar";
 import { errorMessage } from "@/shared/api/client";
-import { Button } from "@project-template/ui";
+import { Button, IconButton, Panel, TopAppBar } from "@project-template/ui";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
 import styles from "./OnboardingPage.module.css";
@@ -36,15 +36,14 @@ export function OnboardingPage({ bootstrap, updateBootstrap }: OnboardingPagePro
 
 	return (
 		<main className={styles.page}>
-			<header className={styles.header}>
-				<p className={styles.brand}>SITCON / 2027</p>
-				<span>@{bootstrap.me.username}</span>
-			</header>
+			<TopAppBar className={styles.header} headline="SITCON / 2027" trailing={<span className="md-typescale-label-large">@{bootstrap.me.username}</span>} />
 			<section className={styles.content} aria-labelledby="onboarding-title">
 				<div className={styles.intro}>
-					<p className={styles.step}>初次設定</p>
-					<h1 id="onboarding-title">選擇你的主要組別</h1>
-					<p>這會成為快速開卡的預設組別。請查看成員後再確認。</p>
+					<p className={`md-typescale-label-small ${styles.step}`}>初次設定</p>
+					<h1 className="md-typescale-headline-large" id="onboarding-title">
+						選擇你的主要組別
+					</h1>
+					<p className="md-typescale-body-large">這會成為快速開卡的預設組別。請查看成員後再確認。</p>
 				</div>
 				<div className={styles.teams} role="radiogroup" aria-label="主要組別">
 					{teams.map((team) => (
@@ -60,7 +59,13 @@ export function OnboardingPage({ bootstrap, updateBootstrap }: OnboardingPagePro
 					))}
 				</div>
 				<footer className={styles.footer}>
-					{error ? <p role="alert">{error}</p> : <span />}
+					{error ? (
+						<p className="md-typescale-body-medium" role="alert">
+							{error}
+						</p>
+					) : (
+						<span />
+					)}
 					<Button
 						variant="filled"
 						disabled={!selectedTeam}
@@ -94,47 +99,48 @@ function TeamChoice({
 }) {
 	const members = activeMembers(bootstrap).filter((member) => member.teamKeys.includes(team.key));
 	return (
-		<article className={styles.team} data-selected={selected}>
+		<Panel className={styles.team} variant="outlined" data-selected={selected}>
 			<div className={styles.teamSummary}>
-				<button type="button" className={styles.teamSelect} role="radio" aria-checked={selected} onClick={onSelect}>
-					<span className={styles.radio} aria-hidden="true" />
-					<span>
-						<strong>{team.name}</strong>
-						<small>{members.length} 人</small>
+				<label className={`md-list-item md-list-item--two-line ${styles.teamSelect}`}>
+					<input type="radio" className="md-radio" name="primary-team" checked={selected} onChange={onSelect} />
+					<span className="md-list-item__text">
+						<span className="md-list-item__headline">{team.name}</span>
+						<span className="md-list-item__supporting">{members.length} 人</span>
 					</span>
-					<span className={styles.avatars}>
+					<span className={styles.avatars} aria-hidden="true">
 						{members.slice(0, 3).map((member) => (
 							<Avatar key={member.gitLabUserId} name={member.displayName} src={member.avatarUrl} size="sm" />
 						))}
-						{members.length > 3 ? <i>+{members.length - 3}</i> : null}
+						{members.length > 3 ? <i className="md-typescale-label-small">+{members.length - 3}</i> : null}
 					</span>
-				</button>
-				<button
-					type="button"
+				</label>
+				<IconButton
 					className={styles.expand}
-					aria-label={`${expanded ? "收合" : "展開"}${team.name}成員`}
+					label={`${expanded ? "收合" : "展開"}${team.name}成員`}
 					aria-expanded={expanded}
+					icon={expanded ? <ChevronUp size="1rem" aria-hidden="true" /> : <ChevronDown size="1rem" aria-hidden="true" />}
 					onClick={onToggle}
-				>
-					{expanded ? <ChevronUp size="1rem" aria-hidden="true" /> : <ChevronDown size="1rem" aria-hidden="true" />}
-				</button>
+				/>
 			</div>
 			{expanded ? (
-				<ul className={styles.memberList}>
+				<ul className={`md-list ${styles.memberList}`}>
 					{members.length ? (
 						members.map((member) => (
-							<li key={member.gitLabUserId}>
-								<Avatar name={member.displayName} src={member.avatarUrl} size="sm" />
-								<span>
-									{member.displayName} <small>@{member.username}</small>
+							<li className="md-list-item md-list-item--two-line" key={member.gitLabUserId}>
+								<span className="md-list-item__leading">
+									<Avatar name={member.displayName} src={member.avatarUrl} size="sm" />
+								</span>
+								<span className="md-list-item__text">
+									<span className="md-list-item__headline">{member.displayName}</span>
+									<span className="md-list-item__supporting">@{member.username}</span>
 								</span>
 							</li>
 						))
 					) : (
-						<li className={styles.empty}>目前沒有可指派成員</li>
+						<li className="md-list-item">目前沒有可指派成員</li>
 					)}
 				</ul>
 			) : null}
-		</article>
+		</Panel>
 	);
 }

@@ -9,6 +9,19 @@
 		<meta name="apple-mobile-web-app-title" content="SITCON 2027 Board" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<title>SITCON 2027 籌備工作看板</title>
+		<script>
+			// Runs before first paint so the board never flashes the wrong theme.
+			// Keep the storage key in sync with web/src/shared/useTheme.ts.
+			(function () {
+				try {
+					var stored = localStorage.getItem("sitcon-board-theme");
+					var theme = stored === "light" || stored === "dark" ? stored : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+					document.documentElement.dataset.theme = theme;
+				} catch (error) {
+					document.documentElement.dataset.theme = "light";
+				}
+			})();
+		</script>
 	</head>
 	<body>
 		<div id="root"></div>

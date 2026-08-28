@@ -17,6 +17,9 @@ const rawColorAllowlist = new Map([
 	["web/src/features/board/labelPalette.ts", "the label color picker mirrors GitLab's own suggested label colors"],
 	["web/src/features/board/BoardPage.test.tsx", "GitLab label response fixtures require concrete API color metadata"],
 	["web/src/features/board/LabelManagerDialog.test.tsx", "GitLab label response fixtures require concrete API color metadata"],
+	["web/src/features/board/CardRelationships.test.tsx", "GitLab relationship fixtures require API colors and use #IID search syntax"],
+	["web/src/features/board/relationApi.ts", "GitLab relationship demo payloads require concrete API color metadata"],
+	["web/src/features/board/syncActions.test.ts", "board sync API fixtures require concrete list color metadata"],
 	["packages/ui/src/styles/tokens.css", "the token source of truth must contain concrete values"]
 ]);
 

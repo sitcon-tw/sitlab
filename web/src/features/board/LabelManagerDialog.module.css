@@ -12,33 +12,6 @@
 	border-radius: var(--md-sys-shape-corner-medium);
 }
 
-.field {
-	display: grid;
-	gap: var(--md-space-1);
-}
-
-.field > span {
-	font-size: var(--md-sys-typescale-label-medium-size);
-	font-weight: var(--md-sys-typescale-label-medium-weight);
-	letter-spacing: var(--md-sys-typescale-label-medium-tracking);
-	color: var(--md-sys-color-on-surface-variant);
-}
-
-.field input,
-.search input {
-	height: 2.5rem;
-	padding: 0 var(--md-space-3);
-	font-size: var(--md-sys-typescale-body-medium-size);
-	color: var(--md-sys-color-on-surface);
-	background: var(--md-sys-color-surface-container-lowest);
-	border: 1px solid var(--md-sys-color-outline);
-	border-radius: var(--md-sys-shape-corner-extra-small);
-}
-
-.search {
-	display: grid;
-}
-
 .editActions {
 	display: flex;
 	gap: var(--md-space-2);
@@ -47,44 +20,13 @@
 
 .list,
 .reserved ul {
-	display: grid;
-	gap: var(--md-space-1);
 	max-height: 18rem;
-	padding: 0;
-	margin: 0;
 	overflow-y: auto;
-	list-style: none;
 }
 
-.row {
-	display: grid;
-	grid-template-columns: auto minmax(0, auto) minmax(0, 1fr) auto auto;
-	gap: var(--md-space-2);
-	align-items: center;
-	min-height: 2.75rem;
-	padding: 0 var(--md-space-2);
-	border-radius: var(--md-sys-shape-corner-extra-small);
-}
-
-.row:hover {
-	background: color-mix(in srgb, var(--md-sys-color-on-surface) 4%, transparent);
-}
-
-.name {
-	overflow: hidden;
-	font-size: var(--md-sys-typescale-body-medium-size);
-	font-weight: var(--md-sys-typescale-title-small-weight);
-	color: var(--md-sys-color-on-surface);
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.description {
-	overflow: hidden;
-	font-size: var(--md-sys-typescale-body-small-size);
-	color: var(--md-sys-color-on-surface-variant);
-	text-overflow: ellipsis;
-	white-space: nowrap;
+.actions {
+	display: flex;
+	gap: var(--md-space-1);
 }
 
 .reserved h3 {
@@ -95,33 +37,11 @@
 	color: var(--md-sys-color-on-surface-variant);
 }
 
-/* Reserved rows have no action buttons, so they need no columns for them. */
-.reserved .row {
-	grid-template-columns: auto minmax(0, auto) minmax(0, 1fr);
-}
-
-.empty,
 .error {
 	margin: 0;
-	font-size: var(--md-sys-typescale-body-small-size);
-	color: var(--md-sys-color-on-surface-variant);
-}
-
-.error {
 	padding: var(--md-space-3);
+	font-size: var(--md-sys-typescale-body-small-size);
 	color: var(--md-sys-color-on-error-container);
 	background: var(--md-sys-color-error-container);
 	border-radius: var(--md-sys-shape-corner-extra-small);
-}
-
-.srOnly {
-	position: absolute;
-	width: 1px;
-	height: 1px;
-	padding: 0;
-	margin: -1px;
-	overflow: hidden;
-	clip-path: inset(50%);
-	white-space: nowrap;
-	border: 0;
 }

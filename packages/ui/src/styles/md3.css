@@ -119,19 +119,16 @@
  * applied here rather than per-component so no interactive primitive can miss it.
  */
 
-.md-button:focus-visible,
-.md-icon-button:focus-visible,
-.md-chip__button:focus-visible,
-.md-chip__remove:focus-visible,
-.md-segmented-button__segment:focus-visible,
-.md-list-item:focus-visible,
-.md-menu-item:focus-visible,
-.md-checkbox:focus-visible,
-.md-radio:focus-visible,
-.md-field__input:focus-visible,
-.md-tab:focus-visible {
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
 	outline: 3px solid var(--md-sys-color-secondary);
 	outline-offset: 2px;
+}
+
+/* Text fields already expose focus on their containing outline/active indicator.
+ * Drawing the global ring on the nested native control creates a second inset box
+ * that cuts through the floating label and makes the field look double-focused. */
+.md-field__input:focus-visible {
+	outline-style: none;
 }
 
 /* --- Divider -------------------------------------------------------------- */
@@ -317,11 +314,12 @@
 /* --- Menu ----------------------------------------------------------------- */
 
 .md-menu {
+	z-index: 100;
 	min-width: 7rem;
 	padding: var(--md-space-2) 0;
-	background: var(--md-sys-color-surface-container);
-	border-radius: var(--md-sys-shape-corner-extra-small);
-	box-shadow: var(--md-sys-elevation-level2);
+	background: var(--md-sys-color-surface-container-low);
+	border: 1px solid var(--md-sys-color-outline-variant);
+	border-radius: var(--md-sys-shape-corner-small);
 }
 
 .md-menu-item {
@@ -485,22 +483,27 @@
 	gap: var(--md-space-2);
 	align-items: center;
 	justify-content: center;
-	min-height: 2.5rem;
+	min-height: 2.75rem;
 	padding: 0 var(--md-space-6);
 	overflow: hidden;
 	font-family: var(--md-sys-typescale-label-large-font);
 	font-size: var(--md-sys-typescale-label-large-size);
 	font-weight: var(--md-sys-typescale-label-large-weight);
 	line-height: var(--md-sys-typescale-label-large-line-height);
+	text-decoration: none;
 	letter-spacing: var(--md-sys-typescale-label-large-tracking);
 	white-space: nowrap;
 	border: none;
 	border-radius: var(--md-sys-shape-corner-full);
 	isolation: isolate;
 	transition:
-		box-shadow var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
 		background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
-		border-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+		border-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+		transform var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+}
+
+.md-button:active:not(:disabled) {
+	transform: scale(0.98);
 }
 
 .md-button:has(.md-button__icon:first-child) {
@@ -518,37 +521,22 @@
 .md-button--filled {
 	color: var(--md-sys-color-on-primary);
 	background-color: var(--md-sys-color-primary);
-	box-shadow: var(--md-sys-elevation-level0);
-}
-
-.md-button--filled:hover:not(:disabled) {
-	box-shadow: var(--md-sys-elevation-level1);
 }
 
 .md-button--tonal {
 	color: var(--md-sys-color-on-secondary-container);
 	background-color: var(--md-sys-color-secondary-container);
-	box-shadow: var(--md-sys-elevation-level0);
-}
-
-.md-button--tonal:hover:not(:disabled) {
-	box-shadow: var(--md-sys-elevation-level1);
 }
 
 .md-button--elevated {
 	color: var(--md-sys-color-primary);
 	background-color: var(--md-sys-color-surface-container-low);
-	box-shadow: var(--md-sys-elevation-level1);
-}
-
-.md-button--elevated:hover:not(:disabled) {
-	box-shadow: var(--md-sys-elevation-level2);
 }
 
 .md-button--outlined {
 	color: var(--md-sys-color-primary);
-	background-color: transparent;
-	border: 1px solid var(--md-sys-color-outline);
+	background-color: var(--md-sys-color-surface-container-lowest);
+	border: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .md-button--outlined:focus-visible:not(:disabled) {
@@ -581,7 +569,7 @@
 }
 
 .md-button--sm {
-	min-height: 2rem;
+	min-height: 2.25rem;
 	padding-inline: var(--md-space-4);
 	font-size: var(--md-sys-typescale-label-medium-size);
 	letter-spacing: var(--md-sys-typescale-label-medium-tracking);
@@ -596,7 +584,6 @@
 .md-button:disabled {
 	color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
 	cursor: not-allowed;
-	box-shadow: var(--md-sys-elevation-level0);
 }
 
 .md-button--filled:disabled,
@@ -664,7 +651,8 @@
 
 .md-icon-button--outlined {
 	color: var(--md-sys-color-on-surface-variant);
-	border: 1px solid var(--md-sys-color-outline);
+	background: var(--md-sys-color-surface-container-lowest);
+	border: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .md-icon-button--error {
@@ -717,13 +705,12 @@
 	color: var(--md-sys-color-on-surface-variant);
 	letter-spacing: var(--md-sys-typescale-label-large-tracking);
 	background: none;
-	border: 1px solid var(--md-sys-color-outline);
+	border: 1px solid var(--md-sys-color-outline-variant);
 	border-radius: var(--md-sys-shape-corner-small);
 	isolation: isolate;
 	transition:
 		background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
-		border-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
-		box-shadow var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+		border-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
 }
 
 .md-chip__button {
@@ -778,17 +765,12 @@
 .md-chip--elevated {
 	background-color: var(--md-sys-color-surface-container-low);
 	border-color: transparent;
-	box-shadow: var(--md-sys-elevation-level1);
 }
 
 .md-chip[data-selected="true"] {
 	color: var(--md-sys-color-on-secondary-container);
 	background-color: var(--md-sys-color-secondary-container);
 	border-color: transparent;
-}
-
-.md-chip--elevated[data-selected="true"] {
-	box-shadow: var(--md-sys-elevation-level1);
 }
 
 /* The remove affordance is its own button, so it needs its own state layer and
@@ -821,7 +803,8 @@
 	display: inline-flex;
 	max-width: 100%;
 	overflow: hidden;
-	border: 1px solid var(--md-sys-color-outline);
+	background: var(--md-sys-color-surface-container-lowest);
+	border: 1px solid var(--md-sys-color-outline-variant);
 	border-radius: var(--md-sys-shape-corner-full);
 }
 
@@ -831,7 +814,7 @@
 	gap: var(--md-space-2);
 	align-items: center;
 	justify-content: center;
-	min-height: 2.5rem;
+	min-height: 2.75rem;
 	padding: 0 var(--md-space-3);
 	overflow: hidden;
 	font-family: var(--md-sys-typescale-label-large-font);
@@ -847,7 +830,7 @@
 }
 
 .md-segmented-button__segment + .md-segmented-button__segment {
-	border-inline-start: 1px solid var(--md-sys-color-outline);
+	border-inline-start: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .md-segmented-button__segment[aria-pressed="true"],
@@ -1020,6 +1003,10 @@
 		transition: none;
 	}
 
+	.md-button:active:not(:disabled) {
+		transform: none;
+	}
+
 	.md-state-layer:active:not(:disabled)::before {
 		opacity: var(--md-sys-state-pressed-opacity);
 	}
@@ -1035,12 +1022,12 @@
 	}
 }
 
-/* --- Outlined text field -------------------------------------------------
+/* --- Product text field --------------------------------------------------
  *
- * The floating label rides on :focus-within and :placeholder-shown, so the
- * component needs no JavaScript and no controlled-value coupling. The notch is
- * a <fieldset>/<legend>; the legend's own box is what opens the gap in the
- * border, so the outline never has to know the label's width.
+ * Simfiment is the visual reference for the compact neutral surface and quiet
+ * state change; SITCON keeps its softer 12px full rounding. The floating label
+ * stays inside the surface instead of cutting a notch through the outline. This
+ * keeps the top edge clean when the field and its parent use different tones.
  */
 
 .md-field {
@@ -1053,32 +1040,39 @@
 	display: flex;
 	align-items: center;
 	min-height: 3.5rem;
+	background: var(--sb-control);
+	border-radius: var(--md-sys-shape-corner-medium);
+	transition: background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+
+.md-field:hover .md-field__box {
+	background: color-mix(in srgb, var(--md-sys-color-on-surface) 4%, var(--sb-control));
 }
 
 .md-field__input {
 	width: 100%;
 	min-width: 0;
-	padding: var(--md-space-4);
+	padding: var(--md-space-5) var(--md-space-4) var(--md-space-1);
 	font-family: var(--md-sys-typescale-body-large-font);
 	font-size: var(--md-sys-typescale-body-large-size);
 	line-height: var(--md-sys-typescale-body-large-line-height);
 	color: var(--md-sys-color-on-surface);
 	letter-spacing: var(--md-sys-typescale-body-large-tracking);
 	background: none;
-	/* Zero border: the fieldset outline is the only visible edge. The focus
+	/* Zero border: the decorative outline is the only visible edge. The focus
 	 * indicator is shared with every other primitive, so it is not removed here. */
 	border: 0;
-	border-radius: var(--md-sys-shape-corner-extra-small);
+	border-radius: inherit;
 }
 
-/* Material's density scale (-2) for chrome that sits above dense data. The
- * board's quick-create and filter rows use this; dialogs stay at 56dp. */
+/* Dense product chrome for data-heavy views. The board's quick-create and
+ * filter rows use this; dialogs stay at the more comfortable 56dp size. */
 .md-field.md-field--dense .md-field__box {
 	min-height: 3rem;
 }
 
 .md-field.md-field--dense .md-field__input {
-	padding: var(--md-space-2) var(--md-space-3);
+	padding: var(--md-space-5) var(--md-space-3) 0;
 	font-size: var(--md-sys-typescale-body-medium-size);
 	line-height: var(--md-sys-typescale-body-medium-line-height);
 	letter-spacing: var(--md-sys-typescale-body-medium-tracking);
@@ -1093,7 +1087,8 @@
 .md-field.md-field--dense:focus-within .md-field__label,
 .md-field.md-field--dense:has(.md-field__input:not(:placeholder-shown)) .md-field__label,
 .md-field.md-field--dense[data-floating="true"] .md-field__label {
-	transform: translateY(-1.5rem);
+	top: var(--md-space-1);
+	transform: none;
 }
 
 .md-field.md-field--dense .md-field__input--select {
@@ -1114,11 +1109,16 @@
 }
 
 .md-field__input--select {
+	display: block;
+	overflow: hidden;
 	padding-inline-end: var(--md-space-8);
-	appearance: none;
+	cursor: pointer;
+	text-align: start;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
-/* MD3 trailing dropdown affordance, drawn with borders so no asset is needed. */
+/* Product dropdown affordance, drawn with borders so no asset is needed. */
 .md-field--select .md-field__box::after {
 	position: absolute;
 	right: var(--md-space-4);
@@ -1129,6 +1129,15 @@
 	border-right: 2px solid var(--md-sys-color-on-surface-variant);
 	border-bottom: 2px solid var(--md-sys-color-on-surface-variant);
 	transform: translateY(-25%) rotate(45deg);
+}
+
+.md-field--select:has(.md-field__input--select[data-state="open"]) .md-field__box::after {
+	transform: translateY(25%) rotate(225deg);
+}
+
+.md-select-menu {
+	min-width: var(--radix-dropdown-menu-trigger-width);
+	max-width: min(24rem, var(--radix-dropdown-menu-content-available-width));
 }
 
 /* Placeholder text is only meaningful once the label has floated out of its way. */
@@ -1157,6 +1166,7 @@
 	transform: translateY(-50%);
 	transform-origin: left center;
 	transition:
+		top var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
 		transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
 		color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
 		font-size var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
@@ -1170,18 +1180,24 @@
 .md-field:focus-within .md-field__label,
 .md-field:has(.md-field__input:not(:placeholder-shown)) .md-field__label,
 .md-field[data-floating="true"] .md-field__label {
+	top: var(--md-space-1);
 	font-size: var(--md-sys-typescale-body-small-size);
 	line-height: var(--md-sys-typescale-body-small-line-height);
 	letter-spacing: var(--md-sys-typescale-body-small-tracking);
-	transform: translateY(-1.75rem);
+	transform: none;
 }
 
 .md-field--textarea:focus-within .md-field__label,
 .md-field--textarea:has(.md-field__input:not(:placeholder-shown)) .md-field__label {
-	transform: translateY(-1rem);
+	top: var(--md-space-1);
+	transform: none;
 }
 
 .md-field:focus-within .md-field__label {
+	color: var(--md-sys-color-primary);
+}
+
+.md-field:has(.md-field__input--select[data-state="open"]) .md-field__label {
 	color: var(--md-sys-color-primary);
 }
 
@@ -1196,49 +1212,27 @@
 	padding: 0;
 	margin: 0;
 	pointer-events: none;
-	border: 1px solid var(--md-sys-color-outline);
-	border-radius: var(--md-sys-shape-corner-extra-small);
-	transition:
-		border-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
-		border-width var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+	border: 1px solid var(--md-sys-color-outline-variant);
+	border-radius: inherit;
+	transition: border-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
 }
 
 .md-field:hover .md-field__outline {
-	border-color: var(--md-sys-color-on-surface);
+	border-color: var(--md-sys-color-outline);
 }
 
 .md-field:focus-within .md-field__outline {
 	border-color: var(--md-sys-color-primary);
-	/* Material's outlined text field focuses at 3px, not 2px. */
-	border-width: 3px;
+	border-width: 2px;
+}
+
+.md-field:has(.md-field__input--select[data-state="open"]) .md-field__outline {
+	border-color: var(--md-sys-color-primary);
+	border-width: 2px;
 }
 
 .md-field[data-invalid="true"] .md-field__outline {
 	border-color: var(--md-sys-color-error);
-}
-
-/* The legend's box is the notch. Collapsed to zero width until the label floats. */
-.md-field__notch {
-	max-width: 0;
-	height: 0.6875rem;
-	padding: 0;
-	margin-inline-start: var(--md-space-3);
-	font-size: var(--md-sys-typescale-body-small-size);
-	line-height: var(--md-sys-typescale-body-small-line-height);
-	letter-spacing: var(--md-sys-typescale-body-small-tracking);
-	visibility: hidden;
-	transition: max-width var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
-}
-
-.md-field__notch > span {
-	display: inline-block;
-	padding-inline: var(--md-space-1);
-}
-
-.md-field:focus-within .md-field__notch,
-.md-field:has(.md-field__input:not(:placeholder-shown)) .md-field__notch,
-.md-field[data-floating="true"] .md-field__notch {
-	max-width: 100%;
 }
 
 .md-field__optional {
@@ -1276,23 +1270,22 @@
 	display: block;
 	overflow: hidden;
 	background: var(--md-sys-color-surface-container-low);
-	border-radius: var(--md-sys-shape-corner-medium);
-	box-shadow: var(--md-sys-elevation-level1);
+	border: 1px solid var(--md-sys-color-outline-variant);
+	border-radius: var(--md-sys-shape-corner-large);
 }
 
 .md-panel--filled {
-	background: var(--md-sys-color-surface-container-highest);
-	box-shadow: var(--md-sys-elevation-level0);
+	background: var(--md-sys-color-surface-container-low);
+	border-color: transparent;
 }
 
 .md-panel--outlined {
-	background: var(--md-sys-color-surface);
+	background: var(--md-sys-color-surface-container-lowest);
 	border: 1px solid var(--md-sys-color-outline-variant);
-	box-shadow: var(--md-sys-elevation-level0);
 }
 
 .md-panel--padded {
-	padding: var(--md-space-4);
+	padding: var(--md-space-5);
 }
 
 .md-panel__header {
@@ -1335,15 +1328,11 @@
 	padding-inline: var(--md-space-4);
 	color: var(--md-sys-color-on-surface);
 	background: var(--md-sys-color-surface);
-	box-shadow: var(--md-sys-elevation-level0);
-	transition:
-		background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
-		box-shadow var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+	transition: background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
 }
 
 .md-top-app-bar[data-scrolled="true"] {
 	background: var(--md-sys-color-surface-container);
-	box-shadow: var(--md-sys-elevation-level2);
 }
 
 .md-top-app-bar__headline {
@@ -1569,9 +1558,9 @@
 	max-height: calc(100svh - 2rem);
 	overflow-y: auto;
 	color: var(--md-sys-color-on-surface);
-	background: var(--md-sys-color-surface-container-high);
+	background: var(--md-sys-color-surface-container-low);
+	border: 1px solid var(--md-sys-color-outline-variant);
 	border-radius: var(--md-sys-shape-corner-extra-large);
-	box-shadow: var(--md-sys-elevation-level3);
 	transform: translate(-50%, -50%);
 }
 
@@ -1586,10 +1575,10 @@
 	height: 100svh;
 	overflow-y: auto;
 	color: var(--md-sys-color-on-surface);
-	background: var(--md-sys-color-surface-container-low);
+	background: var(--md-sys-color-surface);
+	border-left: 1px solid var(--md-sys-color-outline-variant);
 	border-start-start-radius: var(--md-sys-shape-corner-large);
 	border-end-start-radius: var(--md-sys-shape-corner-large);
-	box-shadow: var(--md-sys-elevation-level1);
 }
 
 .md-dialog__header {
@@ -1666,8 +1655,8 @@
 	padding: var(--md-space-3) var(--md-space-4);
 	color: var(--md-sys-color-inverse-on-surface);
 	background: var(--md-sys-color-inverse-surface);
-	border-radius: var(--md-sys-shape-corner-extra-small);
-	box-shadow: var(--md-sys-elevation-level3);
+	border: 1px solid color-mix(in srgb, var(--md-sys-color-inverse-on-surface) 20%, transparent);
+	border-radius: var(--md-sys-shape-corner-medium);
 }
 
 .md-toast__text {

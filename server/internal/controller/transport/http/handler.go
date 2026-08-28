@@ -8,6 +8,7 @@ import (
 	appboard "example.com/project-template/internal/controller/application/board"
 	appbootstrap "example.com/project-template/internal/controller/application/bootstrap"
 	appactivity "example.com/project-template/internal/controller/application/cardactivity"
+	apprelation "example.com/project-template/internal/controller/application/cardrelation"
 	appdirectory "example.com/project-template/internal/controller/application/directory"
 	appoauth "example.com/project-template/internal/controller/application/oauth"
 	appsync "example.com/project-template/internal/controller/application/sync"
@@ -57,6 +58,17 @@ type CardActivityService interface {
 	CreateComment(context.Context, appactivity.CreateCommentInput) (appactivity.Comment, error)
 }
 
+type CardRelationService interface {
+	ChildItems(context.Context, string, int64, apprelation.PageQuery) (apprelation.ChildPage, error)
+	LinkedItems(context.Context, string, int64, apprelation.PageQuery) (apprelation.LinkedPage, error)
+	Search(context.Context, apprelation.SearchInput) ([]apprelation.WorkItem, error)
+	CreateChild(context.Context, apprelation.CreateChildInput) (apprelation.WorkItem, error)
+	AttachChild(context.Context, apprelation.ChildRelationInput) error
+	DetachChild(context.Context, apprelation.ChildRelationInput) error
+	AddLinks(context.Context, apprelation.LinkInput) error
+	RemoveLink(context.Context, apprelation.ChildRelationInput) error
+}
+
 type SyncService interface {
 	RequestRefresh() time.Time
 	EnqueueWebhook(context.Context, board.WebhookDelivery) (bool, error)
@@ -81,6 +93,7 @@ type handler struct {
 	directory DirectoryService
 	board     BoardService
 	activity  CardActivityService
+	relations CardRelationService
 	sync      SyncService
 	webhooks  WebhookConfig
 	events    RevisionEvents

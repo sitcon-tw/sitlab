@@ -10,22 +10,28 @@
 }
 
 .swatch {
-	width: 1.5rem;
-	height: 1.5rem;
+	position: relative;
+	width: 2.5rem;
+	height: 2.5rem;
 	padding: 0;
 	background: var(--tag-color);
 	border: 1px solid color-mix(in srgb, var(--tag-color) 72%, var(--md-sys-color-shadow));
-	border-radius: var(--md-sys-shape-corner-small);
+	border-radius: var(--md-sys-shape-corner-full);
+}
+
+/* 48dp touch target that does not affect layout, as Material requires. */
+.swatch::after {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 3rem;
+	height: 3rem;
+	transform: translate(-50%, -50%);
+	content: "";
 }
 
 .swatch[aria-pressed="true"] {
-	outline: 2px solid var(--md-sys-color-primary);
-	outline-offset: 2px;
-}
-
-.swatch:focus-visible {
-	outline: 3px solid var(--md-sys-color-secondary);
-	outline-offset: 2px;
+	border: 2px solid var(--md-sys-color-primary);
 }
 
 .custom {

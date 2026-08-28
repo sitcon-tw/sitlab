@@ -15,15 +15,15 @@ export interface CardMovePlan {
 	patches: CardPositionPatch[];
 }
 
+/** Captures the exact order currently rendered, including an active non-manual sort. */
+export function groupVisibleCardIds(cards: BoardCard[], listKeys: string[]): CardGroups {
+	return Object.fromEntries(listKeys.map((listKey) => [listKey, cards.filter((card) => card.listKey === listKey).map((card) => card.issueIid)]));
+}
+
 export function groupCardIds(cards: BoardCard[], listKeys: string[]): CardGroups {
-	return Object.fromEntries(
-		listKeys.map((listKey) => [
-			listKey,
-			cards
-				.filter((card) => card.listKey === listKey)
-				.sort((a, b) => compareBoardCards(a, b, "manual"))
-				.map((card) => card.issueIid)
-		])
+	return groupVisibleCardIds(
+		[...cards].sort((a, b) => compareBoardCards(a, b, "manual")),
+		listKeys
 	);
 }
 

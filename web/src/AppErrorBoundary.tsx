@@ -25,9 +25,9 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
 		return (
 			<main className="sb-startup-error" role="alert">
-				<p className="sb-brand">SITCON / 2027</p>
-				<h1>看板畫面發生錯誤</h1>
-				<p>你的資料沒有遺失。請重新載入看板；如果問題持續發生，請將發生時間提供給維護者。</p>
+				<p className="sb-brand md-typescale-label-large">SITCON / 2027</p>
+				<h1 className="md-typescale-headline-medium">看板畫面發生錯誤</h1>
+				<p className="md-typescale-body-large">你的資料沒有遺失。請重新載入看板；如果問題持續發生，請將發生時間提供給維護者。</p>
 				<Button variant="filled" onClick={() => window.location.reload()}>
 					重新載入
 				</Button>

@@ -20,7 +20,7 @@
 		},
 		{
 			"name": "Cards",
-			"description": "Optimistic GitLab issue board mutations."
+			"description": "GitLab issue board mutations and on-demand work item relationships."
 		},
 		{
 			"name": "Directory",
@@ -587,6 +587,420 @@
 				]
 			}
 		},
+		"/cards/{issueIid}/child-items": {
+			"get": {
+				"operationId": "listChildItems",
+				"summary": "List GitLab child work items for a card",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					},
+					{
+						"name": "cursor",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						},
+						"explode": false
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"format": "int32",
+							"minimum": 1,
+							"maximum": 100
+						},
+						"explode": false
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The request has succeeded.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ChildItemsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The server could not understand the request due to invalid syntax.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			},
+			"post": {
+				"operationId": "createChildItem",
+				"summary": "Create a GitLab Task as a child of a card",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					},
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"201": {
+						"description": "The request has succeeded and a new resource has been created as a result.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/WorkItemSummary"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with the current state of the server.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateChildItemRequest"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
+		"/cards/{issueIid}/child-items/{workItemId}": {
+			"put": {
+				"operationId": "attachChildItem",
+				"summary": "Attach an existing unparented GitLab Task to a card",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					},
+					{
+						"$ref": "#/components/parameters/WorkItemIdPath"
+					},
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "There is no content to send for this request, but the headers may be useful. "
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with the current state of the server.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			},
+			"delete": {
+				"operationId": "detachChildItem",
+				"summary": "Detach a GitLab Task from its parent without deleting it",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					},
+					{
+						"$ref": "#/components/parameters/WorkItemIdPath"
+					},
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "There is no content to send for this request, but the headers may be useful. "
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with the current state of the server.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
 		"/cards/{issueIid}/comments": {
 			"get": {
 				"operationId": "listCardComments",
@@ -1082,6 +1496,317 @@
 				]
 			}
 		},
+		"/cards/{issueIid}/linked-items": {
+			"get": {
+				"operationId": "listLinkedItems",
+				"summary": "List GitLab linked work items for a card",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					},
+					{
+						"name": "cursor",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						},
+						"explode": false
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"format": "int32",
+							"minimum": 1,
+							"maximum": 100
+						},
+						"explode": false
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The request has succeeded.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LinkedItemsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The server could not understand the request due to invalid syntax.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			},
+			"post": {
+				"operationId": "createLinkedItems",
+				"summary": "Link same-project GitLab Issues or Tasks to a card",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					},
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "There is no content to send for this request, but the headers may be useful. "
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with the current state of the server.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateLinkedItemsRequest"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
+		"/cards/{issueIid}/linked-items/{workItemId}": {
+			"delete": {
+				"operationId": "deleteLinkedItem",
+				"summary": "Remove a GitLab link between a card and another work item",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					},
+					{
+						"$ref": "#/components/parameters/WorkItemIdPath"
+					},
+					{
+						"$ref": "#/components/parameters/CSRFHeader"
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "There is no content to send for this request, but the headers may be useful. "
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with the current state of the server.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
 		"/cards/{issueIid}/position": {
 			"put": {
 				"operationId": "moveCard",
@@ -1177,6 +1902,125 @@
 						}
 					}
 				},
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
+		"/cards/{issueIid}/relationship-candidates": {
+			"get": {
+				"operationId": "searchRelationshipCandidates",
+				"summary": "Search same-project GitLab work items that can be related to a card",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/IssueIidPath"
+					},
+					{
+						"name": "kind",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"enum": ["child", "linked"]
+						},
+						"explode": false
+					},
+					{
+						"name": "query",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"explode": false
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The request has succeeded.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/WorkItemCandidatesResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The server could not understand the request due to invalid syntax.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Client error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
 				"security": [
 					{
 						"SessionCookieAuth": []
@@ -2556,6 +3400,15 @@
 					"type": "integer",
 					"format": "int64"
 				}
+			},
+			"WorkItemIdPath": {
+				"name": "workItemId",
+				"in": "path",
+				"required": true,
+				"schema": {
+					"type": "integer",
+					"format": "int64"
+				}
 			}
 		},
 		"schemas": {
@@ -2984,6 +3837,32 @@
 					}
 				]
 			},
+			"ChildItemsResponse": {
+				"type": "object",
+				"required": ["items", "totalCount", "nextCursor"],
+				"properties": {
+					"items": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/WorkItemSummary"
+						}
+					},
+					"totalCount": {
+						"type": "integer",
+						"format": "int32"
+					},
+					"nextCursor": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				}
+			},
 			"CreateCardCommentRequest": {
 				"type": "object",
 				"required": ["body"],
@@ -3053,6 +3932,47 @@
 						]
 					}
 				}
+			},
+			"CreateChildItemRequest": {
+				"type": "object",
+				"required": ["title"],
+				"properties": {
+					"title": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 255
+					}
+				},
+				"examples": [
+					{
+						"title": "確認寄信重試條件"
+					}
+				]
+			},
+			"CreateLinkedItemsRequest": {
+				"type": "object",
+				"required": ["workItemIds", "linkType"],
+				"properties": {
+					"workItemIds": {
+						"type": "array",
+						"items": {
+							"type": "integer",
+							"format": "int64"
+						},
+						"minItems": 1,
+						"maxItems": 20
+					},
+					"linkType": {
+						"type": "string",
+						"enum": ["relates_to", "blocks", "is_blocked_by"]
+					}
+				},
+				"examples": [
+					{
+						"workItemIds": [9876, 9877],
+						"linkType": "blocks"
+					}
+				]
 			},
 			"CreateProjectLabelRequest": {
 				"type": "object",
@@ -3347,6 +4267,47 @@
 					}
 				]
 			},
+			"LinkedItemsResponse": {
+				"type": "object",
+				"required": ["items", "totalCount", "nextCursor"],
+				"properties": {
+					"items": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/LinkedWorkItem"
+						}
+					},
+					"totalCount": {
+						"type": "integer",
+						"format": "int32"
+					},
+					"nextCursor": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				}
+			},
+			"LinkedWorkItem": {
+				"type": "object",
+				"required": ["linkType"],
+				"properties": {
+					"linkType": {
+						"type": "string",
+						"enum": ["relates_to", "blocks", "is_blocked_by"]
+					}
+				},
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/WorkItemSummary"
+					}
+				]
+			},
 			"ListSyncAction": {
 				"type": "object",
 				"required": ["entity", "list"],
@@ -3477,6 +4438,9 @@
 							"TEAM_NOT_FOUND",
 							"MEMBER_NOT_ASSIGNABLE",
 							"CARD_NOT_FOUND",
+							"WORK_ITEM_NOT_FOUND",
+							"RELATION_CONFLICT",
+							"GITLAB_FEATURE_UNAVAILABLE",
 							"OPERATION_NOT_FOUND",
 							"OPERATION_CONFLICT",
 							"SNAPSHOT_NOT_READY",
@@ -3968,6 +4932,219 @@
 						"type": "boolean"
 					}
 				}
+			},
+			"WorkItemAssignee": {
+				"type": "object",
+				"required": ["gitLabUserId", "username", "displayName", "avatarUrl", "profileUrl"],
+				"properties": {
+					"gitLabUserId": {
+						"type": "integer",
+						"format": "int64"
+					},
+					"username": {
+						"type": "string"
+					},
+					"displayName": {
+						"type": "string"
+					},
+					"avatarUrl": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"profileUrl": {
+						"type": "string"
+					}
+				},
+				"examples": [
+					{
+						"gitLabUserId": 114,
+						"username": "yorukot",
+						"displayName": "Yorukot",
+						"avatarUrl": null,
+						"profileUrl": "https://gitlab.com/yorukot"
+					}
+				]
+			},
+			"WorkItemCandidatesResponse": {
+				"type": "object",
+				"required": ["items"],
+				"properties": {
+					"items": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/WorkItemSummary"
+						}
+					}
+				}
+			},
+			"WorkItemLabel": {
+				"type": "object",
+				"required": ["name", "color", "textColor"],
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"color": {
+						"type": "string"
+					},
+					"textColor": {
+						"type": "string"
+					}
+				},
+				"examples": [
+					{
+						"name": "priority::high",
+						"color": "#D73A4A",
+						"textColor": "#FFFFFF"
+					}
+				]
+			},
+			"WorkItemStatus": {
+				"type": "object",
+				"required": ["name", "category", "color"],
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"category": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"color": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				},
+				"examples": [
+					{
+						"name": "To do",
+						"category": "to_do",
+						"color": "#737278"
+					}
+				]
+			},
+			"WorkItemSummary": {
+				"type": "object",
+				"required": ["gitLabWorkItemId", "iid", "type", "title", "state", "webUrl", "status", "assignees", "startDate", "dueDate", "labels"],
+				"properties": {
+					"gitLabWorkItemId": {
+						"type": "integer",
+						"format": "int64"
+					},
+					"iid": {
+						"type": "integer",
+						"format": "int64"
+					},
+					"type": {
+						"type": "string",
+						"enum": ["issue", "task"]
+					},
+					"title": {
+						"type": "string"
+					},
+					"state": {
+						"type": "string",
+						"enum": ["open", "closed"]
+					},
+					"webUrl": {
+						"type": "string"
+					},
+					"status": {
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/WorkItemStatus"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"assignees": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/WorkItemAssignee"
+						}
+					},
+					"startDate": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "date"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"dueDate": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "date"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"labels": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/WorkItemLabel"
+						}
+					}
+				},
+				"examples": [
+					{
+						"gitLabWorkItemId": 9876,
+						"iid": 128,
+						"type": "task",
+						"title": "確認寄信重試條件",
+						"state": "open",
+						"webUrl": "https://gitlab.com/sitcon-tw/2027/-/work_items/128",
+						"status": {
+							"name": "To do",
+							"category": "to_do",
+							"color": "#737278"
+						},
+						"assignees": [
+							{
+								"gitLabUserId": 114,
+								"username": "yorukot",
+								"displayName": "Yorukot",
+								"avatarUrl": null,
+								"profileUrl": "https://gitlab.com/yorukot"
+							}
+						],
+						"startDate": "2026-08-28",
+						"dueDate": "2026-09-04",
+						"labels": [
+							{
+								"name": "priority::high",
+								"color": "#D73A4A",
+								"textColor": "#FFFFFF"
+							}
+						]
+					}
+				]
 			},
 			"uuid": {
 				"type": "string",

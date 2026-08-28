@@ -1,26 +1,22 @@
-import { useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { Check } from "lucide-react";
+import { useId, useState, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { classNames } from "../lib/classNames";
+import { Menu, MenuItem } from "./Menu";
 
 interface FieldMetaProps {
 	label: string;
 	description?: string | undefined;
 	error?: string | undefined;
 	optional?: boolean | undefined;
-	/** Material density -2 (48dp) for chrome above dense data. Dialogs stay 56dp. */
+	/** Compact 48px product control for chrome above dense data. Dialogs stay 56px. */
 	dense?: boolean | undefined;
+	/** Keeps the label in the upper slot even while an empty field is unfocused. */
+	alwaysFloatLabel?: boolean | undefined;
 }
 
 /**
- * Material Design 3 outlined text field.
- *
- * The notch is a real <fieldset>/<legend>: the legend punches a hole in the
- * fieldset border natively, so the label can sit in the outline without
- * measuring text width in JavaScript. The fieldset is aria-hidden because it
- * would otherwise expose an empty group whose legend duplicates the label.
- *
- * Outlined rather than filled: board controls sit on tinted lane and card
- * surfaces where a filled field's container has almost no contrast, and the
- * filled variant's 56dp height would push the board past the viewport at 320px.
+ * SITCON product field. Its label floats inside the control while a separate,
+ * uninterrupted outline preserves the 12px shape on any parent surface.
  */
 function FieldFrame({
 	id,
@@ -49,11 +45,7 @@ function FieldFrame({
 				<label className="md-field__label" htmlFor={id}>
 					{labelContent}
 				</label>
-				<fieldset className="md-field__outline" aria-hidden="true">
-					<legend className="md-field__notch">
-						<span>{labelContent}</span>
-					</legend>
-				</fieldset>
+				<span className="md-field__outline" aria-hidden="true" />
 			</div>
 			{description ? (
 				<p className="md-field__supporting" id={`${id}-description`}>
@@ -81,6 +73,7 @@ export function TextField({
 	error,
 	optional,
 	dense,
+	alwaysFloatLabel,
 	id: explicitId,
 	className,
 	placeholder,
@@ -90,7 +83,16 @@ export function TextField({
 	const generatedId = useId();
 	const id = explicitId ?? generatedId;
 	return (
-		<FieldFrame id={id} label={label} description={description} error={error} optional={optional} dense={dense} className={className}>
+		<FieldFrame
+			id={id}
+			label={label}
+			description={description}
+			error={error}
+			optional={optional}
+			dense={dense}
+			floating={alwaysFloatLabel}
+			className={className}
+		>
 			<input
 				id={id}
 				className="md-field__input"
@@ -114,6 +116,7 @@ export function TextAreaField({
 	error,
 	optional,
 	dense,
+	alwaysFloatLabel,
 	id: explicitId,
 	className,
 	placeholder,
@@ -130,6 +133,7 @@ export function TextAreaField({
 			error={error}
 			optional={optional}
 			dense={dense}
+			floating={alwaysFloatLabel}
 			className={classNames("md-field--textarea", className)}
 		>
 			<textarea
@@ -150,16 +154,23 @@ export interface SelectOption {
 	disabled?: boolean;
 }
 
-export interface SelectFieldProps extends SelectHTMLAttributes<HTMLSelectElement>, FieldMetaProps {
+export interface SelectFieldProps extends FieldMetaProps {
 	options: SelectOption[];
+	id?: string | undefined;
+	className?: string | undefined;
+	value?: string | undefined;
+	defaultValue?: string | undefined;
+	onValueChange?: ((value: string) => void) | undefined;
+	disabled?: boolean | undefined;
+	required?: boolean | undefined;
+	name?: string | undefined;
+	autoFocus?: boolean | undefined;
+	"aria-describedby"?: string | undefined;
 }
 
 /**
- * MD3 outlined select on a native <select>.
- *
- * The element stays native deliberately: replacing it with a Menu breaks the
- * Playwright selectOption calls and the vitest toHaveValue assertions, and
- * loses the platform picker on mobile. MD3's visual spec is satisfiable here.
+ * Product-styled single-choice field. It shares the same keyboard-accessible,
+ * shadow-free menu surface as the board's sorting and filtering controls.
  * The label is always floated because a select always has a value.
  */
 export function SelectField({
@@ -171,11 +182,25 @@ export function SelectField({
 	options,
 	id: explicitId,
 	className,
-	"aria-describedby": ariaDescribedBy,
-	...props
+	value,
+	defaultValue,
+	onValueChange,
+	disabled,
+	required,
+	name,
+	autoFocus,
+	"aria-describedby": ariaDescribedBy
 }: SelectFieldProps) {
 	const generatedId = useId();
 	const id = explicitId ?? generatedId;
+	const firstEnabledValue = options.find((option) => !option.disabled)?.value ?? "";
+	const [uncontrolledValue, setUncontrolledValue] = useState(() => defaultValue ?? firstEnabledValue);
+	const selectedValue = value ?? uncontrolledValue;
+	const selectedOption = options.find((option) => option.value === selectedValue) ?? options.find((option) => !option.disabled);
+	const selectOption = (nextValue: string) => {
+		if (value === undefined) setUncontrolledValue(nextValue);
+		onValueChange?.(nextValue);
+	};
 	return (
 		<FieldFrame
 			id={id}
@@ -187,19 +212,38 @@ export function SelectField({
 			floating
 			className={classNames("md-field--select", className)}
 		>
-			<select
-				id={id}
-				className="md-field__input md-field__input--select"
-				aria-invalid={error ? true : undefined}
-				aria-describedby={describedBy(id, description, error, ariaDescribedBy)}
-				{...props}
+			<Menu
+				label={`${label}選項`}
+				className="md-select-menu"
+				portalled={false}
+				trigger={
+					<button
+						id={id}
+						type="button"
+						className="md-field__input md-field__input--select"
+						disabled={disabled}
+						autoFocus={autoFocus}
+						aria-required={required || undefined}
+						aria-invalid={error ? true : undefined}
+						aria-describedby={describedBy(id, description, error, ariaDescribedBy)}
+					>
+						{selectedOption?.label ?? ""}
+					</button>
+				}
 			>
 				{options.map((option) => (
-					<option key={option.value} value={option.value} disabled={option.disabled}>
+					<MenuItem
+						key={option.value}
+						disabled={option.disabled}
+						selected={selectedValue === option.value}
+						leading={selectedValue === option.value ? <Check size="1.125rem" aria-hidden="true" /> : <span aria-hidden="true" />}
+						onSelect={() => selectOption(option.value)}
+					>
 						{option.label}
-					</option>
+					</MenuItem>
 				))}
-			</select>
+			</Menu>
+			{name ? <input type="hidden" name={name} value={selectedValue} disabled={disabled} /> : null}
 		</FieldFrame>
 	);
 }

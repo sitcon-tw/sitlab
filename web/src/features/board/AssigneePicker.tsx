@@ -1,6 +1,6 @@
 import { Avatar } from "@/shared/Avatar";
-import { Dialog } from "@project-template/ui";
-import { Check, Search, UsersRound, X } from "lucide-react";
+import { Button, Chip, Dialog, EmptyState, IconButton, TextField } from "@project-template/ui";
+import { Check, UsersRound, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import styles from "./BoardPage.module.css";
 import { GroupedMemberList } from "./GroupedMemberList";
@@ -13,9 +13,10 @@ export interface AssigneePickerProps {
 	onChange: (gitLabUserIds: number[]) => void;
 	label: string;
 	compact?: boolean;
+	fieldLabel?: string;
 }
 
-export function AssigneePicker({ bootstrap, teamKey, value, onChange, label, compact = false }: AssigneePickerProps) {
+export function AssigneePicker({ bootstrap, teamKey, value, onChange, label, compact = false, fieldLabel }: AssigneePickerProps) {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const selected = value.flatMap((id) => {
@@ -30,16 +31,15 @@ export function AssigneePicker({ bootstrap, teamKey, value, onChange, label, com
 		setOpen(next);
 		if (!next) setQuery("");
 	};
-	return (
-		<>
-			<button
-				type="button"
-				className={compact ? styles.assigneeCompact : styles.assigneeControl}
-				aria-label={label}
-				title={label}
-				onClick={() => setOpen(true)}
-			>
-				{selected.length ? (
+	const trigger = (
+		<Chip
+			variant="input"
+			className={compact ? styles.assigneeCompact : styles.assigneeControl}
+			label={assigneeLabel(selected)}
+			aria-label={label}
+			title={label}
+			leading={
+				selected.length ? (
 					<span className={styles.assigneeStack} aria-hidden="true">
 						{selected.slice(0, 3).map((member) => (
 							<Avatar key={member.gitLabUserId} name={member.displayName} src={member.avatarUrl} size="sm" />
@@ -47,37 +47,68 @@ export function AssigneePicker({ bootstrap, teamKey, value, onChange, label, com
 					</span>
 				) : (
 					<UsersRound size="1rem" aria-hidden="true" />
-				)}
-				{compact ? null : <span>{assigneeLabel(selected)}</span>}
-				{compact && selected.length > 3 ? <small>+{selected.length - 3}</small> : null}
-			</button>
-			<Dialog open={open} onOpenChange={changeOpen} title="選擇 Assignee" description={`${teamName}與其他專案成員`}>
+				)
+			}
+			trailing={compact && selected.length > 3 ? <small>+{selected.length - 3}</small> : undefined}
+			onClick={() => setOpen(true)}
+		/>
+	);
+	return (
+		<>
+			{fieldLabel ? (
+				<div className={styles.assigneeField}>
+					<span className={styles.assigneeFieldLabel} aria-hidden="true">
+						{fieldLabel}
+					</span>
+					{trigger}
+				</div>
+			) : (
+				trigger
+			)}
+			<Dialog
+				open={open}
+				onOpenChange={changeOpen}
+				title="選擇 Assignee"
+				description={`${teamName}與其他專案成員`}
+				footer={
+					<div className={styles.pickerFooter}>
+						<span className="md-typescale-label-small">{value.length ? `已選擇 ${value.length} 人` : "尚未指派"}</span>
+						<Button variant="text" onClick={() => changeOpen(false)}>
+							完成
+						</Button>
+					</div>
+				}
+			>
 				<div className={styles.pickerSearch}>
-					<Search size="1rem" aria-hidden="true" />
-					<input
+					<TextField
 						autoFocus
 						type="search"
+						label="搜尋成員"
 						value={query}
 						onChange={(event) => setQuery(event.target.value)}
 						placeholder="搜尋姓名或 GitLab 帳號"
-						aria-label="搜尋成員"
 					/>
-					{query ? (
-						<button type="button" aria-label="清除搜尋" onClick={() => setQuery("")}>
-							<X size="0.875rem" aria-hidden="true" />
-						</button>
-					) : null}
+					{query ? <IconButton size="sm" label="清除搜尋" icon={<X size="1rem" aria-hidden="true" />} onClick={() => setQuery("")} /> : null}
 				</div>
-				<div className={styles.pickerList}>
-					<button type="button" className={styles.memberOption} data-selected={value.length === 0} onClick={() => onChange([])}>
-						<span className={styles.unassignedAvatar}>
-							<UsersRound size="1rem" aria-hidden="true" />
+				<div className={`md-list ${styles.pickerList}`}>
+					<button
+						type="button"
+						className={`md-list-item md-list-item--two-line md-state-layer ${styles.memberOption}`}
+						data-selected={value.length === 0}
+						onClick={() => onChange([])}
+					>
+						<span className="md-list-item__leading">
+							<UsersRound size="1.125rem" aria-hidden="true" />
 						</span>
-						<span>
-							<strong>未指派</strong>
-							<small>清除所有負責人</small>
+						<span className="md-list-item__text">
+							<span className="md-list-item__headline">未指派</span>
+							<span className="md-list-item__supporting">清除所有負責人</span>
 						</span>
-						{value.length === 0 ? <Check size="1rem" aria-hidden="true" /> : null}
+						{value.length === 0 ? (
+							<span className="md-list-item__trailing">
+								<Check size="1.125rem" aria-hidden="true" />
+							</span>
+						) : null}
 					</button>
 					<GroupedMemberList
 						teams={bootstrap.teams}
@@ -87,13 +118,7 @@ export function AssigneePicker({ bootstrap, teamKey, value, onChange, label, com
 						onChange={onChange}
 						preferredTeamKey={preferredTeamKey}
 					/>
-					{members.length === 0 ? <p className={styles.noResults}>找不到符合的可指派成員</p> : null}
-				</div>
-				<div className={styles.pickerFooter}>
-					<span>{value.length ? `已選擇 ${value.length} 人` : "尚未指派"}</span>
-					<button type="button" onClick={() => changeOpen(false)}>
-						完成
-					</button>
+					{members.length === 0 ? <EmptyState title="找不到成員" description="請調整搜尋條件後再試一次。" /> : null}
 				</div>
 			</Dialog>
 		</>

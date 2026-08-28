@@ -20,6 +20,16 @@ import {
 import { BoardPage } from "./BoardPage";
 import { listProjectLabels } from "./labelsApi";
 import type { BoardCard, Bootstrap, CardMutation } from "./model";
+import {
+	attachChildItem,
+	createChildItem,
+	createLinkedItems,
+	deleteLinkedItem,
+	detachChildItem,
+	listChildItems,
+	listLinkedItems,
+	searchRelationshipCandidates
+} from "./relationApi";
 
 vi.mock("./labelsApi", () => ({
 	listProjectLabels: vi.fn(),
@@ -44,6 +54,22 @@ vi.mock("./boardApi", () => ({
 	updateTeam: vi.fn()
 }));
 
+vi.mock("./relationApi", () => ({
+	relationshipKeys: {
+		children: (issueIid: number) => ["card-relations", issueIid, "children"],
+		linked: (issueIid: number) => ["card-relations", issueIid, "linked"],
+		candidates: (issueIid: number, kind: string, query: string) => ["card-relations", issueIid, "candidates", kind, query]
+	},
+	attachChildItem: vi.fn(),
+	createChildItem: vi.fn(),
+	createLinkedItems: vi.fn(),
+	deleteLinkedItem: vi.fn(),
+	detachChildItem: vi.fn(),
+	listChildItems: vi.fn(),
+	listLinkedItems: vi.fn(),
+	searchRelationshipCandidates: vi.fn()
+}));
+
 function Harness({ initial = demoBootstrap }: { initial?: Bootstrap }) {
 	const [bootstrap, setBootstrap] = useState<Bootstrap>(() => structuredClone(initial));
 	const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }));
@@ -54,10 +80,30 @@ function Harness({ initial = demoBootstrap }: { initial?: Bootstrap }) {
 	);
 }
 
-/** The team filter is a Material filter chip; pick a team through its menu. */
+async function openSearchableFilter(user: ReturnType<typeof userEvent.setup>, label: string) {
+	const input = screen.getByRole("combobox", { name: label });
+	await user.click(input);
+	const panelId = input.getAttribute("aria-controls");
+	const panel = panelId ? document.getElementById(panelId) : null;
+	if (!panel) throw new Error(`${label} picker did not open`);
+	return { input, picker: within(panel) };
+}
+
 async function chooseTeamFilter(user: ReturnType<typeof userEvent.setup>, name: string) {
-	await user.click(screen.getByRole("button", { name: "篩選組別" }));
+	const { input, picker } = await openSearchableFilter(user, "搜尋組別");
+	await user.type(input, name);
+	await user.click(picker.getByRole("radio", { name }));
+}
+
+async function chooseSort(user: ReturnType<typeof userEvent.setup>, name: string) {
+	await user.click(screen.getByRole("button", { name: "排序方式" }));
 	await user.click(await screen.findByRole("menuitemcheckbox", { name }));
+}
+
+async function chooseSelectField(user: ReturnType<typeof userEvent.setup>, label: string, option: string, root: HTMLElement = document.body) {
+	await user.click(within(root).getByRole("button", { name: label }));
+	const menu = await screen.findByRole("menu", { name: `${label}選項` });
+	await user.click(within(menu).getByRole("menuitemcheckbox", { name: option }));
 }
 
 function mutationResult(card: BoardCard, operationId: string, patch: Partial<BoardCard>): CardMutation {
@@ -90,6 +136,14 @@ describe("SITCON Board interactions", () => {
 		vi.mocked(updateLabels).mockReset();
 		vi.mocked(updateStartDate).mockReset();
 		vi.mocked(updateTeam).mockReset();
+		vi.mocked(attachChildItem).mockReset();
+		vi.mocked(createChildItem).mockReset();
+		vi.mocked(createLinkedItems).mockReset();
+		vi.mocked(deleteLinkedItem).mockReset();
+		vi.mocked(detachChildItem).mockReset();
+		vi.mocked(listChildItems).mockReset();
+		vi.mocked(listLinkedItems).mockReset();
+		vi.mocked(searchRelationshipCandidates).mockReset();
 		vi.mocked(listProjectLabels).mockResolvedValue([
 			{ id: 1, name: "Team::開發組", color: "#0E8A16", textColor: "#FFFFFF", description: "開發組" },
 			{ id: 2, name: "Team::設計組", color: "#B60205", textColor: "#FFFFFF", description: "設計組" },
@@ -97,19 +151,26 @@ describe("SITCON Board interactions", () => {
 			{ id: 4, name: "Backend", color: "#1D76DB", textColor: "#FFFFFF", description: null }
 		]);
 		vi.mocked(listComments).mockResolvedValue([]);
+		vi.mocked(listChildItems).mockResolvedValue({ items: [], totalCount: 0, nextCursor: null });
+		vi.mocked(listLinkedItems).mockResolvedValue({ items: [], totalCount: 0, nextCursor: null });
+		vi.mocked(searchRelationshipCandidates).mockResolvedValue([]);
+		vi.mocked(attachChildItem).mockResolvedValue();
+		vi.mocked(createLinkedItems).mockResolvedValue();
+		vi.mocked(deleteLinkedItem).mockResolvedValue();
+		vi.mocked(detachChildItem).mockResolvedValue();
 	});
 
 	it("defaults quick create to the primary team and keeps Inbox in more options", async () => {
 		const user = userEvent.setup();
 		render(<Harness />);
 
-		expect(screen.getByLabelText("新卡片組別")).toHaveValue("development");
+		expect(screen.getByRole("button", { name: "新卡片組別" })).toHaveTextContent("開發組");
 		expect(screen.getByRole("button", { name: "選擇新卡片 Assignee" })).toHaveTextContent("Yorukot");
 		expect((screen.getByLabelText("新卡片期限") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 		expect(screen.queryByLabelText("新卡片 Status")).not.toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: "更多建卡選項" }));
 		const dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
-		expect(within(dialog).getByLabelText("新卡片 Status")).toHaveValue("inbox");
+		expect(within(dialog).getByRole("button", { name: "新卡片 Status" })).toHaveTextContent("Inbox");
 		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
 	});
 
@@ -120,7 +181,7 @@ describe("SITCON Board interactions", () => {
 
 		await user.click(moreButton);
 		let dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
-		await user.selectOptions(within(dialog).getByLabelText("新卡片 Status"), "review");
+		await chooseSelectField(user, "新卡片 Status", "Review", dialog);
 		await user.type(within(dialog).getByLabelText("新卡片 Description"), "尚未套用");
 		await user.keyboard("{Escape}");
 
@@ -128,25 +189,25 @@ describe("SITCON Board interactions", () => {
 		expect(moreButton).toHaveFocus();
 		await user.click(moreButton);
 		dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
-		expect(within(dialog).getByLabelText("新卡片 Status")).toHaveValue("inbox");
+		expect(within(dialog).getByRole("button", { name: "新卡片 Status" })).toHaveTextContent("Inbox");
 		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
-		await user.selectOptions(within(dialog).getByLabelText("新卡片 Status"), "doing");
+		await chooseSelectField(user, "新卡片 Status", "Doing", dialog);
 		await user.type(within(dialog).getByLabelText("新卡片 Description"), "按取消");
 		await user.click(within(dialog).getByRole("button", { name: "取消" }));
 		expect(moreButton).toHaveFocus();
 
 		await user.click(moreButton);
 		dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
-		expect(within(dialog).getByLabelText("新卡片 Status")).toHaveValue("inbox");
+		expect(within(dialog).getByRole("button", { name: "新卡片 Status" })).toHaveTextContent("Inbox");
 		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
-		await user.selectOptions(within(dialog).getByLabelText("新卡片 Status"), "closed");
+		await chooseSelectField(user, "新卡片 Status", "Done", dialog);
 		await user.type(within(dialog).getByLabelText("新卡片 Description"), "按關閉");
 		await user.click(within(dialog).getByRole("button", { name: "Close dialog" }));
 		expect(moreButton).toHaveFocus();
 
 		await user.click(moreButton);
 		dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
-		expect(within(dialog).getByLabelText("新卡片 Status")).toHaveValue("inbox");
+		expect(within(dialog).getByRole("button", { name: "新卡片 Status" })).toHaveTextContent("Inbox");
 		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
 	});
 
@@ -154,7 +215,7 @@ describe("SITCON Board interactions", () => {
 		const user = userEvent.setup();
 		render(<Harness />);
 
-		await user.selectOptions(screen.getByLabelText("新卡片組別"), "design");
+		await chooseSelectField(user, "新卡片組別", "設計組");
 
 		expect(screen.getByRole("button", { name: "選擇新卡片 Assignee" })).toHaveTextContent("未指派");
 		expect(screen.getByText("已清除不屬於此組別的 Assignee")).toBeVisible();
@@ -167,7 +228,7 @@ describe("SITCON Board interactions", () => {
 
 		await user.click(screen.getByRole("button", { name: "更多建卡選項" }));
 		let dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
-		await user.selectOptions(within(dialog).getByLabelText("新卡片 Status"), "doing");
+		await chooseSelectField(user, "新卡片 Status", "Doing", dialog);
 		await user.type(within(dialog).getByLabelText("新卡片 Description"), "確認交接與值班時段");
 		await user.type(within(dialog).getByLabelText("搜尋新卡片 Label"), "Backend");
 		await user.click(await within(dialog).findByRole("checkbox", { name: "Backend" }));
@@ -177,7 +238,7 @@ describe("SITCON Board interactions", () => {
 
 		expect(screen.getByRole("heading", { name: "[開發組] 新增值班表" })).toBeVisible();
 		const doingLane = screen.getByRole("heading", { name: "Doing" }).closest("section");
-		expect(within(doingLane as HTMLElement).getAllByRole("heading", { level: 3 })[0]).toHaveTextContent("[開發組] 新增值班表");
+		expect(within(doingLane as HTMLElement).getByRole("heading", { name: "[開發組] 新增值班表" })).toBeVisible();
 		expect(within(doingLane as HTMLElement).getByText("確認交接與值班時段")).toBeVisible();
 		expect(screen.queryByText("同步中")).not.toBeInTheDocument();
 		expect(createCard).toHaveBeenCalledWith(expect.objectContaining({ listKey: "doing", description: "確認交接與值班時段", labels: ["Backend"] }));
@@ -187,7 +248,7 @@ describe("SITCON Board interactions", () => {
 
 		await user.click(screen.getByRole("button", { name: "更多建卡選項" }));
 		dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
-		expect(within(dialog).getByLabelText("新卡片 Status")).toHaveValue("doing");
+		expect(within(dialog).getByRole("button", { name: "新卡片 Status" })).toHaveTextContent("Doing");
 		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
 		expect(within(dialog).getByRole("checkbox", { name: "Backend" })).not.toBeChecked();
 	});
@@ -218,9 +279,42 @@ describe("SITCON Board interactions", () => {
 
 		await user.click(within(filters).getByRole("button", { name: "清除篩選" }));
 
-		expect(screen.getByRole("button", { name: "篩選組別" })).toHaveTextContent("所有組別");
+		expect(screen.getByRole("combobox", { name: "搜尋組別" })).toHaveValue("所有組別");
 		expect(within(filters).getByRole("status")).toHaveTextContent("7 / 7 張卡片");
 		expect(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
+	});
+
+	it("searches complete card information after typing settles and restores the query from the URL", async () => {
+		window.history.replaceState(null, "", "/?q=Backend");
+		const user = userEvent.setup();
+		render(<Harness />);
+
+		const search = screen.getByRole("searchbox", { name: "搜尋卡片" });
+		expect(search).toHaveValue("Backend");
+		expect(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
+		expect(within(screen.getByRole("region", { name: "篩選看板" })).getByRole("status")).toHaveTextContent("1 / 7 張卡片");
+
+		await user.clear(search);
+		await user.type(search, "開發 Yorukot Priority");
+		expect(within(screen.getByRole("region", { name: "篩選看板" })).getByRole("status")).toHaveTextContent("7 / 7 張卡片");
+		await waitFor(() => expect(within(screen.getByRole("region", { name: "篩選看板" })).getByRole("status")).toHaveTextContent("1 / 7 張卡片"));
+		expect(new URLSearchParams(window.location.search).get("q")).toBe("開發 Yorukot Priority");
+
+		await user.click(screen.getByRole("button", { name: "清除卡片搜尋" }));
+		await waitFor(() => expect(within(screen.getByRole("region", { name: "篩選看板" })).getByRole("status")).toHaveTextContent("7 / 7 張卡片"));
+	});
+
+	it("focuses card search with slash and clears it with Escape", async () => {
+		const user = userEvent.setup();
+		render(<Harness />);
+		const search = screen.getByRole("searchbox", { name: "搜尋卡片" });
+
+		fireEvent.keyDown(window, { key: "/" });
+		expect(search).toHaveFocus();
+		await user.type(search, "Backend");
+		await user.keyboard("{Escape}");
+		expect(search).toHaveValue("");
+		expect(search).not.toHaveFocus();
 	});
 
 	it("restores shared filter and sort query state and keeps later selections in the URL", async () => {
@@ -228,13 +322,13 @@ describe("SITCON Board interactions", () => {
 		const user = userEvent.setup();
 		render(<Harness />);
 
-		expect(screen.getByRole("button", { name: "篩選組別" })).toHaveTextContent("開發組");
-		expect(screen.getByLabelText("排序方式")).toHaveValue("due-desc");
-		expect(screen.getByRole("button", { name: "篩選 Label" })).toHaveTextContent("Labels 1");
+		expect(screen.getByRole("combobox", { name: "搜尋組別" })).toHaveValue("開發組");
+		expect(screen.getByRole("button", { name: "排序方式" })).toHaveAttribute("data-value", "due-desc");
+		expect(screen.getByRole("combobox", { name: "搜尋 Label" })).toHaveValue("Labels 1");
 		expect(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 		expect(screen.queryByRole("heading", { name: "[設計組] 製作工作人員識別證" })).not.toBeInTheDocument();
 
-		await user.selectOptions(screen.getByLabelText("排序方式"), "updated-asc");
+		await chooseSort(user, "Updated time：舊到新");
 		expect(window.location.search).toContain("team=development");
 		expect(window.location.search).toContain("member=114");
 		expect(window.location.search).toContain("label=Backend");
@@ -246,16 +340,16 @@ describe("SITCON Board interactions", () => {
 		const user = userEvent.setup();
 		render(<Harness />);
 
-		await user.click(screen.getByRole("button", { name: "篩選 Label" }));
-		const dialog = screen.getByRole("dialog", { name: "篩選 Label" });
-		await user.type(within(dialog).getByLabelText("搜尋篩選 Label"), "backend");
-		await user.click(within(dialog).getByRole("checkbox", { name: "Backend" }));
-		await user.clear(within(dialog).getByLabelText("搜尋篩選 Label"));
-		await user.type(within(dialog).getByLabelText("搜尋篩選 Label"), "priority");
-		await user.click(within(dialog).getByRole("checkbox", { name: "Priority::High" }));
+		const { input: search, picker } = await openSearchableFilter(user, "搜尋 Label");
+		expect(search.closest(".md-field")).not.toBeNull();
+		await user.type(search, "backend");
+		const backend = picker.getByRole("checkbox", { name: "Backend" });
+		expect(backend).toHaveClass("md-checkbox");
+		await user.click(backend);
+		await user.clear(search);
+		await user.type(search, "priority");
+		await user.click(picker.getByRole("checkbox", { name: "Priority::High" }));
 
-		expect(within(dialog).getByText("已選擇 2 個")).toBeVisible();
-		await user.click(within(dialog).getByRole("button", { name: "完成" }));
 		expect(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 		expect(within(screen.getByRole("region", { name: "篩選看板" })).getByRole("status")).toHaveTextContent("1 / 7 張卡片");
 		expect(new URLSearchParams(window.location.search).getAll("label")).toEqual(["Backend", "Priority::High"]);
@@ -265,15 +359,12 @@ describe("SITCON Board interactions", () => {
 		const user = userEvent.setup();
 		render(<Harness />);
 
-		await user.click(screen.getByRole("button", { name: "篩選負責人" }));
-		const dialog = screen.getByRole("dialog", { name: "篩選負責人" });
-		const currentUser = within(dialog).getByRole("checkbox", { name: /Yorukot/ });
+		const { picker } = await openSearchableFilter(user, "搜尋負責人");
+		const currentUser = picker.getByRole("checkbox", { name: /Yorukot/ });
 		currentUser.focus();
 		await user.keyboard("{Enter}");
-		await user.click(within(dialog).getByRole("checkbox", { name: /林采欣/ }));
+		await user.click(picker.getByRole("checkbox", { name: /林采欣/ }));
 		expect(currentUser).toBeChecked();
-		expect(within(dialog).getByText("已選擇 2 人")).toBeVisible();
-		await user.click(within(dialog).getByRole("button", { name: "完成" }));
 
 		expect(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 		expect(screen.getByRole("heading", { name: "[行政組] 整理志工行前通知" })).toBeVisible();
@@ -291,16 +382,17 @@ describe("SITCON Board interactions", () => {
 		const user = userEvent.setup();
 		render(<Harness />);
 
-		await user.click(screen.getByRole("button", { name: "篩選負責人" }));
-		let dialog = screen.getByRole("dialog", { name: "篩選負責人" });
-		let groups = within(dialog).getAllByRole("region");
+		const { picker } = await openSearchableFilter(user, "搜尋負責人");
+		let groups = picker.getAllByRole("region");
 		expect(groups[0]).toHaveAccessibleName("開發組");
 		expect(within(groups[0] as HTMLElement).getAllByRole("checkbox")[1]).toHaveAccessibleName(/Yorukot/);
-		await user.click(within(dialog).getByRole("button", { name: "完成" }));
+		await user.keyboard("{Escape}");
 
-		await user.selectOptions(screen.getByLabelText("新卡片組別"), "design");
-		await user.click(screen.getByRole("button", { name: "選擇新卡片 Assignee" }));
-		dialog = screen.getByRole("dialog", { name: "選擇 Assignee" });
+		await chooseSelectField(user, "新卡片組別", "設計組");
+		const assigneeTrigger = screen.getByRole("button", { name: "選擇新卡片 Assignee" });
+		expect(assigneeTrigger.closest(".md-chip")).toHaveClass("md-chip--input");
+		await user.click(assigneeTrigger);
+		const dialog = screen.getByRole("dialog", { name: "選擇 Assignee" });
 		groups = within(dialog).getAllByRole("region");
 		expect(groups[0]).toHaveAccessibleName("開發組");
 		expect(within(groups[0] as HTMLElement).getAllByRole("checkbox")[1]).toHaveAccessibleName(/Yorukot/);
@@ -310,15 +402,12 @@ describe("SITCON Board interactions", () => {
 		const user = userEvent.setup();
 		render(<Harness />);
 
-		await user.click(screen.getByRole("button", { name: "篩選負責人" }));
-		const dialog = screen.getByRole("dialog", { name: "篩選負責人" });
-		const teamSelectAll = within(dialog).getByRole("checkbox", { name: "全選行政組" });
+		const { picker } = await openSearchableFilter(user, "搜尋負責人");
+		const teamSelectAll = picker.getByRole("checkbox", { name: "全選行政組" });
 		expect(teamSelectAll).not.toBeChecked();
 		await user.click(teamSelectAll);
 
 		expect(teamSelectAll).toBeChecked();
-		expect(within(dialog).getByText("已選擇 2 人")).toBeVisible();
-		await user.click(within(dialog).getByRole("button", { name: "完成" }));
 		expect(within(screen.getByRole("region", { name: "篩選看板" })).getByRole("status")).toHaveTextContent("1 / 7 張卡片");
 		expect(screen.getByRole("heading", { name: "[行政組] 整理志工行前通知" })).toBeVisible();
 	});
@@ -331,10 +420,9 @@ describe("SITCON Board interactions", () => {
 		const user = userEvent.setup();
 		render(<Harness initial={initial} />);
 
-		await user.click(screen.getByRole("button", { name: "篩選負責人" }));
-		const dialog = screen.getByRole("dialog", { name: "篩選負責人" });
-		const development = within(dialog).getByRole("region", { name: "開發組" });
-		const design = within(dialog).getByRole("region", { name: "設計組" });
+		const { picker } = await openSearchableFilter(user, "搜尋負責人");
+		const development = picker.getByRole("region", { name: "開發組" });
+		const design = picker.getByRole("region", { name: "設計組" });
 		await user.click(within(development).getByRole("checkbox", { name: /Yorukot/ }));
 
 		expect(within(design).getByRole("checkbox", { name: /Yorukot/ })).toBeChecked();
@@ -352,37 +440,25 @@ describe("SITCON Board interactions", () => {
 				.map((heading) => heading.textContent);
 
 		expect(titles()).toEqual(["[設計組] 製作工作人員識別證", "[場務組] 盤點會場網路設備"]);
-		await user.selectOptions(screen.getByLabelText("排序方式"), "due-desc");
+		await chooseSort(user, "Due date：遠到近");
 		expect(titles()).toEqual(["[場務組] 盤點會場網路設備", "[設計組] 製作工作人員識別證"]);
 
 		await chooseTeamFilter(user, "設計組");
 		await user.click(screen.getByRole("button", { name: "清除篩選" }));
-		expect(screen.getByLabelText("排序方式")).toHaveValue("due-desc");
+		expect(screen.getByRole("button", { name: "排序方式" })).toHaveAttribute("data-value", "due-desc");
 		expect(titles()).toEqual(["[場務組] 盤點會場網路設備", "[設計組] 製作工作人員識別證"]);
 	});
 
-	it("moves cards up and down within a lane using the manual order", async () => {
-		const user = userEvent.setup();
-		vi.mocked(moveCard).mockReturnValue(new Promise(() => undefined));
+	it("defaults to due date near-to-far without disabling card dragging", () => {
 		render(<Harness />);
 		const doingLane = screen.getByRole("heading", { name: "Doing" }).closest("section");
 		if (!doingLane) throw new Error("Doing lane is missing");
-		const designTitle = "[設計組] 製作工作人員識別證";
-		const venueTitle = "[場務組] 盤點會場網路設備";
-		const titles = () =>
-			within(doingLane)
-				.getAllByRole("heading", { level: 3 })
-				.map((heading) => heading.textContent);
 
-		expect(within(doingLane).getByRole("button", { name: `上移 ${designTitle}` })).toBeDisabled();
-		expect(within(doingLane).getByRole("button", { name: `下移 ${venueTitle}` })).toBeDisabled();
-		await user.click(within(doingLane).getByRole("button", { name: `下移 ${designTitle}` }));
-
-		expect(titles()).toEqual([venueTitle, designTitle]);
-		expect(moveCard).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 130 }), expect.any(String), "doing", 1);
-		expect(within(doingLane).getByRole("button", { name: `上移 ${venueTitle}` })).toBeDisabled();
-		expect(within(doingLane).getByRole("button", { name: `下移 ${designTitle}` })).toBeDisabled();
-		await waitFor(() => expect(within(doingLane).getByRole("button", { name: `上移 ${designTitle}` })).toHaveFocus());
+		expect(screen.getByRole("button", { name: "排序方式" })).toHaveAttribute("data-value", "due-asc");
+		expect(within(doingLane).queryByRole("button", { name: /^(上移|下移) / })).not.toBeInTheDocument();
+		const handle = within(doingLane).getByRole("button", { name: "拖曳 [設計組] 製作工作人員識別證" });
+		expect(handle).toBeEnabled();
+		expect(handle).toHaveAttribute("title", "拖曳調整卡片位置");
 	});
 
 	it("keeps team and status controls in card details and moves optimistically", async () => {
@@ -394,8 +470,8 @@ describe("SITCON Board interactions", () => {
 		expect(screen.queryByLabelText(`${title}的狀態`)).not.toBeInTheDocument();
 		await user.click(screen.getByRole("heading", { name: title }));
 		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
-		expect(within(dialog).getByLabelText("組別")).toHaveValue("development");
-		await user.selectOptions(within(dialog).getByLabelText("狀態"), "doing");
+		expect(within(dialog).getByRole("button", { name: "組別" })).toHaveTextContent("開發組");
+		await chooseSelectField(user, "狀態", "Doing", dialog);
 		await user.click(within(dialog).getByRole("button", { name: "Close drawer" }));
 
 		const doingLane = screen.getByRole("heading", { name: "Doing" }).closest("section");
@@ -504,8 +580,8 @@ describe("SITCON Board interactions", () => {
 		const title = "[開發組] 修正報名系統寄信流程";
 		await user.click(screen.getByRole("heading", { name: title }));
 		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
-		await user.selectOptions(within(dialog).getByLabelText("狀態"), "doing");
-		await user.selectOptions(within(dialog).getByLabelText("狀態"), "review");
+		await chooseSelectField(user, "狀態", "Doing", dialog);
+		await chooseSelectField(user, "狀態", "Review", dialog);
 		expect(requests).toHaveLength(2);
 
 		const result = (request: (typeof requests)[number]): CardMutation => ({
@@ -528,9 +604,9 @@ describe("SITCON Board interactions", () => {
 			}
 		});
 		requests[1]!.resolve(result(requests[1]!));
-		await waitFor(() => expect(within(dialog).getByLabelText("狀態")).toHaveValue("review"));
+		await waitFor(() => expect(within(dialog).getByRole("button", { name: "狀態" })).toHaveTextContent("Review"));
 		requests[0]!.resolve(result(requests[0]!));
-		await waitFor(() => expect(within(dialog).getByLabelText("狀態")).toHaveValue("review"));
+		await waitFor(() => expect(within(dialog).getByRole("button", { name: "狀態" })).toHaveTextContent("Review"));
 		await user.click(within(dialog).getByRole("button", { name: "Close drawer" }));
 		const reviewLane = screen.getByRole("heading", { name: "Review" }).closest("section");
 		expect(within(reviewLane as HTMLElement).getByRole("heading", { name: title })).toBeVisible();
@@ -662,7 +738,7 @@ describe("SITCON Board interactions", () => {
 		await user.click(screen.getByRole("button", { name: "所有組長" }));
 		await user.click(screen.getByRole("button", { name: "更多建卡選項" }));
 		const dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
-		await user.selectOptions(within(dialog).getByLabelText("新卡片 Status"), "review");
+		await chooseSelectField(user, "新卡片 Status", "Review", dialog);
 		await user.type(within(dialog).getByLabelText("新卡片 Description"), "每週例行回報");
 		await user.click(within(dialog).getByRole("button", { name: "套用" }));
 		await user.type(screen.getByLabelText("卡片標題"), "回報本週進度");

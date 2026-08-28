@@ -3,7 +3,7 @@ import { classNames } from "../lib/classNames";
 export interface SpinnerProps {
 	label?: string;
 	size?: "sm" | "md" | "lg";
-	className?: string;
+	className?: string | undefined;
 	/** 0-1. Omit for the indeterminate arc. */
 	value?: number;
 }

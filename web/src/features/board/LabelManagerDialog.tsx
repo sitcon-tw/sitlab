@@ -1,4 +1,4 @@
-import { Button, ConfirmDialog, Dialog, IconButton } from "@project-template/ui";
+import { Button, ConfirmDialog, Dialog, EmptyState, IconButton, TextField } from "@project-template/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
@@ -106,10 +106,7 @@ export function LabelManagerDialog({ open, onOpenChange, bootstrap, initialName,
 						onCreate={(next) => create.mutate(next)}
 					/>
 
-					<label className={styles.search}>
-						<span className={styles.srOnly}>搜尋 Label</span>
-						<input type="search" value={query} placeholder="搜尋 Label 名稱或說明" onChange={(event) => setQuery(event.target.value)} />
-					</label>
+					<TextField label="搜尋 Label" type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
 
 					{error ? (
 						<p className={styles.error} role="alert">
@@ -117,41 +114,55 @@ export function LabelManagerDialog({ open, onOpenChange, bootstrap, initialName,
 						</p>
 					) : null}
 
-					<ul className={styles.list} aria-label="可管理的 Labels">
+					<ul className={`md-list ${styles.list}`} aria-label="可管理的 Labels">
 						{editable.map((label) =>
 							editing?.id === label.id ? (
 								<li key={label.id}>
 									<LabelEditRow label={label} busy={update.isPending} onCancel={() => setEditing(null)} onSave={(next) => update.mutate({ label, next })} />
 								</li>
 							) : (
-								<li key={label.id} className={styles.row}>
-									<TagSwatch label={label} />
-									<span className={styles.name}>{label.name}</span>
-									<span className={styles.description}>{label.description}</span>
-									<IconButton label={`編輯 ${label.name}`} size="sm" icon={<Pencil size="0.875rem" aria-hidden="true" />} onClick={() => setEditing(label)} />
-									<IconButton
-										label={`刪除 ${label.name}`}
-										size="sm"
-										tone="error"
-										icon={<Trash2 size="0.875rem" aria-hidden="true" />}
-										onClick={() => setPendingDelete(label)}
-									/>
+								<li key={label.id} className="md-list-item md-list-item--two-line">
+									<span className="md-list-item__leading">
+										<TagSwatch label={label} />
+									</span>
+									<span className="md-list-item__text">
+										<span className="md-list-item__headline">{label.name}</span>
+										{label.description ? <span className="md-list-item__supporting">{label.description}</span> : null}
+									</span>
+									<span className={`md-list-item__trailing ${styles.actions}`}>
+										<IconButton label={`編輯 ${label.name}`} size="sm" icon={<Pencil size="0.875rem" aria-hidden="true" />} onClick={() => setEditing(label)} />
+										<IconButton
+											label={`刪除 ${label.name}`}
+											size="sm"
+											tone="error"
+											icon={<Trash2 size="0.875rem" aria-hidden="true" />}
+											onClick={() => setPendingDelete(label)}
+										/>
+									</span>
 								</li>
 							)
 						)}
-						{labelsQuery.isSuccess && editable.length === 0 ? <li className={styles.empty}>沒有可管理的 Label</li> : null}
+						{labelsQuery.isSuccess && editable.length === 0 ? (
+							<li>
+								<EmptyState title="沒有可管理的 Label" description="調整搜尋條件，或在上方建立新的 Label。" />
+							</li>
+						) : null}
 						{labelsQuery.isLoading ? <li role="status">載入中...</li> : null}
 					</ul>
 
 					{reserved.length ? (
 						<section className={styles.reserved} aria-labelledby="reserved-labels-heading">
 							<h3 id="reserved-labels-heading">由 board-directory.yml 管理</h3>
-							<ul aria-label="保留的 Labels">
+							<ul className="md-list" aria-label="保留的 Labels">
 								{reserved.map((label) => (
-									<li key={label.id} className={styles.row}>
-										<TagSwatch label={label} />
-										<span className={styles.name}>{label.name}</span>
-										<span className={styles.description}>{label.description}</span>
+									<li key={label.id} className="md-list-item md-list-item--two-line">
+										<span className="md-list-item__leading">
+											<TagSwatch label={label} />
+										</span>
+										<span className="md-list-item__text">
+											<span className="md-list-item__headline">{label.name}</span>
+											{label.description ? <span className="md-list-item__supporting">{label.description}</span> : null}
+										</span>
 									</li>
 								))}
 							</ul>
@@ -198,14 +209,8 @@ function LabelCreateForm({
 				onCreate({ name: name.trim(), color: normalizedColor, description: description.trim() || null });
 			}}
 		>
-			<label className={styles.field}>
-				<span>新 Label 名稱</span>
-				<input value={name} maxLength={255} placeholder="例如 Priority::High" onChange={(event) => setName(event.target.value)} />
-			</label>
-			<label className={styles.field}>
-				<span>新 Label 描述</span>
-				<input value={description} placeholder="選填" onChange={(event) => setDescription(event.target.value)} />
-			</label>
+			<TextField label="新 Label 名稱" value={name} maxLength={255} placeholder="例如 Priority::High" onChange={(event) => setName(event.target.value)} />
+			<TextField label="新 Label 描述" optional value={description} onChange={(event) => setDescription(event.target.value)} />
 			<LabelColorPicker value={color} onChange={setColor} label="新 Label 顏色" />
 			<Button type="submit" variant="filled" disabled={!canCreate} loading={busy} loadingLabel="建立中">
 				建立 Label
@@ -239,14 +244,8 @@ function LabelEditRow({
 				onSave({ name: name.trim(), color: normalizedColor, description: description.trim() || null });
 			}}
 		>
-			<label className={styles.field}>
-				<span>編輯名稱</span>
-				<input autoFocus value={name} maxLength={255} onChange={(event) => setName(event.target.value)} />
-			</label>
-			<label className={styles.field}>
-				<span>編輯描述</span>
-				<input value={description} placeholder="選填" onChange={(event) => setDescription(event.target.value)} />
-			</label>
+			<TextField autoFocus label="編輯名稱" value={name} maxLength={255} onChange={(event) => setName(event.target.value)} />
+			<TextField label="編輯描述" optional value={description} onChange={(event) => setDescription(event.target.value)} />
 			<LabelColorPicker value={color} onChange={setColor} label={`編輯 ${label.name} 顏色`} />
 			<div className={styles.editActions}>
 				<Button type="button" variant="text" onClick={onCancel}>

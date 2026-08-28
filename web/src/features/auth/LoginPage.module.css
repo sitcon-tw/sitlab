@@ -3,16 +3,20 @@
 	grid-template-columns: minmax(18rem, 28rem) minmax(24rem, 1fr);
 	min-height: 100vh;
 	min-height: 100svh;
-	background: var(--md-sys-color-surface);
+	background: var(--sb-page);
 }
 
 .login {
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
-	padding: clamp(2rem, 6vw, 5rem);
-	background: var(--md-sys-color-surface-container-low);
-	border-right: 1px solid var(--md-sys-color-outline-variant);
+	align-self: center;
+	min-height: calc(100svh - 3rem);
+	margin: var(--md-space-6) 0 var(--md-space-6) var(--md-space-6);
+	padding: clamp(2rem, 5vw, 4rem);
+	background: var(--sb-surface);
+	border: 1px solid var(--md-sys-color-outline-variant);
+	border-radius: var(--md-sys-shape-corner-extra-large);
 }
 
 .identity {
@@ -29,100 +33,34 @@
 	color: var(--md-sys-color-on-primary);
 	background: var(--md-sys-color-primary);
 	border-radius: var(--md-sys-shape-corner-large);
-	font-weight: 800;
-	line-height: 0.9;
-}
-
-.mark span:first-child {
-	font-size: 1.65rem;
-}
-
-.mark span:last-child {
-	font-size: 0.75rem;
 }
 
 .eyebrow {
-	margin: 0 0 0.25rem;
+	margin-bottom: var(--md-space-1);
 	color: var(--md-sys-color-primary);
-	font-size: 0.75rem;
-	font-weight: 800;
+	font-family: var(--md-ref-typeface-mono);
+	letter-spacing: var(--sb-type-tracking-eyebrow);
 	text-transform: uppercase;
 }
 
-.identity h1 {
-	margin: 0;
-	font-size: 1.75rem;
-	line-height: 1.2;
-}
-
 .description {
-	margin: 2rem 0;
+	max-width: 25rem;
+	margin: var(--md-space-8) 0;
 	color: var(--md-sys-color-on-surface-variant);
-}
-
-.loginButton {
-	position: relative;
-	display: inline-flex;
-	gap: var(--md-space-2);
-	align-items: center;
-	justify-content: center;
-	min-height: 2.5rem;
-	padding: 0 var(--md-space-6);
-	overflow: hidden;
-	font-size: var(--md-sys-typescale-label-large-size);
-	font-weight: var(--md-sys-typescale-label-large-weight);
-	line-height: var(--md-sys-typescale-label-large-line-height);
-	color: var(--md-sys-color-on-primary);
-	text-decoration: none;
-	letter-spacing: var(--md-sys-typescale-label-large-tracking);
-	background: var(--md-sys-color-primary);
-	border-radius: var(--md-sys-shape-corner-full);
-	isolation: isolate;
-	transition: box-shadow var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
-}
-
-/* State layer, matching every other MD3 surface in the product. */
-.loginButton::before {
-	position: absolute;
-	inset: 0;
-	z-index: -1;
-	background-color: currentColor;
-	border-radius: inherit;
-	opacity: 0;
-	transition: opacity var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
-	content: "";
-}
-
-.loginButton:hover {
-	box-shadow: var(--md-sys-elevation-level1);
-}
-
-.loginButton:hover::before {
-	opacity: var(--md-sys-state-hover-opacity);
-}
-
-.loginButton:focus-visible {
-	outline: 3px solid var(--md-sys-color-secondary);
-	outline-offset: 2px;
-}
-
-.loginButton:focus-visible::before {
-	opacity: var(--md-sys-state-focus-opacity);
 }
 
 .security {
 	display: flex;
 	align-items: center;
 	gap: 0.375rem;
-	margin: 1rem 0 0;
+	margin: var(--md-space-4) 0 0;
 	color: var(--sb-text-subtle);
-	font-size: 0.75rem;
 }
 
 .boardPreview {
 	display: grid;
 	grid-template-columns: repeat(4, minmax(8rem, 1fr));
-	gap: 1rem;
+	gap: var(--md-space-4);
 	align-items: start;
 	padding: clamp(3rem, 7vw, 7rem) clamp(2rem, 5vw, 5rem);
 	overflow: hidden;
@@ -136,17 +74,16 @@
 .previewLane > span {
 	width: 55%;
 	height: 0.625rem;
-	background: var(--md-sys-color-outline);
+	background: var(--md-sys-color-outline-variant);
 	border-radius: var(--md-sys-shape-corner-full);
 }
 
 .previewLane i {
 	display: block;
 	height: 6rem;
-	background: var(--md-sys-color-surface-container-low);
+	background: var(--sb-surface);
 	border: 1px solid var(--md-sys-color-outline-variant);
-	border-radius: var(--md-sys-shape-corner-medium);
-	box-shadow: var(--md-sys-elevation-level1);
+	border-radius: var(--md-sys-shape-corner-large);
 }
 
 .previewLane:nth-child(2) i:first-of-type,
@@ -160,9 +97,9 @@
 	}
 
 	.login {
-		min-height: 100svh;
+		min-height: calc(100svh - 1.5rem);
+		margin: var(--md-space-3);
 		padding: 2rem;
-		border-right: 0;
 	}
 
 	.boardPreview {

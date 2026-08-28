@@ -1,6 +1,8 @@
 import { clearCsrfToken, errorMessage } from "@/shared/api/client";
 import { Avatar } from "@/shared/Avatar";
 import { SitconLogo } from "@/shared/SitconLogo";
+import { useTheme } from "@/shared/useTheme";
+import type { DroppableInput } from "@dnd-kit/dom";
 import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { DragDropProvider, DragOverlay, PointerSensor, useDroppable } from "@dnd-kit/react";
 import { useSortable } from "@dnd-kit/react/sortable";
@@ -25,8 +27,6 @@ import {
 } from "@project-template/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-	ArrowDown,
-	ArrowUp,
 	Check,
 	ChevronLeft,
 	ChevronRight,
@@ -35,15 +35,17 @@ import {
 	ExternalLink,
 	GripVertical,
 	LogOut,
+	Moon,
 	Plus,
 	RefreshCw,
 	Save,
 	Send,
 	Settings,
+	Sun,
 	Users,
 	X
 } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AssigneePicker } from "./AssigneePicker";
@@ -65,7 +67,9 @@ import {
 import { BoardFilters } from "./BoardFilters";
 import { planCardMove } from "./boardOrder";
 import styles from "./BoardPage.module.css";
+import { boardSearchTerms, createBoardSearchIndex, matchesBoardSearch } from "./boardSearch";
 import { CardLabels } from "./CardLabels";
+import { CardRelationships } from "./CardRelationships";
 import { LabelManagerDialog } from "./LabelManagerDialog";
 import { canonicalClientLabels, isDeprecatedLabel } from "./labels";
 import { MembersDrawer } from "./MembersDrawer";
@@ -113,6 +117,21 @@ type CreateCardInput = {
 };
 
 const noopDraggingChange = () => undefined;
+type BoardCollisionDetector = NonNullable<DroppableInput["collisionDetector"]>;
+const POINTER_INTERSECTION_TYPE = 2 as const;
+const HIGH_COLLISION_PRIORITY = 3 as const;
+const pointerIntersection: BoardCollisionDetector = ({ dragOperation, droppable }) => {
+	const pointer = dragOperation.position.current;
+	const shape = droppable.shape;
+	if (!pointer || !shape || !shape.containsPoint(pointer)) return null;
+	const distance = Math.hypot(shape.center.x - pointer.x, shape.center.y - pointer.y);
+	return {
+		id: droppable.id,
+		priority: HIGH_COLLISION_PRIORITY,
+		type: POINTER_INTERSECTION_TYPE,
+		value: 1 / distance
+	};
+};
 const boardPointerSensor = PointerSensor.configure({
 	activationConstraints(event) {
 		return event.pointerType === "touch"
@@ -125,6 +144,8 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 	const [initialView] = useState(() => parseBoardViewState(window.location.search, bootstrap));
 	const [membersOpen, setMembersOpen] = useState(false);
 	const [detailIid, setDetailIid] = useState<number | null>(null);
+	const [filterQuery, setFilterQuery] = useState(initialView.query);
+	const [settledFilterQuery, setSettledFilterQuery] = useState(initialView.query);
 	const [filterTeamKey, setFilterTeamKey] = useState(initialView.teamKey);
 	const [filterMemberIds, setFilterMemberIds] = useState<number[]>(initialView.memberIds);
 	const [filterLabels, setFilterLabels] = useState<string[]>(initialView.labels);
@@ -136,33 +157,54 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 	const labelsQuery = useProjectLabels();
 	const labelMetadata = useProjectLabelMap();
 
+	useEffect(() => {
+		if (!filterQuery.trim()) return;
+		const timeout = window.setTimeout(() => setSettledFilterQuery(filterQuery), 300);
+		return () => window.clearTimeout(timeout);
+	}, [filterQuery]);
+	const changeFilterQuery = (next: string) => {
+		setFilterQuery(next);
+		if (!next.trim()) setSettledFilterQuery("");
+	};
+
 	// Label filters are AND-combined, so one that matches nothing hides the whole
 	// board. Renaming or deleting a label strands exactly such a filter, and so
 	// does an old bookmark. Ignore a filter once the catalog has loaded and no
 	// card carries the name either, which is when it provably matches nothing.
 	// The user's selection is left alone — this only stops the board going blank.
-	const appliedLabels = (() => {
-		if (!labelsQuery.isSuccess) return filterLabels;
-		const known = new Set(labelsQuery.data.map((label) => label.name));
-		for (const card of bootstrap.board.cards) for (const label of card.labels) known.add(label);
-		return filterLabels.filter((label) => known.has(label));
-	})();
 	const nextTemporaryIid = useRef(-1);
 	const cards = bootstrap.board.cards;
-	const filteredCards = cards.filter(
-		(card) =>
-			(!filterTeamKey || card.teamKey === filterTeamKey) &&
-			(filterMemberIds.length === 0 || card.assigneeGitLabUserIds.some((id) => filterMemberIds.includes(id))) &&
-			appliedLabels.every((label) => card.labels.includes(label))
+	const appliedLabels = useMemo(() => {
+		if (!labelsQuery.isSuccess) return filterLabels;
+		const known = new Set(labelsQuery.data.map((label) => label.name));
+		for (const card of cards) for (const label of card.labels) known.add(label);
+		return filterLabels.filter((label) => known.has(label));
+	}, [cards, filterLabels, labelsQuery.data, labelsQuery.isSuccess]);
+	const searchIndex = useMemo(() => createBoardSearchIndex(cards, bootstrap.teams, bootstrap.members), [bootstrap.members, bootstrap.teams, cards]);
+	const searchTerms = useMemo(() => boardSearchTerms(settledFilterQuery), [settledFilterQuery]);
+	const filteredCards = useMemo(
+		() =>
+			cards.filter(
+				(card) =>
+					(!filterTeamKey || card.teamKey === filterTeamKey) &&
+					(filterMemberIds.length === 0 || card.assigneeGitLabUserIds.some((id) => filterMemberIds.includes(id))) &&
+					appliedLabels.every((label) => card.labels.includes(label)) &&
+					matchesBoardSearch(searchIndex.get(card.issueIid), searchTerms)
+			),
+		[appliedLabels, cards, filterMemberIds, filterTeamKey, searchIndex, searchTerms]
 	);
-	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
-	const orderedCards = lists.flatMap((list) => filteredCards.filter((card) => card.listKey === list.key).sort((a, b) => compareBoardCards(a, b, sortMode)));
+	const lists = useMemo(() => [...bootstrap.board.lists].sort((a, b) => a.position - b.position), [bootstrap.board.lists]);
+	const orderedCards = useMemo(
+		() => lists.flatMap((list) => filteredCards.filter((card) => card.listKey === list.key).sort((a, b) => compareBoardCards(a, b, sortMode))),
+		[filteredCards, lists, sortMode]
+	);
 	const detailCard = cards.find((card) => card.issueIid === detailIid) ?? null;
 	const detailIndex = detailCard ? orderedCards.findIndex((card) => card.issueIid === detailCard.issueIid) : -1;
-	const filtersActive = Boolean(filterTeamKey || filterMemberIds.length || filterLabels.length);
+	const filtersActive = Boolean(filterQuery.trim() || filterTeamKey || filterMemberIds.length || filterLabels.length);
 
 	useEffect(() => {
 		const search = serializeBoardViewState(window.location.search, {
+			query: settledFilterQuery,
 			teamKey: filterTeamKey,
 			memberIds: filterMemberIds,
 			labels: filterLabels,
@@ -171,7 +213,19 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 		const nextURL = `${window.location.pathname}${search}${window.location.hash}`;
 		if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== nextURL)
 			window.history.replaceState(window.history.state, "", nextURL);
-	}, [filterLabels, filterMemberIds, filterTeamKey, sortMode]);
+	}, [filterLabels, filterMemberIds, filterTeamKey, settledFilterQuery, sortMode]);
+
+	useEffect(() => {
+		const focusSearch = (event: KeyboardEvent) => {
+			if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+			const target = event.target instanceof HTMLElement ? event.target : null;
+			if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+			event.preventDefault();
+			document.getElementById("board-card-search")?.focus();
+		};
+		window.addEventListener("keydown", focusSearch);
+		return () => window.removeEventListener("keydown", focusSearch);
+	}, []);
 
 	const replaceCard = (issueIid: number, card: BoardCard) => {
 		updateBootstrap((current) => ({
@@ -393,25 +447,20 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 		execute();
 	};
 
-	const handleReorder = (card: BoardCard, adjacentCard: BoardCard, direction: "up" | "down") => {
-		if (card.listKey !== adjacentCard.listKey) return;
-		const laneCards = cards
-			.filter((item) => item.listKey === card.listKey && item.issueIid !== card.issueIid)
-			.sort((a, b) => compareBoardCards(a, b, "manual"));
-		const adjacentIndex = laneCards.findIndex((item) => item.issueIid === adjacentCard.issueIid);
-		if (adjacentIndex >= 0) handlePosition(card, card.listKey, direction === "up" ? adjacentIndex : adjacentIndex + 1);
-	};
 	const drag = useBoardDrag({
 		cards,
-		visibleCards: filteredCards,
+		visibleCards: orderedCards,
 		listKeys: lists.map((list) => list.key),
-		enabled: sortMode === "manual",
 		onMove: (cardIid, listKey, position) => {
 			const card = cards.find((item) => item.issueIid === cardIid);
 			if (card) handlePosition(card, listKey, position);
 		},
 		onDraggingChange
 	});
+	const handleDragStart: typeof drag.onDragStart = (event) => {
+		drag.onDragStart(event);
+		if (sortMode !== "manual") setSortMode("manual");
+	};
 	const draggedCard = drag.activeCardIid === null ? null : (cards.find((card) => card.issueIid === drag.activeCardIid) ?? null);
 	const cardsForList = (listKey: string) => {
 		if (!drag.dragGroups) return filteredCards.filter((card) => card.listKey === listKey).sort((a, b) => compareBoardCards(a, b, sortMode));
@@ -468,17 +517,20 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 				) : null}
 				<BoardFilters
 					bootstrap={bootstrap}
+					query={filterQuery}
 					teamKey={filterTeamKey}
 					memberIds={filterMemberIds}
 					labels={filterLabels}
 					sortMode={sortMode}
 					visibleCount={filteredCards.length}
 					totalCount={cards.length}
+					onQueryChange={changeFilterQuery}
 					onTeamChange={setFilterTeamKey}
 					onMemberIdsChange={setFilterMemberIds}
 					onLabelsChange={setFilterLabels}
 					onSortModeChange={setSortMode}
 					onClear={() => {
+						changeFilterQuery("");
 						setFilterTeamKey("");
 						setFilterMemberIds([]);
 						setFilterLabels([]);
@@ -486,7 +538,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 				/>
 				<DragDropProvider
 					sensors={(defaults) => [...defaults.filter((sensor) => sensor !== PointerSensor), boardPointerSensor]}
-					onDragStart={drag.onDragStart}
+					onDragStart={handleDragStart}
 					onDragOver={drag.onDragOver}
 					onDragEnd={drag.onDragEnd}
 				>
@@ -508,10 +560,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 												onOpen={() => setDetailIid(card.issueIid)}
 												onAssignee={(memberIds) => handleAssignee(card, memberIds)}
 												onDueDate={(dueDate) => handleDueDate(card, dueDate)}
-												manualOrder={sortMode === "manual"}
 												sortableIndex={index}
-												onMoveUp={index > 0 ? () => handleReorder(card, listCards[index - 1]!, "up") : undefined}
-												onMoveDown={index < listCards.length - 1 ? () => handleReorder(card, listCards[index + 1]!, "down") : undefined}
 												onRetry={() => handleRetry(card)}
 												labelMetadata={labelMetadata}
 											/>
@@ -531,9 +580,10 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 					card={detailCard}
 					bootstrap={bootstrap}
 					onClose={() => setDetailIid(null)}
+					onOpenBoardCard={setDetailIid}
 					onPrevious={detailIndex > 0 ? () => setDetailIid(orderedCards[detailIndex - 1]!.issueIid) : undefined}
 					onNext={detailIndex >= 0 && detailIndex < orderedCards.length - 1 ? () => setDetailIid(orderedCards[detailIndex + 1]!.issueIid) : undefined}
-					position={detailIndex + 1}
+					position={detailIndex >= 0 ? detailIndex + 1 : null}
 					total={orderedCards.length}
 					onDetails={(title, description) => handleDetails(detailCard, title, description)}
 					onTeam={(teamKey) => handleTeam(detailCard, teamKey)}
@@ -552,6 +602,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 
 function BoardHeader({ bootstrap, backgroundOffline, onMembers }: { bootstrap: Bootstrap; backgroundOffline: boolean; onMembers: () => void }) {
 	const offline = backgroundOffline || bootstrap.sync.state === "offline";
+	const { theme, toggleTheme } = useTheme();
 	const [scrolled, setScrolled] = useState(false);
 	useEffect(() => {
 		const onScroll = () => setScrolled(window.scrollY > 0);
@@ -581,6 +632,13 @@ function BoardHeader({ bootstrap, backgroundOffline, onMembers }: { bootstrap: B
 			}
 			trailing={
 				<>
+					<IconButton
+						label={theme === "dark" ? "切換為亮色主題" : "切換為深色主題"}
+						variant="standard"
+						selected={theme === "dark"}
+						icon={theme === "dark" ? <Sun size="1.125rem" aria-hidden="true" /> : <Moon size="1.125rem" aria-hidden="true" />}
+						onClick={toggleTheme}
+					/>
 					<Button variant="text" leadingIcon={<Users size="1.125rem" aria-hidden="true" />} title="查看籌備團隊" onClick={onMembers}>
 						成員
 					</Button>
@@ -709,7 +767,7 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 					className={styles.quickTeam}
 					label="新卡片組別"
 					value={teamKey}
-					onChange={(event) => changeTeam(event.target.value)}
+					onValueChange={changeTeam}
 					options={teams.map((team) => ({ value: team.key, label: team.name }))}
 				/>
 			) : (
@@ -717,6 +775,7 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 			)}
 			<TextField
 				dense
+				alwaysFloatLabel
 				id="quick-title"
 				className={styles.quickTitle}
 				label="卡片標題"
@@ -726,11 +785,26 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 				autoComplete="off"
 			/>
 			{mode === "single" ? (
-				<AssigneePicker bootstrap={bootstrap} teamKey={teamKey} value={assignees} onChange={setAssignees} label="選擇新卡片 Assignee" />
+				<AssigneePicker
+					bootstrap={bootstrap}
+					teamKey={teamKey}
+					value={assignees}
+					onChange={setAssignees}
+					label="選擇新卡片 Assignee"
+					fieldLabel="新卡片負責人"
+				/>
 			) : (
 				<StaticChip className={styles.bulkAssignees} label={leaderCount ? `${leaderCount} 人` : "等待名單"} />
 			)}
-			<TextField dense type="date" className={styles.dateControl} label="新卡片期限" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
+			<TextField
+				dense
+				alwaysFloatLabel
+				type="date"
+				className={styles.dateControl}
+				label="新卡片期限"
+				value={dueDate}
+				onChange={(event) => setDueDate(event.target.value)}
+			/>
 			<Dialog
 				open={moreOpen}
 				onOpenChange={changeMoreOpen}
@@ -765,7 +839,7 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 					<SelectField
 						label="新卡片 Status"
 						value={draftListKey}
-						onChange={(event) => setDraftListKey(event.target.value)}
+						onValueChange={setDraftListKey}
 						options={lists.map((list) => ({ value: list.key, label: list.name }))}
 					/>
 					<TextAreaField label="新卡片 Description" rows={5} value={draftDescription} onChange={(event) => setDraftDescription(event.target.value)} />
@@ -840,7 +914,13 @@ function QuickCreateLabels({ bootstrap, value, onChange }: { bootstrap: Bootstra
 }
 
 function DroppableLane({ listKey, children }: { listKey: string; children: React.ReactNode }) {
-	const { isDropTarget, ref } = useDroppable({ id: listKey, type: "lane", accept: "card", collisionPriority: -1 });
+	const { isDropTarget, ref } = useDroppable({
+		id: listKey,
+		type: "lane",
+		accept: "card",
+		collisionPriority: -1,
+		collisionDetector: pointerIntersection
+	});
 	return (
 		<section ref={ref} className={styles.lane} data-list={listKey} data-drag-over={isDropTarget || undefined}>
 			{children}
@@ -854,10 +934,7 @@ function CardItem({
 	onOpen,
 	onAssignee,
 	onDueDate,
-	manualOrder,
 	sortableIndex,
-	onMoveUp,
-	onMoveDown,
 	onRetry,
 	labelMetadata
 }: {
@@ -866,10 +943,7 @@ function CardItem({
 	onOpen: () => void;
 	onAssignee: (memberIds: number[]) => void;
 	onDueDate: (dueDate: string | null) => void;
-	manualOrder: boolean;
 	sortableIndex: number;
-	onMoveUp: (() => void) | undefined;
-	onMoveDown: (() => void) | undefined;
 	onRetry: () => void;
 	labelMetadata: Map<string, ProjectLabel>;
 }) {
@@ -879,30 +953,12 @@ function CardItem({
 		group: card.listKey,
 		type: "card",
 		accept: "card",
-		disabled: !manualOrder
+		collisionDetector: pointerIntersection
 	});
 	const team = bootstrap.teams.find((item) => item.key === card.teamKey);
 	const title = team && !card.title.startsWith(team.titlePrefix) ? `${team.titlePrefix} ${card.title}` : card.title;
 	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
 	const overdue = Boolean(card.dueDate && card.dueDate < taipeiDateAfter(0) && !lists.find((list) => list.key === card.listKey)?.closed);
-	const moveUpRef = useRef<HTMLButtonElement>(null);
-	const moveDownRef = useRef<HTMLButtonElement>(null);
-	const pendingOrderFocus = useRef<"up" | "down" | null>(null);
-	const moveAndKeepFocus = (direction: "up" | "down") => {
-		const move = direction === "up" ? onMoveUp : onMoveDown;
-		if (!move) return;
-		pendingOrderFocus.current = direction;
-		move();
-	};
-	useEffect(() => {
-		const direction = pendingOrderFocus.current;
-		if (!direction) return;
-		pendingOrderFocus.current = null;
-		const preferred = direction === "up" ? moveUpRef.current : moveDownRef.current;
-		const fallback = direction === "up" ? moveDownRef.current : moveUpRef.current;
-		if (preferred && !preferred.disabled) preferred.focus();
-		else if (fallback && !fallback.disabled) fallback.focus();
-	}, [onMoveDown, onMoveUp]);
 	return (
 		<article ref={ref} className={styles.card} data-sync={card.syncState === "failed" ? "failed" : undefined} data-dragging={isDragSource || undefined}>
 			<div className={styles.cardTopline}>
@@ -911,33 +967,19 @@ function CardItem({
 					size="sm"
 					className={styles.dragHandle}
 					label={`拖曳 ${title}`}
-					title={manualOrder ? "拖曳調整卡片位置" : "切換至手動順序後拖曳"}
-					disabled={!manualOrder}
+					title="拖曳調整卡片位置"
 					icon={<GripVertical size="1.125rem" aria-hidden="true" />}
 				/>
 				<span>#{card.issueIid > 0 ? card.issueIid : "new"}</span>
-				<div className={styles.cardOrderControls} data-visible={manualOrder} role="group" aria-label={`${title} 的手動順序`}>
-					<IconButton
-						ref={moveUpRef}
-						size="sm"
-						label={`上移 ${title}`}
-						title="上移卡片"
-						disabled={!manualOrder || !onMoveUp}
-						icon={<ArrowUp size="1.125rem" aria-hidden="true" />}
-						onClick={() => moveAndKeepFocus("up")}
-					/>
-					<IconButton
-						ref={moveDownRef}
-						size="sm"
-						label={`下移 ${title}`}
-						title="下移卡片"
-						disabled={!manualOrder || !onMoveDown}
-						icon={<ArrowDown size="1.125rem" aria-hidden="true" />}
-						onClick={() => moveAndKeepFocus("down")}
-					/>
-				</div>
 				{card.webUrl ? (
-					<IconButton asChild size="sm" label={`在 GitLab 開啟 ${title}`} title="在 GitLab 開啟" icon={<ExternalLink size="1.125rem" aria-hidden="true" />}>
+					<IconButton
+						asChild
+						size="sm"
+						className={styles.cardExternalLink}
+						label={`在 GitLab 開啟 ${title}`}
+						title="在 GitLab 開啟"
+						icon={<ExternalLink size="1.125rem" aria-hidden="true" />}
+					>
 						<a href={card.webUrl} target="_blank" rel="noreferrer" />
 					</IconButton>
 				) : null}
@@ -994,6 +1036,7 @@ function CardDetail({
 	card,
 	bootstrap,
 	onClose,
+	onOpenBoardCard,
 	onPrevious,
 	onNext,
 	position,
@@ -1010,9 +1053,10 @@ function CardDetail({
 	card: BoardCard;
 	bootstrap: Bootstrap;
 	onClose: () => void;
+	onOpenBoardCard: (issueIid: number) => void;
 	onPrevious: (() => void) | undefined;
 	onNext: (() => void) | undefined;
-	position: number;
+	position: number | null;
 	total: number;
 	onDetails: (title: string, description: string) => void;
 	onTeam: (teamKey: string) => void;
@@ -1063,9 +1107,7 @@ function CardDetail({
 					<button type="button" aria-label="上一張卡片" title="上一張卡片" disabled={!onPrevious} onClick={onPrevious}>
 						<ChevronLeft size="1rem" aria-hidden="true" />
 					</button>
-					<span>
-						{position} / {total}
-					</span>
+					<span>{position === null ? "直接開啟" : `${position} / ${total}`}</span>
 					<button type="button" aria-label="下一張卡片" title="下一張卡片" disabled={!onNext} onClick={onNext}>
 						<ChevronRight size="1rem" aria-hidden="true" />
 					</button>
@@ -1113,23 +1155,13 @@ function CardDetail({
 				</section>
 				<div className={styles.detailGrid}>
 					<div className={styles.detailField}>
-						<SelectField
-							label="組別"
-							value={card.teamKey}
-							onChange={(event) => onTeam(event.target.value)}
-							options={teams.map((team) => ({ value: team.key, label: team.name }))}
-						/>
+						<SelectField label="組別" value={card.teamKey} onValueChange={onTeam} options={teams.map((team) => ({ value: team.key, label: team.name }))} />
 						<span className={styles.fieldSave}>
 							<SaveIndicator save={save.get(card.issueIid, "team")} name="組別" />
 						</span>
 					</div>
 					<div className={styles.detailField}>
-						<SelectField
-							label="狀態"
-							value={card.listKey}
-							onChange={(event) => onMove(event.target.value)}
-							options={lists.map((list) => ({ value: list.key, label: list.name }))}
-						/>
+						<SelectField label="狀態" value={card.listKey} onValueChange={onMove} options={lists.map((list) => ({ value: list.key, label: list.name }))} />
 						<span className={styles.fieldSave}>
 							<SaveIndicator save={save.get(card.issueIid, "status")} name="狀態" />
 						</span>
@@ -1156,6 +1188,7 @@ function CardDetail({
 					</div>
 				</div>
 				<CardTags card={card} bootstrap={bootstrap} onChange={onLabels} save={save.get(card.issueIid, "labels")} />
+				<CardRelationships card={card} bootstrap={bootstrap} onOpenBoardCard={onOpenBoardCard} />
 				<QuickActionComposer bootstrap={bootstrap} card={card} onAction={runQuickAction} />
 				<CardComments card={card} />
 				<footer className={styles.detailActions}>

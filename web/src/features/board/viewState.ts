@@ -1,6 +1,7 @@
 import type { BoardSortMode, Bootstrap } from "./model";
 
 export interface BoardViewState {
+	query: string;
 	teamKey: string;
 	memberIds: number[];
 	labels: string[];
@@ -8,7 +9,7 @@ export interface BoardViewState {
 }
 
 const sortModes = new Set<BoardSortMode>(["manual", "due-asc", "due-desc", "start-asc", "start-desc", "updated-desc", "updated-asc"]);
-const ownedParameters = ["team", "member", "label", "sort"] as const;
+const ownedParameters = ["q", "team", "member", "label", "sort"] as const;
 
 export function parseBoardViewState(search: string, bootstrap: Bootstrap): BoardViewState {
 	const parameters = new URLSearchParams(search);
@@ -18,6 +19,7 @@ export function parseBoardViewState(search: string, bootstrap: Bootstrap): Board
 	const requestedSort = parameters.get("sort") as BoardSortMode | null;
 
 	return {
+		query: parameters.get("q")?.trim() ?? "",
 		teamKey: validTeams.has(requestedTeam) ? requestedTeam : "",
 		memberIds: unique(
 			parameters
@@ -31,17 +33,18 @@ export function parseBoardViewState(search: string, bootstrap: Bootstrap): Board
 				.map((value) => value.trim())
 				.filter(Boolean)
 		),
-		sortMode: requestedSort && sortModes.has(requestedSort) ? requestedSort : "manual"
+		sortMode: requestedSort && sortModes.has(requestedSort) ? requestedSort : "due-asc"
 	};
 }
 
 export function serializeBoardViewState(currentSearch: string, state: BoardViewState) {
 	const parameters = new URLSearchParams(currentSearch);
 	for (const parameter of ownedParameters) parameters.delete(parameter);
+	if (state.query.trim()) parameters.set("q", state.query.trim());
 	if (state.teamKey) parameters.set("team", state.teamKey);
 	for (const memberId of unique(state.memberIds)) parameters.append("member", String(memberId));
 	for (const label of unique(state.labels.map((value) => value.trim()).filter(Boolean))) parameters.append("label", label);
-	if (state.sortMode !== "manual") parameters.set("sort", state.sortMode);
+	if (state.sortMode !== "due-asc") parameters.set("sort", state.sortMode);
 	const query = parameters.toString();
 	return query ? `?${query}` : "";
 }

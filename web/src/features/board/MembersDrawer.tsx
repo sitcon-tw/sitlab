@@ -14,15 +14,20 @@ export function MembersDrawer({ bootstrap, open, onOpenChange }: { bootstrap: Bo
 					const members = active.filter((member) => member.teamKeys.includes(team.key));
 					return (
 						<section className={styles.directoryTeam} key={team.key}>
-							<h3>
-								{team.name} <span>{members.length}</span>
+							<h3 className="md-typescale-title-small">
+								{team.name} <span className="md-typescale-label-small">{members.length}</span>
 							</h3>
-							<ul>
+							<ul className="md-list">
 								{members.map((member) => (
 									<li key={member.gitLabUserId}>
-										<Avatar name={member.displayName} src={member.avatarUrl} size="sm" />
-										<a href={member.profileUrl} target="_blank" rel="noreferrer">
-											{member.displayName} <small>@{member.username}</small>
+										<a className="md-list-item md-list-item--two-line md-state-layer" href={member.profileUrl} target="_blank" rel="noreferrer">
+											<span className="md-list-item__leading">
+												<Avatar name={member.displayName} src={member.avatarUrl} size="sm" />
+											</span>
+											<span className="md-list-item__text">
+												<span className="md-list-item__headline">{member.displayName}</span>
+												<span className="md-list-item__supporting">@{member.username}</span>
+											</span>
 										</a>
 									</li>
 								))}
@@ -32,15 +37,20 @@ export function MembersDrawer({ bootstrap, open, onOpenChange }: { bootstrap: Bo
 				})}
 				{ungrouped.length ? (
 					<section className={styles.directoryTeam}>
-						<h3>
-							尚未分組 <span>{ungrouped.length}</span>
+						<h3 className="md-typescale-title-small">
+							尚未分組 <span className="md-typescale-label-small">{ungrouped.length}</span>
 						</h3>
-						<ul>
+						<ul className="md-list">
 							{ungrouped.map((member) => (
 								<li key={member.gitLabUserId}>
-									<Avatar name={member.displayName} src={member.avatarUrl} size="sm" />
-									<a href={member.profileUrl} target="_blank" rel="noreferrer">
-										{member.displayName} <small>@{member.username}</small>
+									<a className="md-list-item md-list-item--two-line md-state-layer" href={member.profileUrl} target="_blank" rel="noreferrer">
+										<span className="md-list-item__leading">
+											<Avatar name={member.displayName} src={member.avatarUrl} size="sm" />
+										</span>
+										<span className="md-list-item__text">
+											<span className="md-list-item__headline">{member.displayName}</span>
+											<span className="md-list-item__supporting">@{member.username}</span>
+										</span>
 									</a>
 								</li>
 							))}

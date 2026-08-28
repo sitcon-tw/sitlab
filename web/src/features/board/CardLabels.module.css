@@ -13,12 +13,6 @@
 	display: none;
 }
 
-.strip:focus-visible {
-	outline: 3px solid var(--md-sys-color-secondary);
-	outline-offset: 2px;
-	border-radius: var(--md-sys-shape-corner-extra-small);
-}
-
 .chip {
 	flex: 0 0 auto;
 	white-space: nowrap;

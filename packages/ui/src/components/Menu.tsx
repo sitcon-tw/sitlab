@@ -11,28 +11,30 @@ export interface MenuProps {
 	open?: boolean | undefined;
 	onOpenChange?: ((open: boolean) => void) | undefined;
 	className?: string | undefined;
+	portalled?: boolean | undefined;
 }
 
 /**
- * Material Design 3 menu.
+ * Accessible product menu.
  *
  * Replaces the <details>-based popovers the board used to hand-roll, which had
  * no focus trap, no roving tabindex, and no Escape handling — they were closed
  * imperatively by writing `ref.current.open = false`.
  */
-export function Menu({ trigger, children, label, align = "start", open, onOpenChange, className }: MenuProps) {
+export function Menu({ trigger, children, label, align = "start", open, onOpenChange, className, portalled = true }: MenuProps) {
 	const rootProps = {
 		...(open !== undefined ? { open } : {}),
 		...(onOpenChange ? { onOpenChange } : {})
 	};
+	const content = (
+		<DropdownMenuPrimitive.Content className={classNames("md-menu", className)} align={align} sideOffset={4} aria-label={label} collisionPadding={8}>
+			{children}
+		</DropdownMenuPrimitive.Content>
+	);
 	return (
 		<DropdownMenuPrimitive.Root {...rootProps}>
 			<DropdownMenuPrimitive.Trigger asChild>{trigger}</DropdownMenuPrimitive.Trigger>
-			<DropdownMenuPrimitive.Portal>
-				<DropdownMenuPrimitive.Content className={classNames("md-menu", className)} align={align} sideOffset={4} aria-label={label} collisionPadding={8}>
-					{children}
-				</DropdownMenuPrimitive.Content>
-			</DropdownMenuPrimitive.Portal>
+			{portalled ? <DropdownMenuPrimitive.Portal>{content}</DropdownMenuPrimitive.Portal> : content}
 		</DropdownMenuPrimitive.Root>
 	);
 }
@@ -66,7 +68,7 @@ export function MenuItem({ children, onSelect, leading, trailing, disabled, sele
 	};
 	if (selected === undefined) return <DropdownMenuPrimitive.Item {...shared}>{content}</DropdownMenuPrimitive.Item>;
 	return (
-		<DropdownMenuPrimitive.CheckboxItem {...shared} checked={selected} onCheckedChange={() => onSelect?.()}>
+		<DropdownMenuPrimitive.CheckboxItem {...shared} checked={selected}>
 			{content}
 		</DropdownMenuPrimitive.CheckboxItem>
 	);

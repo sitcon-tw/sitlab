@@ -1,69 +1,80 @@
 # SITCON Board Design System
 
-## Direction
+## Product direction
 
-SITCON Board 是籌備團隊每天重複使用的工作介面。視覺應安靜、緊湊、可掃描，資訊與操作回饋優先於裝飾。第一 viewport 必須直接識別 `SITCON / 2027` 並顯示可操作的 Board，不使用 marketing hero、gradient、裝飾圖形或永久 sidebar。
+SITCON Board is a daily operational workspace for the organizing team. The interface must stay quiet, compact, and easy to scan; information and action feedback take priority over decoration. The first viewport identifies `SITCON / 2027` and exposes an actionable board without a marketing hero, gradients, decorative artwork, or a permanent sidebar.
 
-SITCON Board 採用 **Material Design 3**。`packages/ui/src/styles/` 是瀏覽器 token 與 primitive 樣式的唯一來源，分三層：`--md-ref-palette-*`（由品牌綠種子產生的色調階，執行 `pnpm --filter @project-template/ui generate:tokens` 重新產生）、`--md-sys-*`（產品 CSS 消費的系統 token）、以及少數保留的產品角色。`tokens.css` 是唯一可以出現具體色值的樣式檔；`md3.css` 與所有 feature CSS 只能用 `var()` 與 `color-mix()`。
+The visual character is adapted from Simfiment: warm neutral canvases, crisp layered surfaces, rounded containers, compact Inter typography, and restrained use of color. SITCON green remains the product primary and the official product bar remains the strongest brand surface. The interface is deliberately shadow-free.
 
-## Visual Roles
+The product uses **Material Design 3 as a foundation, not as its visual target**. Material supplies semantic color roles, accessibility behavior, interaction states, and a coherent sizing vocabulary. Simfiment is the visual reference for surface hierarchy, compact density, rounded controls, typography, and restraint. When the two disagree visually, use the documented SITCON product role or deliberate deviation instead of reproducing a stock Material component. `packages/ui/src/styles/tokens.css` remains the browser design authority.
 
-- 表面層級使用 MD3 的 `surface-container-*` 階梯。**Board 的 page / lane / card 三個 surface 是產品角色**，明暗兩色刻意對應到不同的 `--md-sys-*` role：亮色要卡片最亮（`container-lowest`），暗色要卡片以亮度表示抬升（`container-high`），沒有單一 role 能同時滿足。MD3 本來就預期產品 surface 依 scheme 分別對應。
-- 綠色是 MD3 的 `primary` 種子色。`secondary`（focus、已選 chip）與 `tertiary`（資訊、Inbox）是同一顆種子推導出的色調同伴，不是另外挑的顏色。
-- focus 用 `secondary`，資訊用 `tertiary`，提醒用自訂的 `warning` 色組（MD3 沒有 warning 角色，SITCON 需要），失敗與逾期用 `error`。
-- 卡片是 MD3 elevated card：靜止 level1、hover level2、拖曳中 level3 加 16% dragged state layer，拖曳預覽 level4。lane 是 grouping container，不是裝飾卡片。
-- 圓角使用 MD3 shape scale：0 / 4 / 8 / 12 / 16 / 28 / full。卡片 12dp、lane 上緣 16dp、dialog 28dp。按鈕、chip、icon button、segmented button 與 tab 指示器使用 `full`。
-- 字體不隨 viewport 連續縮放；letter spacing 依 MD3 type scale 的 per-role tracking，不再固定為 0。
-- Dark header 使用 `sitcon-tw/2027` source 提供的官方白色 SITCON logo，年度色票沿用該網站，不自行重畫品牌資產。
+## Ownership and conformance
 
-### Material Design 3 conformance
+Browser styling has three layers:
 
-- **State layer** 是該表面自身內容色的疊加：hover 8%、focus 10%、pressed 10%、dragged 16%。實作用 `background-color: currentColor` 的 `::before`，所以 filled button 的層是 `on-primary`、outlined 的是 `primary`，不需要 per-variant token，也不需要被政策禁止的 `rgba()`。
-- **Ripple** 出現在每一個可操作表面，節點由 React 擁有（`useRipple`），不做 DOM 手術。
-- **Focus indicator** 是 3dp `secondary` outline、2dp offset，取代舊的 focus ring。輸入框額外保留這個指示器而不是移除瀏覽器預設 outline。
-- **觸控目標** 視覺容器 40dp、觸控區 48dp。48dp 用不影響排版的 `::after` 覆蓋層提供 —— 直接放大容器會讓看板在 320px 超出 viewport。
-- **Motion** 使用 MD3 duration 與 easing token。`prefers-reduced-motion` 下移除 ripple 與 transition，但保留 state layer 並補上 pressed 層。
-- **Type scale 對應**：卡片標題 `title-medium`、lane 標題 `title-small`、卡片內文 `body-medium`、按鈕與 chip `label-large`、dialog 標題 `headline-small`、app bar `title-large`。
+1. `--md-ref-palette-*` tonal ramps generated from the brand seed. Regenerate them with `pnpm --filter @project-template/ui generate:tokens`.
+2. `--md-sys-*` system roles consumed by primitives and product CSS.
+3. A small set of `--sb-*` product roles for surfaces or brand meanings that Material does not model directly.
 
-### 明列的 MD3 偏離
+`tokens.css` is the only stylesheet allowed to contain concrete colors. `packages/ui/src/styles/md3.css` owns reusable primitive styling, the global 3dp focus indicator, state layers, and motion behavior. Feature stylesheets may arrange primitives and map product roles, but must not redraw a primitive, introduce a new type size or weight, or declare a competing focus ring.
 
-以下是刻意不照 MD3 的地方，每一項都有產品理由：
+Use the 7-step Material Web shape scale documented in `tokens.css`; the Android-only 20/32/48dp M3 Expressive additions are not part of this product. Typography uses self-hosted Inter Variable with system CJK fallbacks and keeps all sizes on the 15 Material type roles; product headings and labels use the documented 600/700 strong roles. Actionable surfaces use their own content color for hover, focus, pressed, and dragged state layers. Surface tone and quiet outlines communicate hierarchy; browser UI must not use shadows.
 
-1. **App bar 在明暗兩色都維持 SITCON 墨色表面**，而不是 `surface`。品牌識別需求。
-2. **Snackbar region 會堆疊**，MD3 一次只顯示一個。看板需要同時浮現多個失敗。
-3. **Ripple 是單階段 500ms 擴散淡出**，而非 MD3 的擴散 + 放開淡出兩階段。
-4. **保留原生 `<select>`**，以 MD3 outlined select 的外觀呈現。換掉會失去行動裝置原生選單，MD3 的視覺規範在原生元素上做得到。
-5. **保留 Inter 而不引入 Roboto**。tracking 差異在次像素等級，為中文產品加一套 Latin webfont 是負收益。
-6. **看板內的緊湊控制項不套用 56dp 浮動標籤欄位**。MD3 沒有要求每個輸入都是 text field，密集資料表面本來就使用緊湊控制項；強制套用會讓卡片高度暴增並弄壞 320px 容納測試。
-7. **保留第三階文字色 `--sb-text-subtle`**（`on-surface-variant` 與 `outline` 的混色）。MD3 沒有第三階文字色，而 `outline` 單獨用在文字上只有 4.25:1，低於 AA。
+## Product roles
 
-## Product Layout
+- Board page, lane, card, and compact-control surfaces remain product roles. Light mode uses a warm near-white canvas and bright cards; dark mode uses a near-black canvas and progressively lighter charcoal surfaces. Quiet outlines keep adjacent layers legible without shadows.
+- Green is the Material primary seed. Secondary supplies focus and selected-container roles; tertiary supplies informational and Inbox roles.
+- Warning is a product color group because Material 3 has no warning role. Error represents failures and overdue work.
+- `--sb-text-subtle` remains a deliberate third text tier. Material has no equivalent, and `outline` alone is below AA contrast on the product surface. Use it only for supporting metadata, never primary content.
+- SITCON accent, coral, and blue remain product colors with no Material semantic equivalent.
+- The dark product bar uses the official white SITCON logo from the `sitcon-tw/2027` source. Product code does not redraw or recolor the mark.
 
-Header 高度固定，包含產品識別、成員 Sheet、錯誤時才出現的離線狀態與帳號選單。快速開卡在桌面為單列，手機為 title 加控制列，並以 segmented mode 切換單組或所有組長；更多 icon 開啟 Status、Description 與可搜尋的一般 Labels 選擇，Status 預設為 `Inbox`，新卡固定出現在目標欄位最上方。Board 上方的緊湊控制列先提供欄內日期排序，再提供單一組別與依組別複選的成員篩選。Board lanes 固定依序為 `Waiting`、`Inbox`、`To do`、`Doing`、`Review`、`Done`，保持穩定最小寬度；窄螢幕水平捲動，不壓縮到文字與控制重疊。
+## Deliberate Material deviations
 
-完整成員目錄只出現在右側 Drawer；桌面為窄 Sheet、手機可佔全寬。不建立永久 sidebar，也不在主 Board 重複完整名單。看板篩選列另提供可搜尋、可複選的全部 GitLab Labels；複選 Labels 採全部符合。
+Every deviation requires a product reason and must be recorded here.
 
-## Interaction
+1. **The product top app bar remains on the SITCON ink surface in both themes.** This preserves event identity instead of using the default Material surface role.
+2. **The snackbar region may stack messages.** Material normally presents one snackbar; the board must expose multiple independent mutation failures without dropping any of them.
+3. **The ripple uses a single 500ms expansion and fade.** Material's two-stage release animation is simplified while retaining the required state layer and reduced-motion behavior.
+4. **Form controls follow the Simfiment product treatment rather than stock Material fields.** Text, date, textarea, and single-choice fields use a compact charcoal/neutral control surface with a quiet, uninterrupted outline instead of Material's filled underline or notched outline. Floating labels stay inside the control so different parent and field tones never create a visible background patch above the edge. SITCON keeps its softer 12px rounding on all four corners rather than copying Simfiment's top-only field corners. Every single-choice popup uses the same accessible, shadow-free menu surface as board sorting so browser-native menus cannot introduce an inconsistent appearance.
+5. **Dense board chrome uses the supported -2 field density.** Full 56dp fields remain in dialogs and drawers; dense sorting and creation controls use 48dp fields so the 320px board remains operable.
+6. **Board page, lane, card, and compact-control surfaces are scheme-specific product roles.** Their light and dark mappings intentionally differ as described above.
+7. **`--sb-text-subtle` is retained for low-emphasis metadata.** Replacing it with `outline` would fail contrast; replacing every use with the same Material text role would remove necessary hierarchy.
+8. **Product typography uses Inter and strong 600/700 roles.** This carries the compact hierarchy of the approved Simfiment reference while retaining Material's named size and line-height roles.
+9. **The browser interface is shadow-free.** Cards, menus, dialogs, drawers, snackbars, and sticky chrome use tonal layering and quiet outlines instead of Material elevation shadows.
 
-- Production initial render 使用 injected bootstrap，不顯示 loading page、skeleton、spinner 或空 Board。
-- 背景刷新不替換成 loading state，不改變 layout；健康的背景 pending 與 processing 狀態不顯示，只有離線或 mutation 失敗才顯示技術狀態。使用者剛編輯的欄位例外：該欄位就地顯示 saving 指示並收斂成短暫的 saved 標記，Drawer 內只用單一 aria-live region 播報，不搶 focus、不 disable 控制項。
-- 開卡與卡片 mutation 立即 optimistic update。失敗保留使用者意圖並顯示 Retry。
-- 手動排序時可由 grip 使用滑鼠或觸控在同欄與跨欄精確拖放；有篩選時以可見卡片為插入錨點並保留隱藏卡片相對順序。上下移按鈕與卡片右側 detail Drawer 的狀態 select 提供完整鍵盤操作，卡片表面不重複組別與狀態 controls。
-- 卡片 detail Drawer 包含前後卡片切換、title、支援 GFM 預覽的 Markdown description、組別、原生 lifecycle status、多人 Assignee、GitLab Start/Due dates、GitLab Labels、typed Quick Actions、Comments 與 Issue 連結。Label 以帶色彩 swatch 的 MD3 input chips 呈現；既有 project labels 可搜尋新增，唯一 Team Label 只能由另一個 Team Label 取代，status 只由獨立控制變更。Comment thread 依時間顯示使用者留言與 GitLab system notes，composer 固定在 thread 下方，送出失敗保留 draft。
-- Assignee picker 與成員篩選支援依組別複選；組別標題 checkbox 可切換該組目前可見成員，搜尋時不影響隱藏結果。Assignee picker 以目前組別優先，其他組別依目錄順序，未分組置底；跨組成員出現在每個所屬組別。
-- Sort by 在每個 lane 內提供手動、Due、Start 與 Updated time 正反向排序；空日期固定置底，清除篩選不重設排序。
-- 組別、負責人、Labels 與 Sort by 以 query string 保存；變更取代目前網址、不新增瀏覽歷史，分享與重新載入會還原相同視圖。
-- Quick Create 更多選項使用可取消的 draft；套用後由主列建立按鈕送出，建卡後清空 Description 與 Labels 並保留 Status。所有組長模式將相同設定套用至每張卡片。
-- Avatar 固定尺寸，initials 立即顯示；成功載入的圖片原地淡入，失敗不顯示破圖。
-- Dialog/Drawer trap focus、Escape 關閉並還原 trigger focus。所有 icon-only controls 有 accessible name 與 tooltip。
+## Product layout
 
-## Responsive Review
+The fixed product bar contains identity, the member drawer trigger, offline state when needed, and the account menu. Quick Create is one row on desktop and a title-plus-controls layout on mobile. Its segmented mode switches between one team and all team leads; additional options cover status, description, and searchable project labels. New cards default to Inbox and appear at the top of the target lane.
 
-必要檢查寬度為 320、608、928、1440 pixels。每個寬度都要確認：
+The desktop filter row keeps compact searchable team, grouped multi-member, and all-labels selectors beside card search; label administration sits at the far edge. Due date near-to-far is the default sort. At 928px and below, card search stays visible while sorting and the three advanced selectors move into one immediate-apply dialog. Lanes stay ordered as Waiting, Inbox, To do, Doing, Review, and Done. Narrow screens scroll the board horizontally instead of compressing lanes until controls and text collide.
 
-1. Header 與 quick-create controls 不重疊。
-2. Title、姓名與錯誤訊息不超出容器。
-3. Board 可水平捲動且每個 lane/card 維持可讀。
-4. 成員 Drawer、Assignee dialog、卡片 Tags/Comments 與 account menu 可完整操作。
-5. Focus outline 可見，color 不是狀態的唯一訊號。
-6. State layer 與 ripple 在每個可操作表面都看得到；開啟 `prefers-reduced-motion` 時 ripple 消失、pressed state layer 仍在。
+The complete directory appears only in the right-side drawer. It is a side sheet on desktop and may occupy the full width on mobile. Do not add a permanent sidebar or duplicate the full directory on the main board.
+
+## Interaction contract
+
+- Production starts from injected bootstrap data. It does not replace the board with a loading page, skeleton, spinner, or empty columns.
+- Healthy background refresh, pending work, processing, and success stay visually quiet. A field the user just edited may show an in-place saving indicator that resolves to a brief saved marker. One drawer-level live region announces failures without stealing focus.
+- Card creation and card mutations update optimistically. Durable failures preserve user intent and expose Retry.
+- Dragging supports pointer, touch, and keyboard movement within and across lanes. With filters active, visible cards remain insertion anchors while hidden cards preserve relative order. The detail drawer provides a keyboard alternative for changing lanes.
+- The detail drawer owns lifecycle state, team, title, GFM Markdown description, multiple assignees, GitLab Start and Due dates, labels, GitLab-native Child items and Linked items, typed Quick Actions, comments, and the issue link. Markdown preview never enables raw HTML.
+- Child and Linked item sections use fixed status, assignee, date, and label metadata with no persisted display-options control. They collapse independently for the current drawer session. Creating and attaching Child Tasks and adding Issue/Task links use dialogs with debounced title or IID search; Linked candidates use native checkboxes, retain selections across searches, and submit one batch. Relation failures remain inline and preserve the entered value. A related Issue already present in bootstrap opens in the local drawer even when filters hide it, while Tasks and unboarded Issues open GitLab in a new tab. Detaching a child never presents itself as deleting the Task. After confirmation, detach and unlink remove the row optimistically while the request runs in the background, then restore it with an inline error if GitLab rejects the mutation.
+- Assignee and member pickers group members by directory team. Group-heading native checkboxes affect the currently visible members, preserve indeterminate state, and do not alter hidden search results.
+- Team selection uses native radios. Label selection uses native checkboxes. Styling native controls is required; div-based replacements are not acceptable.
+- Card search covers title, description, issue IID, team, assignee identity, and labels. Whitespace-separated terms use case-insensitive AND matching across those fields, and filtering waits briefly for typing to settle before updating the board.
+- Search, sort, and filter state is stored in the query string with history replacement so reloads and shared URLs restore the same view. Due date near-to-far is omitted as the default; manual ordering is stored explicitly.
+- Dialogs and drawers trap focus, close with Escape, and restore focus to their trigger. Icon-only controls have an accessible name and a tooltip.
+- Avatar initials render immediately; a successfully loaded image fades in without layout shift, and a failed image never exposes a broken-image indicator.
+
+## Responsive and accessibility review
+
+Review 320, 608, 928, and 1440 pixel widths in both themes. At every width verify:
+
+1. The product bar and Quick Create controls do not overlap.
+2. Titles, member names, metadata, and errors remain inside their containers.
+3. The board scrolls horizontally without compressing lanes or cards into unreadable layouts.
+4. Member, assignee, label, comment, and account surfaces remain fully operable.
+5. Keyboard focus shows the 3dp secondary indicator and color is never the only state signal.
+6. Every actionable Material surface shows its state layer and ripple.
+7. Under `prefers-reduced-motion`, ripple and transitions disappear while the pressed state layer remains.
+8. `documentWidth` does not exceed the 320px viewport outside the intentional board scroller.

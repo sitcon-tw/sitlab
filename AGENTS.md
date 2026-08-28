@@ -19,7 +19,7 @@ There is no agent runtime in this template. Do not add probe, assignment, remote
 - `api/**/*.tsp` owns the HTTP wire contract.
 - `server/db/migrations` owns the database schema.
 - `.sitcon/board-directory.yml` owns the production team directory.
-- `packages/ui/src/styles/` owns browser design tokens and the Material Design 3 primitive stylesheet: `tokens.css` owns `--md-ref-*` and `--md-sys-*` and is the only stylesheet allowed to contain concrete colors, `md3.css` owns primitive component CSS, and `index.css` is the published entry.
+- `packages/ui/src/styles/` owns browser design tokens and Material Design 3 primitives: the opening block in `tokens.css` is the authoritative visual specification, `tokens.css` owns `--md-ref-*`, `--md-sys-*`, and documented product roles and is the only stylesheet allowed to contain concrete colors, `md3.css` owns primitive CSS and the global focus indicator, and `index.css` is the published entry.
 - `Justfile` owns cross-language task names.
 - `ARCHITECTURE.md` and architecture tests own dependency direction.
 

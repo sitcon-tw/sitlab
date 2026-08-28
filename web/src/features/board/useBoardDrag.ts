@@ -1,19 +1,18 @@
 import { move } from "@dnd-kit/helpers";
 import type { DragEndEvent, DragOverEvent, DragStartEvent } from "@dnd-kit/react";
 import { useEffect, useRef, useState } from "react";
-import { canonicalPositionForVisibleOrder, groupCardIds, locateCard, type CardGroups } from "./boardOrder";
+import { canonicalPositionForVisibleOrder, groupVisibleCardIds, locateCard, type CardGroups } from "./boardOrder";
 import type { BoardCard } from "./model";
 
 export interface BoardDragOptions {
 	cards: BoardCard[];
 	visibleCards: BoardCard[];
 	listKeys: string[];
-	enabled: boolean;
 	onMove: (cardIid: number, listKey: string, position: number) => void;
 	onDraggingChange: (dragging: boolean) => void;
 }
 
-export function useBoardDrag({ cards, visibleCards, listKeys, enabled, onMove, onDraggingChange }: BoardDragOptions) {
+export function useBoardDrag({ cards, visibleCards, listKeys, onMove, onDraggingChange }: BoardDragOptions) {
 	const [activeCardIid, setActiveCardIid] = useState<number | null>(null);
 	const [dragGroups, setDragGroups] = useState<CardGroups | null>(null);
 	const dragGroupsRef = useRef<CardGroups | null>(null);
@@ -26,8 +25,8 @@ export function useBoardDrag({ cards, visibleCards, listKeys, enabled, onMove, o
 	};
 
 	const onDragStart = (event: DragStartEvent) => {
-		if (!enabled || typeof event.operation.source?.id !== "number") return;
-		const groups = groupCardIds(visibleCards, listKeys);
+		if (typeof event.operation.source?.id !== "number") return;
+		const groups = groupVisibleCardIds(visibleCards, listKeys);
 		dragGroupsRef.current = groups;
 		setDragGroups(groups);
 		setActiveCardIid(event.operation.source.id);
@@ -36,7 +35,7 @@ export function useBoardDrag({ cards, visibleCards, listKeys, enabled, onMove, o
 
 	const onDragOver = (event: DragOverEvent) => {
 		const current = dragGroupsRef.current;
-		if (!enabled || !current) return;
+		if (!current) return;
 		const next = move(current, event) as CardGroups;
 		if (next === current) return;
 		dragGroupsRef.current = next;

@@ -31,6 +31,9 @@ alias ErrorCode =
 	| "TEAM_NOT_FOUND"
 	| "MEMBER_NOT_ASSIGNABLE"
 	| "CARD_NOT_FOUND"
+	| "WORK_ITEM_NOT_FOUND"
+	| "RELATION_CONFLICT"
+	| "GITLAB_FEATURE_UNAVAILABLE"
 	| "OPERATION_NOT_FOUND"
 	| "OPERATION_CONFLICT"
 	| "SNAPSHOT_NOT_READY"
@@ -162,6 +165,11 @@ model CSRFHeader {
 model IssueIidPath {
 	@path
 	issueIid: int64;
+}
+
+model WorkItemIdPath {
+	@path
+	workItemId: int64;
 }
 
 model ProjectLabelPath {

@@ -1,4 +1,5 @@
-import { Check, Loader2, TriangleAlert } from "lucide-react";
+import { Spinner } from "@project-template/ui";
+import { Check, TriangleAlert } from "lucide-react";
 import styles from "./SaveIndicator.module.css";
 import type { FieldSave } from "./useFieldSaveState";
 
@@ -20,7 +21,7 @@ export function SaveIndicator({ save, name }: { save: FieldSave | undefined; nam
 	const text = labels[save.state];
 	return (
 		<span className={styles.indicator} data-state={save.state} title={`${name}${text}`} aria-hidden="true">
-			{save.state === "saving" ? <Loader2 className={styles.spin} size="0.75rem" /> : null}
+			{save.state === "saving" ? <Spinner size="sm" label={`${name}儲存中`} className={styles.spinner} /> : null}
 			{save.state === "saved" ? <Check size="0.75rem" /> : null}
 			{save.state === "failed" ? <TriangleAlert size="0.75rem" /> : null}
 			<span className={styles.text}>{text}</span>

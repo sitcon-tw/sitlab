@@ -188,6 +188,132 @@ interface CardService {
 		| ServiceUnavailableProblem
 		| InternalServerProblem;
 
+	@operationId("listChildItems")
+	@summary("List GitLab child work items for a card")
+	@get
+	@route("/{issueIid}/child-items")
+	listChildItems(
+		...IssueIidPath,
+		@query cursor?: string,
+
+		@query
+		@minValue(1)
+		@maxValue(100)
+		limit?: int32,
+	):
+		| OkJson<ChildItemsResponse>
+		| BadRequestProblem
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
+
+	@operationId("createChildItem")
+	@summary("Create a GitLab Task as a child of a card")
+	@post
+	@route("/{issueIid}/child-items")
+	createChildItem(...IssueIidPath, ...CSRFHeader, @body body: CreateChildItemRequest):
+		| CreatedJson<WorkItemSummary>
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| ConflictProblem
+		| UnprocessableEntityProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
+
+	@operationId("attachChildItem")
+	@summary("Attach an existing unparented GitLab Task to a card")
+	@put
+	@route("/{issueIid}/child-items/{workItemId}")
+	attachChildItem(...IssueIidPath, ...WorkItemIdPath, ...CSRFHeader):
+		| NoContent
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| ConflictProblem
+		| UnprocessableEntityProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
+
+	@operationId("detachChildItem")
+	@summary("Detach a GitLab Task from its parent without deleting it")
+	@delete
+	@route("/{issueIid}/child-items/{workItemId}")
+	detachChildItem(...IssueIidPath, ...WorkItemIdPath, ...CSRFHeader):
+		| NoContent
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| ConflictProblem
+		| UnprocessableEntityProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
+
+	@operationId("listLinkedItems")
+	@summary("List GitLab linked work items for a card")
+	@get
+	@route("/{issueIid}/linked-items")
+	listLinkedItems(
+		...IssueIidPath,
+		@query cursor?: string,
+
+		@query
+		@minValue(1)
+		@maxValue(100)
+		limit?: int32,
+	):
+		| OkJson<LinkedItemsResponse>
+		| BadRequestProblem
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
+
+	@operationId("createLinkedItems")
+	@summary("Link same-project GitLab Issues or Tasks to a card")
+	@post
+	@route("/{issueIid}/linked-items")
+	createLinkedItems(...IssueIidPath, ...CSRFHeader, @body body: CreateLinkedItemsRequest):
+		| NoContent
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| ConflictProblem
+		| UnprocessableEntityProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
+
+	@operationId("deleteLinkedItem")
+	@summary("Remove a GitLab link between a card and another work item")
+	@delete
+	@route("/{issueIid}/linked-items/{workItemId}")
+	deleteLinkedItem(...IssueIidPath, ...WorkItemIdPath, ...CSRFHeader):
+		| NoContent
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| ConflictProblem
+		| UnprocessableEntityProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
+
+	@operationId("searchRelationshipCandidates")
+	@summary("Search same-project GitLab work items that can be related to a card")
+	@get
+	@route("/{issueIid}/relationship-candidates")
+	searchRelationshipCandidates(...IssueIidPath, @query kind: WorkItemRelationshipKind, @query @minLength(1) query: string):
+		| OkJson<WorkItemCandidatesResponse>
+		| BadRequestProblem
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| UnprocessableEntityProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
+
 	@operationId("moveCard")
 	@summary("Optimistically move or close a card")
 	@put

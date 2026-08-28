@@ -64,10 +64,11 @@ function MemberGroup({
 
 	return (
 		<section className={styles.memberGroup} aria-label={label}>
-			<h3>
+			<h3 className="md-typescale-label-medium">
 				<label className={styles.memberGroupHeading}>
 					<input
 						type="checkbox"
+						className="md-checkbox"
 						checked={allSelected}
 						ref={(input) => {
 							if (input) input.indeterminate = partiallySelected;
@@ -76,7 +77,7 @@ function MemberGroup({
 						aria-label={`全選${label}`}
 					/>
 					<span>{label}</span>
-					<small>{members.length}</small>
+					<small className="md-typescale-label-small">{members.length}</small>
 				</label>
 			</h3>
 			{members.map((member) => {
@@ -86,20 +87,26 @@ function MemberGroup({
 						type="button"
 						role="checkbox"
 						aria-checked={selected}
-						className={styles.memberOption}
+						className={`md-list-item md-list-item--two-line md-state-layer ${styles.memberOption}`}
 						data-selected={selected}
 						key={member.gitLabUserId}
 						onClick={() => onToggleMember(member.gitLabUserId)}
 					>
-						<Avatar name={member.displayName} src={member.avatarUrl} />
-						<span>
-							<strong>{member.displayName}</strong>
-							<small>
+						<span className="md-list-item__leading">
+							<Avatar name={member.displayName} src={member.avatarUrl} />
+						</span>
+						<span className="md-list-item__text">
+							<span className="md-list-item__headline">{member.displayName}</span>
+							<span className="md-list-item__supporting">
 								@{member.username}
 								{member.gitLabUserId === currentUserId ? " · 你" : ""}
-							</small>
+							</span>
 						</span>
-						{selected ? <Check size="1rem" aria-hidden="true" /> : null}
+						{selected ? (
+							<span className="md-list-item__trailing">
+								<Check size="1.125rem" aria-hidden="true" />
+							</span>
+						) : null}
 					</button>
 				);
 			})}

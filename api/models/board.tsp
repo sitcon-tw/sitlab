@@ -152,6 +152,97 @@ model CardCommentsResponse {
 	comments: CardComment[];
 }
 
+alias WorkItemType = "issue" | "task";
+alias WorkItemState = "open" | "closed";
+alias WorkItemLinkType = "relates_to" | "blocks" | "is_blocked_by";
+alias WorkItemRelationshipKind = "child" | "linked";
+
+@example(#{ gitLabUserId: 114, username: "yorukot", displayName: "Yorukot", avatarUrl: null, profileUrl: "https://gitlab.com/yorukot" })
+model WorkItemAssignee {
+	gitLabUserId: int64;
+	username: string;
+	displayName: string;
+	avatarUrl: string | null;
+	profileUrl: string;
+}
+
+@example(#{ name: "To do", category: "to_do", color: "#737278" })
+model WorkItemStatus {
+	name: string;
+	category: string | null;
+	color: string | null;
+}
+
+@example(#{ name: "priority::high", color: "#D73A4A", textColor: "#FFFFFF" })
+model WorkItemLabel {
+	name: string;
+	color: string;
+	textColor: string;
+}
+
+@example(#{
+	gitLabWorkItemId: 9876,
+	iid: 128,
+	type: "task",
+	title: "確認寄信重試條件",
+	state: "open",
+	webUrl: "https://gitlab.com/sitcon-tw/2027/-/work_items/128",
+	status: #{ name: "To do", category: "to_do", color: "#737278" },
+	assignees: #[#{ gitLabUserId: 114, username: "yorukot", displayName: "Yorukot", avatarUrl: null, profileUrl: "https://gitlab.com/yorukot" }],
+	startDate: plainDate.fromISO("2026-08-28"),
+	dueDate: plainDate.fromISO("2026-09-04"),
+	labels: #[#{ name: "priority::high", color: "#D73A4A", textColor: "#FFFFFF" }],
+})
+model WorkItemSummary {
+	gitLabWorkItemId: int64;
+	iid: int64;
+	type: WorkItemType;
+	title: string;
+	state: WorkItemState;
+	webUrl: string;
+	status: WorkItemStatus | null;
+	assignees: WorkItemAssignee[];
+	startDate: plainDate | null;
+	dueDate: plainDate | null;
+	labels: WorkItemLabel[];
+}
+
+model LinkedWorkItem extends WorkItemSummary {
+	linkType: WorkItemLinkType;
+}
+
+model ChildItemsResponse {
+	items: WorkItemSummary[];
+	totalCount: int32;
+	nextCursor: string | null;
+}
+
+model LinkedItemsResponse {
+	items: LinkedWorkItem[];
+	totalCount: int32;
+	nextCursor: string | null;
+}
+
+model WorkItemCandidatesResponse {
+	items: WorkItemSummary[];
+}
+
+@example(#{ title: "確認寄信重試條件" })
+model CreateChildItemRequest {
+	@minLength(1)
+	@maxLength(255)
+	title: string;
+}
+
+@example(#{ workItemIds: #[9876, 9877], linkType: "blocks" })
+model CreateLinkedItemsRequest {
+	@minItems(1)
+	@maxItems(20)
+	workItemIds: int64[];
+
+	linkType: WorkItemLinkType;
+}
+
 model CreateCardRequest {
 	operationId: uuid;
 

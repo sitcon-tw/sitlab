@@ -28,7 +28,7 @@ describe("primary team onboarding", () => {
 		const updateBootstrap = vi.fn();
 		render(<OnboardingPage bootstrap={onboardingBootstrap()} updateBootstrap={updateBootstrap} />);
 
-		expect(screen.getByRole("radio", { name: /開發組/ })).toHaveAttribute("aria-checked", "true");
+		expect(screen.getByRole("radio", { name: /開發組/ })).toBeChecked();
 		expect(screen.getByText("Yorukot")).toBeVisible();
 		expect(savePreferences).not.toHaveBeenCalled();
 
@@ -36,6 +36,22 @@ describe("primary team onboarding", () => {
 
 		expect(savePreferences).toHaveBeenCalledWith("development");
 		expect(updateBootstrap).toHaveBeenCalledOnce();
+	});
+
+	it("switches the native radio selection before confirmation", async () => {
+		const user = userEvent.setup();
+		render(<OnboardingPage bootstrap={onboardingBootstrap()} updateBootstrap={vi.fn()} />);
+
+		const development = screen.getByRole("radio", { name: /開發組/ });
+		const design = screen.getByRole("radio", { name: /設計組/ });
+		expect(development).toHaveClass("md-radio");
+
+		await user.click(design);
+
+		expect(development).not.toBeChecked();
+		expect(design).toBeChecked();
+		await user.click(screen.getByRole("button", { name: "確認主要組別" }));
+		expect(savePreferences).toHaveBeenCalledWith("design");
 	});
 
 	it("expands a team so the user can verify member names", async () => {

@@ -76,26 +76,6 @@ function Foundations() {
 				))}
 			</div>
 
-			<h2>Elevation</h2>
-			<div className="storybook-row">
-				{[0, 1, 2, 3, 4, 5].map((level) => (
-					<div
-						key={level}
-						style={{
-							display: "grid",
-							placeItems: "center",
-							width: "5rem",
-							height: "4rem",
-							background: "var(--md-sys-color-surface-container-low)",
-							borderRadius: "var(--md-sys-shape-corner-medium)",
-							boxShadow: `var(--md-sys-elevation-level${level})`
-						}}
-					>
-						level{level}
-					</div>
-				))}
-			</div>
-
 			<h2>Shape scale</h2>
 			<div className="storybook-row">
 				{shapes.map((shape) => (

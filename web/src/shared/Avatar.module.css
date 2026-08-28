@@ -6,9 +6,7 @@
 	overflow: hidden;
 	color: var(--md-sys-color-on-primary-container);
 	font-weight: var(--md-sys-typescale-label-medium-weight);
-	line-height: 1;
 	background: var(--md-sys-color-primary-container);
-	border: 1px solid var(--md-sys-color-outline-variant);
 	border-radius: var(--md-sys-shape-corner-full);
 }
 
@@ -29,17 +27,20 @@
 .sm {
 	width: 1.625rem;
 	height: 1.625rem;
-	font-size: 0.6875rem;
+	font-size: var(--md-sys-typescale-label-small-size);
+	line-height: var(--md-sys-typescale-label-small-line-height);
 }
 
 .md {
 	width: 2rem;
 	height: 2rem;
-	font-size: 0.75rem;
+	font-size: var(--md-sys-typescale-body-small-size);
+	line-height: var(--md-sys-typescale-body-small-line-height);
 }
 
 .lg {
 	width: 2.75rem;
 	height: 2.75rem;
-	font-size: 0.9375rem;
+	font-size: var(--md-sys-typescale-label-large-size);
+	line-height: var(--md-sys-typescale-label-large-line-height);
 }

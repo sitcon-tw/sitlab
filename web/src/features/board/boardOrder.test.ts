@@ -1,6 +1,6 @@
 import { demoBootstrap } from "@/test/demoBootstrap";
 import { describe, expect, it } from "vitest";
-import { canonicalPositionForVisibleOrder, groupCardIds, locateCard, planCardMove } from "./boardOrder";
+import { canonicalPositionForVisibleOrder, groupCardIds, groupVisibleCardIds, locateCard, planCardMove } from "./boardOrder";
 
 describe("board order", () => {
 	const cards = structuredClone(demoBootstrap.board.cards);
@@ -11,6 +11,12 @@ describe("board order", () => {
 
 		expect(groups.doing).toEqual([130, 131]);
 		expect(locateCard(groups, 131)).toEqual({ listKey: "doing", index: 1 });
+	});
+
+	it("captures the currently rendered order before switching a drag to manual sorting", () => {
+		const visible = [cards.find((card) => card.issueIid === 131)!, cards.find((card) => card.issueIid === 130)!];
+
+		expect(groupVisibleCardIds(visible, listKeys).doing).toEqual([131, 130]);
 	});
 
 	it("plans a same-lane reorder with contiguous positions", () => {

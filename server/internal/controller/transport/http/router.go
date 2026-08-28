@@ -27,6 +27,7 @@ type Dependencies struct {
 	Directory      DirectoryService
 	Board          BoardService
 	CardActivity   CardActivityService
+	CardRelations  CardRelationService
 	Sync           SyncService
 	Webhooks       WebhookConfig
 	Events         RevisionEvents
@@ -58,7 +59,8 @@ func NewRouter(dep Dependencies) http.Handler {
 	}
 	h := handler{
 		auth: dep.Auth, bootstrap: dep.Bootstrap, directory: dep.Directory,
-		board: dep.Board, activity: dep.CardActivity, sync: dep.Sync, cookie: dep.Cookie, webhooks: dep.Webhooks, events: dep.Events, metrics: dep.Metrics,
+		board: dep.Board, activity: dep.CardActivity, relations: dep.CardRelations,
+		sync: dep.Sync, cookie: dep.Cookie, webhooks: dep.Webhooks, events: dep.Events, metrics: dep.Metrics,
 	}
 	router := chi.NewRouter()
 	router.Use(chimiddleware.RequestID)
@@ -120,6 +122,14 @@ func NewRouter(dep Dependencies) http.Handler {
 			protected.Put("/cards/{issueIid}/labels", h.updateCardLabels)
 			protected.Get("/cards/{issueIid}/comments", h.listCardComments)
 			protected.Post("/cards/{issueIid}/comments", h.createCardComment)
+			protected.Get("/cards/{issueIid}/child-items", h.listChildItems)
+			protected.Post("/cards/{issueIid}/child-items", h.createChildItem)
+			protected.Put("/cards/{issueIid}/child-items/{workItemId}", h.attachChildItem)
+			protected.Delete("/cards/{issueIid}/child-items/{workItemId}", h.detachChildItem)
+			protected.Get("/cards/{issueIid}/linked-items", h.listLinkedItems)
+			protected.Post("/cards/{issueIid}/linked-items", h.createLinkedItems)
+			protected.Delete("/cards/{issueIid}/linked-items/{workItemId}", h.deleteLinkedItem)
+			protected.Get("/cards/{issueIid}/relationship-candidates", h.searchRelationshipCandidates)
 			protected.Put("/cards/{issueIid}/position", h.moveCard)
 			protected.Post("/operations/{operationId}/retry", h.retryOperation)
 			protected.Post("/sync/refresh", h.refreshSnapshots)

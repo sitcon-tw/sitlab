@@ -58,14 +58,7 @@ model SyncStatusSyncAction extends SyncAction {
 
 // Listed explicitly so generated clients get a union that narrows on `entity`
 // rather than the open base model.
-alias AnySyncAction =
-	| CardSyncAction
-	| CardOrderSyncAction
-	| ListSyncAction
-	| TeamSyncAction
-	| MemberSyncAction
-	| PreferenceSyncAction
-	| SyncStatusSyncAction;
+alias AnySyncAction = CardSyncAction | CardOrderSyncAction | ListSyncAction | TeamSyncAction | MemberSyncAction | PreferenceSyncAction | SyncStatusSyncAction;
 
 model SyncDeltaResponse {
 	@doc("The checkpoint reached. Store it and send it back as `since` next time.")

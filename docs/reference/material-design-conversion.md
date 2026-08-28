@@ -1,10 +1,10 @@
 # Material Design conversion — handover
 
-Status as of commit `778649c` on branch `sync-engine-foundations`.
+> Historical note: this document records the original strict MD3 conversion. The current approved visual direction keeps the component and accessibility work while adapting Simfiment's warm neutral surfaces, Inter typography, stronger tokenized hierarchy, and rounded containers. SITCON green remains primary, and all elevation shadows now resolve to `none`; tonal layering and quiet outlines provide separation in both themes. `design.md` and `tokens.css` are authoritative when a historical statement below conflicts.
 
-The web UI is being rebuilt against the Material Design 3 specification. Six of
-seven phases are planned; **P1–P5a are committed and green**, P5b is partly done
-and uncommitted, P6 has not started.
+Status on branch `sync-engine-foundations`; the last committed conversion phase is `778649c`.
+
+The web UI is being rebuilt against the Material Design 3 specification. **P1–P5a are committed. P5b and P6 are implemented in the working tree but remain uncommitted and still require the final browser verification loop.**
 
 ---
 
@@ -97,79 +97,43 @@ themes.
 
 ---
 
-## What is in progress (uncommitted, currently green)
+## What is in progress (uncommitted)
 
-Working tree, frontend only:
+P5b and P6 implementation is complete in the working tree:
+
+- Assignee, member, and label pickers use `Chip`, `TextField`, `IconButton`, native `md-checkbox` controls, Material list rows, dialog footers, and shared empty states.
+- The member drawer uses Material lists; Quick Actions use the outlined field and Material menu classes; the directory warning uses `Panel` and `Button`.
+- Label management uses Material fields and list rows, color targets are 40dp visual / 48dp touch, and save feedback uses the shared `Spinner`.
+- Login uses `Button asChild`. Onboarding uses `TopAppBar`, outlined `Panel`, native `md-radio`, and Material lists.
+- Feature focus rings were removed; `md3.css` now provides the 3dp focus indicator once for native and primitive controls.
+- Startup typography uses `.md-typescale-*`; `design.md`, the UI-system reference, and root ownership guidance now point back to the authoritative `tokens.css` specification.
+
+Current local checks: web typecheck, web lint, UI lint, web tests (80), and UI tests (12) pass. `pnpm check:frontend-style` is temporarily blocked by another session's uncommitted `web/src/features/board/syncActions.test.ts`, which contains raw color fixtures; do not fold that file into this conversion.
+
+### Remaining product roles in `web/`
 
 ```
-packages/ui/src/components/Spinner.tsx          className prop accepts undefined
-web/src/features/board/BoardPage.module.css     member-row CSS removed
-web/src/features/board/GroupedMemberList.tsx    rows → md-list-item--two-line, md-checkbox
-web/src/features/board/LabelColorPicker.module.css  swatches 24px → 40dp visual / 48dp touch
-web/src/features/board/LabelManagerDialog.tsx   fields → TextField, rows → md-list-item
-web/src/features/board/SaveIndicator.module.css hand-spun keyframes removed
-web/src/features/board/SaveIndicator.tsx        uses the Spinner primitive
+16  --sb-text-subtle     documented third text tier with AA contrast
+ 5  --sb-control         }
+ 4  --sb-surface-subtle  } scheme-specific board surface roles
+ 3  --sb-surface         }
+ 1  --sb-page            }
+ 1  --sb-lane            }
+ 2  --sb-accent          }
+ 1  --sb-coral           } SITCON product colors without Material equivalents
+ 1  --sb-blue            }
 ```
 
-`just typecheck`, `just web-test` (71), `just ui-test` (12), `just ui-lint`,
-`just web-lint` and `pnpm check:frontend-style` all pass in this state. It has
-**not** been verified in a browser or against Playwright yet — do that before
-committing.
+No obsolete `--sb-surface-raised` use remains. `BoardPage.module.css` is down from 2150 to about 1300 lines; remaining CSS primarily owns board layout, Markdown content, responsive composition, and documented product surfaces.
 
 ---
 
 ## What remains
 
-### P5b — finish the pickers
-
-- `AssigneePicker.tsx` — trigger → `Chip variant="input"` (both are 32dp, so it
-  is a free swap); `.pickerSearch` → `TextField` + trailing `IconButton`; rows →
-  `md-list-item--two-line`; `.pickerFooter` moves into `Dialog`'s `footer` prop.
-- `BoardFilters.tsx` — `.pickerSearch`, `.labelFilterOption` (→ `md-list-item` +
-  `md-checkbox`), `.pickerFooter`, `.noResults` → `EmptyState`.
-- `MembersDrawer.tsx` — `<ul>` rows → `md-list` / `md-list-item`.
-- `QuickActionComposer` — `.commandInput` → `TextField`, `.commandMenu` →
-  `md-menu` / `md-menu-item`. Note `.commandInput` currently carries a
-  `border-radius: … !important`.
-- `DirectoryConflict` — banner → `Panel`, buttons → `Button`.
-
-### P6 — login, onboarding, cleanup, docs
-
-- `LoginPage.module.css:63-111` re-implements `.md-button--filled` plus its state
-  layer line for line. Replace with `<Button asChild>` around the anchor (~48
-  lines deleted).
-- `OnboardingPage.module.css:104-130` hand-draws a radio at exactly `.md-radio`'s
-  size. Use a native `<input type="radio" className="md-radio">` — the existing
-  `getByRole("radio")` test keeps working.
-- Onboarding `.team` → `Panel variant="outlined"`, `.header` → `TopAppBar`,
-  member list → `md-list`.
-- `web/src/index.css:23-49` re-plumbs typescale variables by hand; use the
-  `.md-typescale-*` classes.
-- Four empty states → `EmptyState`.
-- Rewrite `design.md` around the spec block in `tokens.css`; update
-  `docs/src/content/docs/reference/ui-system.mdx` and the token-ownership line in
-  `AGENTS.md`.
-- Prune the remaining legacy tokens (see below).
-
-### Remaining legacy tokens in `web/`
-
-```
-24  --sb-text-subtle     third text tier; Material has none, and `outline`
-                         alone is 4.25:1 on surface, under AA. Keep it, or
-                         replace each site with a type-scale demotion.
- 8  --sb-control         }
- 7  --sb-surface-subtle  }  board surface roles — intentionally kept: light and
- 4  --sb-surface         }  dark map them to different --md-sys-* roles, which
- 1  --sb-surface-raised  }  no single role satisfies. Documented in tokens.css.
- 1  --sb-page            }
- 1  --sb-lane            }
- 3  --sb-accent          }
- 1  --sb-coral           }  SITCON product colours with no Material equivalent.
- 1  --sb-blue            }
-```
-
-`BoardPage.module.css` is down from 2150 to **1551 lines**; the plan's estimate
-for a finished conversion is roughly 900.
+1. Run the full verification loop below, including `just ui-build` before browser work.
+2. Run Playwright and manually review 320 / 608 / 928 / 1440 in both themes, reduced motion, keyboard focus, and Escape focus restoration.
+3. Refresh the affected desktop and mobile screenshots under `docs/assets`.
+4. Resolve or exclude the concurrent `syncActions.test.ts` style-policy blocker without editing or staging that other session's work.
 
 ---
 
@@ -183,14 +147,7 @@ nine of their in-progress files because it used `git add -A`, which left that
 commit unbuildable for the integration suite. Their user has decided to leave the
 history as it is.
 
-Stage explicit paths. Everything in this workstream lives in:
-
-```
-git add packages/ui web/src web/e2e docs/assets
-```
-
-Nothing in this workstream touches `server/`, `api/` or `docs/public/`. If a
-staged diff contains those, something is wrong.
+Stage exact files, not directory globs. The concurrent sync work now also has an uncommitted `web/src/features/board/syncActions.test.ts`, so even `git add web/src` is unsafe. Nothing in this workstream touches `server/`, `api/`, `docs/public/`, or `syncActions.test.ts`; if a staged diff contains them, something is wrong.
 
 ### 2. The branch is not `main`
 
@@ -217,9 +174,7 @@ Brace balance alone does not catch it — also grep for a selector line ending i
 
 Breaking any of these turns the suites red:
 
-- **Native `<checkbox>` / `<radio>`** — `getByRole`, `toBePartiallyChecked`,
-  `aria-checked`. Material styles the native input, so this is compatible; do not
-  swap in a div-based widget.
+- **Native `<checkbox>` / `<radio>`** — `getByRole`, `toBeChecked`, and `toBePartiallyChecked`. Material styles the native input, so this is compatible; do not swap in a div-based widget.
 - Lanes stay `<section data-list="…">`; the card title stays an `<h3>` inside a
   button.
 - The aria-labels `"Close dialog"` and `"Close drawer"`.

@@ -6,6 +6,7 @@ import (
 	appboard "example.com/project-template/internal/controller/application/board"
 	appbootstrap "example.com/project-template/internal/controller/application/bootstrap"
 	appactivity "example.com/project-template/internal/controller/application/cardactivity"
+	apprelation "example.com/project-template/internal/controller/application/cardrelation"
 	appdirectory "example.com/project-template/internal/controller/application/directory"
 	"example.com/project-template/internal/domain/board"
 	"example.com/project-template/internal/domain/directory"
@@ -125,6 +126,45 @@ type cardCommentResponse struct {
 	UpdatedAt time.Time             `json:"updatedAt"`
 }
 
+type workItemAssigneeResponse struct {
+	GitLabUserID int64   `json:"gitLabUserId"`
+	Username     string  `json:"username"`
+	DisplayName  string  `json:"displayName"`
+	AvatarURL    *string `json:"avatarUrl"`
+	ProfileURL   string  `json:"profileUrl"`
+}
+
+type workItemStatusResponse struct {
+	Name     string  `json:"name"`
+	Category *string `json:"category"`
+	Color    *string `json:"color"`
+}
+
+type workItemLabelResponse struct {
+	Name      string `json:"name"`
+	Color     string `json:"color"`
+	TextColor string `json:"textColor"`
+}
+
+type workItemResponse struct {
+	GitLabWorkItemID int64                      `json:"gitLabWorkItemId"`
+	IID              int64                      `json:"iid"`
+	Type             apprelation.WorkItemType   `json:"type"`
+	Title            string                     `json:"title"`
+	State            apprelation.WorkItemState  `json:"state"`
+	WebURL           string                     `json:"webUrl"`
+	Status           *workItemStatusResponse    `json:"status"`
+	Assignees        []workItemAssigneeResponse `json:"assignees"`
+	StartDate        *string                    `json:"startDate"`
+	DueDate          *string                    `json:"dueDate"`
+	Labels           []workItemLabelResponse    `json:"labels"`
+}
+
+type linkedWorkItemResponse struct {
+	workItemResponse
+	LinkType apprelation.LinkType `json:"linkType"`
+}
+
 type bootstrapResponse struct {
 	Revision    string                    `json:"revision"`
 	Me          userResponse              `json:"me"`
@@ -210,6 +250,35 @@ func mapCardComment(item appactivity.Comment) cardCommentResponse {
 			DisplayName: item.Author.DisplayName, AvatarURL: optionalString(item.Author.AvatarURL), ProfileURL: item.Author.ProfileURL,
 		},
 	}
+}
+
+func mapWorkItem(item apprelation.WorkItem) workItemResponse {
+	assignees := make([]workItemAssigneeResponse, 0, len(item.Assignees))
+	for _, assignee := range item.Assignees {
+		assignees = append(assignees, workItemAssigneeResponse{
+			GitLabUserID: assignee.GitLabUserID, Username: assignee.Username,
+			DisplayName: assignee.DisplayName, AvatarURL: optionalString(assignee.AvatarURL), ProfileURL: assignee.ProfileURL,
+		})
+	}
+	labels := make([]workItemLabelResponse, 0, len(item.Labels))
+	for _, label := range item.Labels {
+		labels = append(labels, workItemLabelResponse{Name: label.Name, Color: label.Color, TextColor: label.TextColor})
+	}
+	var status *workItemStatusResponse
+	if item.Status != nil {
+		status = &workItemStatusResponse{
+			Name: item.Status.Name, Category: optionalString(item.Status.Category), Color: optionalString(item.Status.Color),
+		}
+	}
+	return workItemResponse{
+		GitLabWorkItemID: item.GitLabWorkItemID, IID: item.IID, Type: item.Type,
+		Title: item.Title, State: item.State, WebURL: item.WebURL, Status: status,
+		Assignees: assignees, StartDate: optionalString(item.StartDate), DueDate: optionalString(item.DueDate), Labels: labels,
+	}
+}
+
+func mapLinkedWorkItem(item apprelation.LinkedItem) linkedWorkItemResponse {
+	return linkedWorkItemResponse{workItemResponse: mapWorkItem(item.WorkItem), LinkType: item.LinkType}
 }
 
 func mapBoardSnapshot(item appboard.Snapshot) boardSnapshotResponse {

@@ -5,30 +5,32 @@ section: Reference
 order: 60
 ---
 
-The shared package owns reusable primitives and the SITCON browser token source. Feature workflows remain in `web/src/features`.
+The shared package owns reusable Material primitives and the SITCON browser token source. Feature workflows and primitive composition remain in `web/src/features`; feature styles arrange primitives instead of redrawing them.
 
 ## Token contract
 
 The product follows Material Design 3. Tokens come in three layers: `--md-ref-palette-*` tonal ramps generated from the brand seed, `--md-sys-*` system tokens that all product CSS consumes, and a small set of product roles MD3 has no equivalent for.
 
-`packages/ui/src/styles/tokens.css` is the only stylesheet allowed to contain concrete colors; `md3.css` and every feature stylesheet use `var()` and `color-mix()` only. Light and dark are separate tonal mappings, not inversions.
+`packages/ui/src/styles/tokens.css` is the only stylesheet allowed to contain concrete colors. Its opening specification block is authoritative for shape, size, typography, state, elevation, and focus. `md3.css` and every feature stylesheet use `var()` and `color-mix()` only. Light and dark are separate tonal mappings, not inversions.
 
-The board's page, lane, and card surfaces are deliberately product roles that resolve to different `--md-sys-*` roles per scheme: light wants cards brightest, dark wants them brightest by elevation, and no single role satisfies both. MD3 expects product surfaces to be mapped per scheme. `design.md` lists every other deviation with its reason.
+The browser type system uses self-hosted Inter Variable with system CJK fallbacks. Sizes and line heights remain on Material's 15 type roles; the token source adds documented 600/700 strong roles for product labels and headings. Feature styles use the `.md-typescale-*` classes or matching tokens instead of introducing literal type sizes or weights.
+
+The board's page, lane, card, and compact-control surfaces are product roles that resolve differently per scheme: light uses a warm near-white canvas with bright cards, while dark uses a near-black canvas with lighter charcoal content layers. The UI is deliberately shadow-free, so surface tone and quiet outlines carry hierarchy. `design.md` lists these deviations and their reasons.
 
 The dark product header uses the official white SITCON logo shipped by the `sitcon-tw/2027` source. Its ink, paper, mist, acid, coral, and blue values inform the semantic roles; product code does not recreate or recolor the brand mark.
 
 ## Interaction contract
 
-- Use `:focus-visible` for keyboard focus.
+- Keyboard focus is provided globally by `md3.css` as a 3dp secondary outline at a 2dp offset; feature styles do not declare competing focus rings.
 - Dialogs and drawers trap focus and return it to the trigger.
 - Icon-only controls have accessible names and tooltips when the symbol is not universal.
 - Production Board never replaces injected bootstrap with a loading page, skeleton, spinner, or empty columns.
 - Every actionable surface carries an MD3 state layer (hover 8%, focus 10%, pressed 10%, dragged 16%) and a ripple. Under `prefers-reduced-motion` the ripple is removed and a pressed state layer takes its place.
-- The focus indicator is a 3dp `secondary` outline at a 2dp offset. Controls keep a 40dp visual container with a 48dp touch target supplied by a non-layout overlay.
+- Buttons use a 44dp visual container. Standard icon controls keep a 40dp visual container with a 48dp touch target supplied by a non-layout overlay. Dialog fields remain 56dp, while supported dense board chrome uses 48dp fields.
 - Healthy background sync, optimistic pending, processing, and success remain visually quiet, except on the field the user just edited: it shows an in-place saving indicator that resolves to a brief saved marker, announced through one live region per drawer. Offline snapshots and durable failures are visible and retryable.
 - Card surfaces expose title, description preview, due date, and assignees. Team and status controls live in the navigable right-side detail drawer with editable title, GFM Markdown edit/preview modes, typed Quick Actions, multiple assignees, GitLab Start/Due dates, and the issue link. Markdown preview does not enable raw HTML.
 - Controls keep stable dimensions so dynamic labels and counters do not shift the surrounding layout.
 
 ## Verification
 
-Each public primitive has a Storybook story. Interactive components include keyboard and focus tests. Browser tests cover 320, 608, 928, and 1440 pixel viewports and reject incoherent overlap or long-text overflow.
+Each public primitive has a Storybook story. Interactive components include keyboard and focus tests. Browser tests cover 320, 608, 928, and 1440 pixel viewports in both themes, reject incoherent overlap or document-width overflow, and assert that no rendered element has a shadow. Reduced-motion review confirms that ripple disappears while the pressed state layer remains.

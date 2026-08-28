@@ -42,6 +42,10 @@ func Unavailable(message string) error {
 	return &Error{Kind: KindUnavailable, Code: "SERVICE_UNAVAILABLE", Message: message}
 }
 
+func UnavailableWithCode(code, message string) error {
+	return &Error{Kind: KindUnavailable, Code: code, Message: message}
+}
+
 func MethodNotAllowed(message string) error {
 	return &Error{Kind: KindMethod, Code: "METHOD_NOT_ALLOWED", Message: message}
 }
@@ -56,6 +60,10 @@ func Forbidden(code, message string) error {
 
 func NotFound(resource string) error {
 	return &Error{Kind: KindNotFound, Code: "NOT_FOUND", Message: fmt.Sprintf("%s not found", resource)}
+}
+
+func NotFoundWithCode(code, resource string) error {
+	return &Error{Kind: KindNotFound, Code: code, Message: fmt.Sprintf("%s not found", resource)}
 }
 
 func Conflict(code, message string) error {

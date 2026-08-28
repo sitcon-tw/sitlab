@@ -18,3 +18,13 @@ Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
 	configurable: true,
 	value: () => null
 });
+
+Object.defineProperty(window, "matchMedia", {
+	configurable: true,
+	value: (query: string) => ({
+		matches: false,
+		media: query,
+		addEventListener: () => {},
+		removeEventListener: () => {}
+	})
+});

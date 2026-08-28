@@ -1,6 +1,5 @@
-/* Roboto is Material Design's typeface. Self-hosted rather than loaded from a
- * CDN: this is an internal tool and must not make third-party requests. The
- * variable font covers the only two weights Material uses, 400 and 500. */
-@import "@fontsource-variable/roboto";
+/* Inter supplies the compact, high-contrast hierarchy used by the product.
+ * It is self-hosted so the board never depends on a third-party font request. */
+@import "@fontsource-variable/inter";
 @import "./tokens.css";
 @import "./md3.css";

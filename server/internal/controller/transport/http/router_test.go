@@ -15,6 +15,7 @@ import (
 	appboard "example.com/project-template/internal/controller/application/board"
 	appbootstrap "example.com/project-template/internal/controller/application/bootstrap"
 	appactivity "example.com/project-template/internal/controller/application/cardactivity"
+	apprelation "example.com/project-template/internal/controller/application/cardrelation"
 	appdirectory "example.com/project-template/internal/controller/application/directory"
 	appoauth "example.com/project-template/internal/controller/application/oauth"
 	appsync "example.com/project-template/internal/controller/application/sync"
@@ -173,10 +174,51 @@ func (cardActivityFake) CreateComment(_ context.Context, input appactivity.Creat
 	}, nil
 }
 
+type cardRelationFake struct{}
+
+func (cardRelationFake) ChildItems(context.Context, string, int64, apprelation.PageQuery) (apprelation.ChildPage, error) {
+	return apprelation.ChildPage{Items: []apprelation.WorkItem{relationshipHTTPItem()}, TotalCount: 1}, nil
+}
+
+func (cardRelationFake) LinkedItems(context.Context, string, int64, apprelation.PageQuery) (apprelation.LinkedPage, error) {
+	return apprelation.LinkedPage{
+		Items: []apprelation.LinkedItem{{WorkItem: relationshipHTTPItem(), LinkType: apprelation.LinkTypeBlocks}}, TotalCount: 1,
+	}, nil
+}
+
+func (cardRelationFake) Search(context.Context, apprelation.SearchInput) ([]apprelation.WorkItem, error) {
+	return []apprelation.WorkItem{relationshipHTTPItem()}, nil
+}
+
+func (cardRelationFake) CreateChild(context.Context, apprelation.CreateChildInput) (apprelation.WorkItem, error) {
+	return relationshipHTTPItem(), nil
+}
+
+func (cardRelationFake) AttachChild(context.Context, apprelation.ChildRelationInput) error {
+	return nil
+}
+func (cardRelationFake) DetachChild(context.Context, apprelation.ChildRelationInput) error {
+	return nil
+}
+func (cardRelationFake) AddLinks(context.Context, apprelation.LinkInput) error            { return nil }
+func (cardRelationFake) RemoveLink(context.Context, apprelation.ChildRelationInput) error { return nil }
+
+func relationshipHTTPItem() apprelation.WorkItem {
+	return apprelation.WorkItem{
+		GitLabWorkItemID: 9201, IID: 201, Type: apprelation.WorkItemTypeTask,
+		Title: "Add metrics", State: apprelation.WorkItemStateOpen, WebURL: "https://gitlab.example/work_items/201",
+		Status: &apprelation.Status{Name: "To do", Category: "to_do"},
+		Assignees: []apprelation.Assignee{{
+			GitLabUserID: 101, Username: "alice", DisplayName: "Alice", ProfileURL: "https://gitlab.example/alice",
+		}},
+		Labels: []apprelation.Label{{Name: "Backend", Color: "#1D76DB", TextColor: "#FFFFFF"}},
+	}
+}
+
 func testRouter(readiness func(context.Context) error, webDir string) http.Handler {
 	return NewRouter(Dependencies{
 		Log: zap.NewNop(), Auth: authFake{}, Bootstrap: bootstrapFake{},
-		Directory: directoryFake{}, Board: boardFake{}, CardActivity: cardActivityFake{}, Sync: syncFake{},
+		Directory: directoryFake{}, Board: boardFake{}, CardActivity: cardActivityFake{}, CardRelations: cardRelationFake{}, Sync: syncFake{},
 		Cookie: CookieConfig{
 			Name: "test_session", TTL: 14 * 24 * time.Hour, OAuthStateTTL: 10 * time.Minute,
 		},
@@ -264,6 +306,44 @@ func TestCardLabelsAndCommentsMatchContract(t *testing.T) {
 	created := perform(testRouter(nil, ""), http.MethodPost, "/api/v1/cards/127/comments", `{"body":"please review"}`, true)
 	if created.Code != http.StatusCreated || !strings.Contains(created.Body.String(), `"body":"please review"`) {
 		t.Fatalf("create comment = %d %s", created.Code, created.Body.String())
+	}
+}
+
+func TestCardRelationshipsMatchContract(t *testing.T) {
+	children := perform(testRouter(nil, ""), http.MethodGet, "/api/v1/cards/127/child-items?limit=50", "", true)
+	if children.Code != http.StatusOK || !strings.Contains(children.Body.String(), `"gitLabWorkItemId":9201`) || !strings.Contains(children.Body.String(), `"totalCount":1`) {
+		t.Fatalf("children = %d %s", children.Code, children.Body.String())
+	}
+	links := perform(testRouter(nil, ""), http.MethodGet, "/api/v1/cards/127/linked-items", "", true)
+	if links.Code != http.StatusOK || !strings.Contains(links.Body.String(), `"linkType":"blocks"`) {
+		t.Fatalf("links = %d %s", links.Code, links.Body.String())
+	}
+	candidates := perform(testRouter(nil, ""), http.MethodGet, "/api/v1/cards/127/relationship-candidates?kind=child&query=%23201", "", true)
+	if candidates.Code != http.StatusOK || !strings.Contains(candidates.Body.String(), `"iid":201`) {
+		t.Fatalf("candidates = %d %s", candidates.Code, candidates.Body.String())
+	}
+	created := perform(testRouter(nil, ""), http.MethodPost, "/api/v1/cards/127/child-items", `{"title":"Add metrics"}`, true)
+	if created.Code != http.StatusCreated || !strings.Contains(created.Body.String(), `"type":"task"`) {
+		t.Fatalf("create child = %d %s", created.Code, created.Body.String())
+	}
+	for _, mutation := range []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{method: http.MethodPut, path: "/api/v1/cards/127/child-items/9201"},
+		{method: http.MethodDelete, path: "/api/v1/cards/127/child-items/9201"},
+		{method: http.MethodPost, path: "/api/v1/cards/127/linked-items", body: `{"workItemIds":[9201,9202],"linkType":"blocks"}`},
+		{method: http.MethodDelete, path: "/api/v1/cards/127/linked-items/9201"},
+	} {
+		response := perform(testRouter(nil, ""), mutation.method, mutation.path, mutation.body, true)
+		if response.Code != http.StatusNoContent {
+			t.Fatalf("%s %s = %d %s", mutation.method, mutation.path, response.Code, response.Body.String())
+		}
+	}
+	malformed := perform(testRouter(nil, ""), http.MethodDelete, "/api/v1/cards/127/linked-items/nope", "", true)
+	if malformed.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("malformed work item id = %d %s", malformed.Code, malformed.Body.String())
 	}
 }
 

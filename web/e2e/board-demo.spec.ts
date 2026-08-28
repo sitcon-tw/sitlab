@@ -1,101 +1,227 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import { fileURLToPath } from "node:url";
 
 const demoEnabled = process.env.E2E_DEMO === "true";
+
+function docsAsset(filename: string) {
+	return fileURLToPath(new URL(`../../docs/assets/${filename}`, import.meta.url));
+}
+
+async function chooseSelectField(page: Page, root: Page | Locator, label: string, option: string) {
+	await root.getByRole("button", { name: label, exact: true }).click();
+	const menu = page.getByRole("menu", { name: `${label}選項` });
+	await menu.getByRole("menuitemcheckbox", { name: option, exact: true }).click();
+}
+
+async function openDesktopFilter(page: Page, label: string) {
+	const input = page.getByRole("combobox", { name: label });
+	await input.click();
+	const panelId = await input.getAttribute("aria-controls");
+	if (!panelId) throw new Error(`${label} picker did not open`);
+	return { input, picker: page.locator(`[id="${panelId}"]`) };
+}
 
 test.describe("SITCON Board demo visual audit", () => {
 	test.skip(!demoEnabled, "requires the explicit VITE_SITCON_DEMO server");
 
-	for (const viewport of [
-		{ name: "desktop", width: 1440, height: 900 },
-		{ name: "compact", width: 928, height: 800 },
-		{ name: "tablet", width: 608, height: 800 },
-		{ name: "narrow", width: 320, height: 720 }
-	]) {
-		test(`${viewport.name} ${viewport.width}px stays contained`, async ({ page }) => {
-			await page.setViewportSize(viewport);
-			await page.goto("/");
-			await expect(page.getByRole("heading", { name: "To do" })).toBeVisible();
-			await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
+	for (const theme of ["light", "dark"] as const) {
+		for (const viewport of [
+			{ name: "desktop", width: 1440, height: 900 },
+			{ name: "compact", width: 928, height: 800 },
+			{ name: "tablet", width: 608, height: 800 },
+			{ name: "narrow", width: 320, height: 720 }
+		]) {
+			test(`${theme} ${viewport.name} ${viewport.width}px stays contained and shadow-free`, async ({ page }) => {
+				await page.addInitScript((selectedTheme) => localStorage.setItem("sitcon-board-theme", selectedTheme), theme);
+				await page.setViewportSize(viewport);
+				await page.goto("/");
+				await expect(page.getByRole("heading", { name: "To do" })).toBeVisible();
+				await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 
-			const layout = await page.evaluate(() => {
-				const quick = document.querySelector("form");
-				const filters = document.querySelector<HTMLElement>('section[aria-label="篩選看板"]');
-				const controls = quick
-					? [...quick.querySelectorAll<HTMLElement>(":scope > select, :scope > input, :scope > button, :scope > label, :scope > div")].filter(
-							(item) => item.offsetWidth > 2 && item.offsetHeight > 2
+				const layout = await page.evaluate(() => {
+					const quick = document.querySelector("form");
+					const filters = document.querySelector<HTMLElement>('section[aria-label="篩選看板"]');
+					const controls = quick
+						? [...quick.querySelectorAll<HTMLElement>(":scope > select, :scope > input, :scope > button, :scope > label, :scope > div")].filter(
+								(item) => item.offsetWidth > 2 && item.offsetHeight > 2
+							)
+						: [];
+					const filterControls = filters
+						? [...filters.querySelectorAll<HTMLElement>(":scope > label, :scope > button, :scope > div, :scope > span")].filter(
+								(item) => item.offsetWidth > 2 && item.offsetHeight > 2
+							)
+						: [];
+					const quickRect = quick?.getBoundingClientRect();
+					const filtersRect = filters?.getBoundingClientRect();
+					return {
+						viewport: window.innerWidth,
+						documentWidth: document.documentElement.scrollWidth,
+						shadowCount: [...document.querySelectorAll("*")].filter((element) => getComputedStyle(element).boxShadow !== "none").length,
+						quickContained: Boolean(
+							quickRect &&
+							controls.every((item) => {
+								const rect = item.getBoundingClientRect();
+								return rect.left >= quickRect.left - 1 && rect.right <= quickRect.right + 1;
+							})
+						),
+						filtersContained: Boolean(
+							filtersRect &&
+							filterControls.every((item) => {
+								const rect = item.getBoundingClientRect();
+								return rect.left >= filtersRect.left - 1 && rect.right <= filtersRect.right + 1;
+							})
 						)
-					: [];
-				const filterControls = filters
-					? [...filters.querySelectorAll<HTMLElement>(":scope > label, :scope > button, :scope > div, :scope > span")].filter(
-							(item) => item.offsetWidth > 2 && item.offsetHeight > 2
-						)
-					: [];
-				const quickRect = quick?.getBoundingClientRect();
-				const filtersRect = filters?.getBoundingClientRect();
-				return {
-					viewport: window.innerWidth,
-					documentWidth: document.documentElement.scrollWidth,
-					quickContained: Boolean(
-						quickRect &&
-						controls.every((item) => {
-							const rect = item.getBoundingClientRect();
-							return rect.left >= quickRect.left - 1 && rect.right <= quickRect.right + 1;
-						})
-					),
-					filtersContained: Boolean(
-						filtersRect &&
-						filterControls.every((item) => {
-							const rect = item.getBoundingClientRect();
-							return rect.left >= filtersRect.left - 1 && rect.right <= filtersRect.right + 1;
-						})
-					)
-				};
+					};
+				});
+				expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewport);
+				expect(layout.shadowCount).toBe(0);
+				expect(layout.quickContained).toBe(true);
+				expect(layout.filtersContained).toBe(true);
+
+				if (viewport.name === "desktop" || viewport.name === "narrow") {
+					const themePart = theme === "dark" ? "dark-" : "";
+					await page.screenshot({ path: `../docs/assets/sitcon-board-${themePart}${viewport.name}.png`, fullPage: true });
+				}
 			});
-			expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewport);
-			expect(layout.quickContained).toBe(true);
-			expect(layout.filtersContained).toBe(true);
-
-			if (viewport.name === "desktop" || viewport.name === "narrow") {
-				await page.screenshot({ path: `../docs/assets/sitcon-board-${viewport.name}.png`, fullPage: true });
-			}
-		});
+		}
 	}
+
+	test("wide board keeps full-width lanes and scrolls horizontally", async ({ page }) => {
+		await page.setViewportSize({ width: 2048, height: 900 });
+		await page.goto("/");
+		const board = page.getByRole("region", { name: "SITCON 2027 工作看板" });
+		const dimensions = await board.evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
+		expect(dimensions.scrollWidth).toBeGreaterThan(dimensions.clientWidth);
+		await board.evaluate((element) => element.scrollTo({ left: element.scrollWidth }));
+		await expect.poll(() => board.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+	});
+
+	test("drag targeting follows the pointer after horizontal scrolling", async ({ page }, testInfo) => {
+		test.skip(testInfo.project.name === "mobile", "Playwright mobile emulation does not expose a stable touch-drag gesture");
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await page.goto("/");
+		const sortControl = page.getByRole("button", { name: "排序方式" });
+		await expect(sortControl).toHaveAttribute("data-value", "due-asc");
+		const board = page.getByRole("region", { name: "SITCON 2027 工作看板" });
+		await board.evaluate((element) => element.scrollTo({ left: element.scrollWidth }));
+
+		const handle = page.getByRole("button", { name: "拖曳 [行銷組] 完成主視覺社群素材" });
+		const source = await handle.boundingBox();
+		if (!source) throw new Error("drag source is not visible");
+		const sourceCenter = { x: source.x + source.width / 2, y: source.y + source.height / 2 };
+		await page.mouse.move(sourceCenter.x, sourceCenter.y);
+		await page.mouse.down();
+		await page.mouse.move(sourceCenter.x, sourceCenter.y - 150, { steps: 12 });
+		await expect(page.locator('[class*="dragPreview"]')).toBeVisible();
+		await expect(page.locator('section[data-list="closed"]')).not.toHaveAttribute("data-drag-over", "true");
+
+		const reviewHeader = page.getByRole("heading", { name: "Review" });
+		const target = await reviewHeader.boundingBox();
+		if (!target) throw new Error("drag target is not visible");
+		await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 12 });
+		await expect(page.locator('section[data-list="review"]')).toHaveAttribute("data-drag-over", "true");
+		await page.mouse.up();
+	});
+
+	test("quick create controls align and use one focus indicator", async ({ page }) => {
+		await page.setViewportSize({ width: 1360, height: 800 });
+		await page.goto("/");
+		const title = page.getByLabel("卡片標題");
+		const initialAlignment = await title.evaluate((input) => {
+			const form = input.closest("form");
+			if (!form) return { labels: [], inputs: [] };
+			const fieldLabels = [...form.querySelectorAll<HTMLElement>(".md-field__label")];
+			const assigneeLabel = [...form.querySelectorAll<HTMLElement>("span")].find((element) => element.textContent?.trim() === "新卡片負責人");
+			const labels = [...fieldLabels, ...(assigneeLabel ? [assigneeLabel] : [])].map((element) => {
+				const rect = element.getBoundingClientRect();
+				return { top: rect.top, height: rect.height };
+			});
+			const inputs = [...form.querySelectorAll<HTMLElement>(".md-field__input")].map((element) => element.getBoundingClientRect().height);
+			return { labels, inputs };
+		});
+		expect(initialAlignment.labels).toHaveLength(4);
+		for (const label of initialAlignment.labels) {
+			expect(Math.abs(label.top - initialAlignment.labels[0]!.top)).toBeLessThanOrEqual(1);
+			expect(Math.abs(label.height - initialAlignment.labels[0]!.height)).toBeLessThanOrEqual(1);
+		}
+		for (const inputHeight of initialAlignment.inputs) expect(Math.abs(inputHeight - 40)).toBeLessThanOrEqual(1);
+
+		await title.focus();
+		await expect
+			.poll(() =>
+				title.evaluate((input) => {
+					const indicator = input.closest(".md-field")?.querySelector(".md-field__outline");
+					return indicator ? Number.parseFloat(getComputedStyle(indicator).borderBottomWidth) : 0;
+				})
+			)
+			.toBeGreaterThanOrEqual(2);
+
+		const layout = await title.evaluate((input) => {
+			const form = input.closest("form");
+			const controls = form
+				? [...form.children].filter((element) => {
+						const rect = element.getBoundingClientRect();
+						return rect.width > 0 && rect.height > 0 && element.getAttribute("role") !== "status";
+					})
+				: [];
+			const boxes = controls.map((element) => {
+				const rect = element.getBoundingClientRect();
+				return { top: rect.top, height: rect.height };
+			});
+			return { boxes, inputOutlineStyle: getComputedStyle(input).outlineStyle };
+		});
+
+		const first = layout.boxes[0]!;
+		expect(layout.boxes).toHaveLength(7);
+		for (const box of layout.boxes) {
+			expect(Math.abs(box.top - first.top)).toBeLessThanOrEqual(1);
+			expect(Math.abs(box.height - first.height)).toBeLessThanOrEqual(1);
+		}
+		expect(layout.inputOutlineStyle).toBe("none");
+	});
 
 	test("team and people filters combine on the board", async ({ page }) => {
 		await page.setViewportSize({ width: 608, height: 800 });
 		await page.goto("/");
 
-		// The team filter is a Material filter chip opening a menu.
-		await page.getByRole("button", { name: "篩選組別" }).click();
-		await page.getByRole("menuitemcheckbox", { name: "設計組" }).click();
+		await page.getByRole("button", { name: "篩選與排序" }).click();
+		const picker = page.getByRole("dialog", { name: "篩選與排序" });
+		const team = picker.getByRole("region", { name: "組別" });
+		await team.getByRole("searchbox", { name: "搜尋組別" }).fill("設計");
+		await team.getByRole("radio", { name: "設計組" }).click();
+		await picker.getByRole("button", { name: "完成" }).click();
 		await expect(page.getByRole("heading", { name: "[設計組] 製作工作人員識別證" })).toBeVisible();
 		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeHidden();
 
-		await page.getByRole("button", { name: "篩選負責人" }).click();
-		const picker = page.getByRole("dialog", { name: "篩選負責人" });
-		await picker.getByRole("checkbox", { name: /Yorukot/ }).press("Enter");
-		await picker.getByRole("checkbox", { name: /林采欣/ }).click();
-		await expect(picker.getByText("已選擇 2 人")).toBeVisible();
+		await page.getByRole("button", { name: /篩選與排序/ }).click();
+		const people = picker.getByRole("region", { name: "負責人" });
+		await people.getByRole("checkbox", { name: /Yorukot/ }).press("Enter");
+		await people.getByRole("checkbox", { name: /林采欣/ }).click();
 		await picker.getByRole("button", { name: "完成" }).click();
 		await expect(page.getByRole("region", { name: "篩選看板" }).getByRole("status")).toHaveText("0 / 7 張卡片");
 
-		await page.getByRole("button", { name: "清除篩選" }).click();
+		await page.getByRole("button", { name: /篩選與排序/ }).click();
+		await picker.getByRole("button", { name: "清除進階篩選" }).click();
+		await picker.getByRole("button", { name: "完成" }).click();
 		await expect(page.getByRole("region", { name: "篩選看板" }).getByRole("status")).toHaveText("7 / 7 張卡片");
 		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 	});
 
 	test("people pickers prioritize the current user's primary team", async ({ page }, testInfo) => {
+		await page.setViewportSize({ width: 1440, height: 900 });
 		await page.goto("/");
 
-		await page.getByRole("button", { name: "篩選負責人" }).click();
-		let picker = page.getByRole("dialog", { name: "篩選負責人" });
+		const desktopFilter = await openDesktopFilter(page, "搜尋負責人");
+		let picker = desktopFilter.picker;
 		let primaryTeam = picker.getByRole("region").first();
 		await expect(primaryTeam).toHaveAccessibleName("開發組");
 		await expect(primaryTeam.getByRole("checkbox").nth(1)).toHaveAccessibleName(/Yorukot/);
 		await page.screenshot({ path: `/tmp/sitcon-member-filter-${testInfo.project.name}.png`, fullPage: true });
-		await picker.getByRole("button", { name: "完成" }).click();
+		await desktopFilter.input.press("Escape");
 
-		await page.getByLabel("新卡片組別").selectOption("design");
+		if (testInfo.project.name === "mobile") await page.setViewportSize({ width: 412, height: 915 });
+
+		await chooseSelectField(page, page, "新卡片組別", "設計組");
 		await page.getByRole("button", { name: "選擇新卡片 Assignee" }).click();
 		picker = page.getByRole("dialog", { name: "選擇 Assignee" });
 		primaryTeam = picker.getByRole("region").first();
@@ -109,30 +235,53 @@ test.describe("SITCON Board demo visual audit", () => {
 		await page.goto("/");
 
 		const doing = page.locator('section[data-list="doing"]');
-		await page.getByLabel("排序方式").selectOption("due-desc");
+		await page.getByRole("button", { name: "篩選與排序" }).click();
+		const picker = page.getByRole("dialog", { name: "篩選與排序" });
+		await picker.getByRole("button", { name: "排序方式", exact: true }).click();
+		await picker.getByRole("menu", { name: "排序方式選項" }).getByRole("menuitemcheckbox", { name: "Due date：遠到近" }).click();
+		await picker.getByRole("button", { name: "完成" }).click();
 		await expect(doing.getByRole("heading", { level: 3 }).first()).toHaveText("[場務組] 盤點會場網路設備");
 
-		await page.getByRole("button", { name: "篩選負責人" }).click();
-		const picker = page.getByRole("dialog", { name: "篩選負責人" });
-		await picker.getByRole("checkbox", { name: "全選行政組" }).click();
-		await expect(picker.getByText("已選擇 2 人")).toBeVisible();
+		await page.getByRole("button", { name: /篩選與排序/ }).click();
+		const people = picker.getByRole("region", { name: "負責人" });
+		await people.getByRole("checkbox", { name: "全選行政組" }).click();
 		await picker.getByRole("button", { name: "完成" }).click();
 		await expect(page.getByRole("region", { name: "篩選看板" }).getByRole("status")).toHaveText("1 / 7 張卡片");
 		await expect(page.getByRole("heading", { name: "[行政組] 整理志工行前通知" })).toBeVisible();
 	});
 
 	test("shared filters and sorting survive reload", async ({ page }) => {
-		await page.goto("/?team=development&member=114&label=Backend&sort=due-desc");
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await page.goto("/?q=Priority&team=development&member=114&label=Backend&sort=due-desc");
 
-		// The team filter is a Material filter chip; sort stays an outlined select.
-		await expect(page.getByRole("button", { name: "篩選組別" })).toContainText("開發組");
-		await expect(page.getByLabel("排序方式")).toHaveValue("due-desc");
-		await expect(page.getByRole("button", { name: "篩選 Label" })).toContainText("Labels 1");
+		await expect(page.getByRole("combobox", { name: "搜尋組別" })).toHaveValue("開發組");
+		await expect(page.getByRole("button", { name: "排序方式" })).toHaveAttribute("data-value", "due-desc");
+		await expect(page.getByRole("combobox", { name: "搜尋 Label" })).toHaveValue("Labels 1");
+		await expect(page.getByRole("searchbox", { name: "搜尋卡片" })).toHaveValue("Priority");
 		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 		await page.reload();
-		await expect(page.getByRole("button", { name: "篩選組別" })).toContainText("開發組");
-		await expect(page.getByLabel("排序方式")).toHaveValue("due-desc");
+		await expect(page.getByRole("combobox", { name: "搜尋組別" })).toHaveValue("開發組");
+		await expect(page.getByRole("button", { name: "排序方式" })).toHaveAttribute("data-value", "due-desc");
+		await expect(page.getByRole("searchbox", { name: "搜尋卡片" })).toHaveValue("Priority");
 		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
+	});
+
+	test("card search waits for typing to settle and supports the slash shortcut", async ({ page }, testInfo) => {
+		test.skip(testInfo.project.name === "mobile", "slash focus is a hardware-keyboard desktop shortcut");
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await page.goto("/");
+		const search = page.getByRole("searchbox", { name: "搜尋卡片" });
+		await expect(search).toBeVisible();
+		await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+		await page.keyboard.press("/");
+		await expect(search).toBeFocused();
+		await search.fill("開發 Yorukot Priority");
+		await expect(page.getByRole("region", { name: "篩選看板" }).getByRole("status")).toHaveText("7 / 7 張卡片");
+		await expect(page.getByRole("region", { name: "篩選看板" }).getByRole("status")).toHaveText("1 / 7 張卡片", { timeout: 1_000 });
+		await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("開發 Yorukot Priority");
+		await search.press("Escape");
+		await expect(search).toHaveValue("");
+		await expect(search).not.toBeFocused();
 	});
 
 	test("drag handle reorders within a lane and positions across lanes", async ({ page }, testInfo) => {
@@ -145,17 +294,26 @@ test.describe("SITCON Board demo visual audit", () => {
 			}
 		});
 		await page.goto("/");
+		const sortControl = page.getByRole("button", { name: "排序方式" });
+		await expect(sortControl).toHaveAttribute("data-value", "due-asc");
 		const drag = async (handle: ReturnType<typeof page.getByRole>, target: ReturnType<typeof page.locator>, beforeDrop?: () => Promise<void>) => {
 			const sourceBox = await handle.boundingBox();
-			const targetBox = await target.boundingBox();
-			if (!sourceBox || !targetBox) throw new Error("drag source or target is not visible");
+			if (!sourceBox) throw new Error("drag source is not visible");
 			const source = { x: sourceBox.x + sourceBox.width / 2, y: sourceBox.y + sourceBox.height / 2 };
-			const destination = { x: targetBox.x + targetBox.width / 2, y: targetBox.y + targetBox.height / 2 };
 			await page.mouse.move(source.x, source.y);
 			await page.mouse.down();
 			await page.mouse.move(source.x, source.y + 12, { steps: 3 });
 			await expect(page.locator('[class*="dragPreview"]')).toBeVisible();
-			await page.mouse.move(destination.x, destination.y, { steps: 12 });
+			const targetBox = await target.boundingBox();
+			if (!targetBox) throw new Error("drag target is not visible");
+			const destination = { x: targetBox.x + targetBox.width / 2, y: targetBox.y + targetBox.height / 2 };
+			await page.mouse.move(destination.x, destination.y, { steps: 18 });
+			await page.evaluate(
+				() =>
+					new Promise<void>((resolve) => {
+						requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+					})
+			);
 			await beforeDrop?.();
 			await page.mouse.up();
 			await expect(page.locator('[class*="dragPreview"]')).toBeHidden();
@@ -170,7 +328,9 @@ test.describe("SITCON Board demo visual audit", () => {
 		const venueTitle = "[場務組] 盤點會場網路設備";
 		const designCard = page.getByRole("heading", { name: designTitle }).locator("xpath=ancestor::article");
 		const venueCard = page.getByRole("heading", { name: venueTitle }).locator("xpath=ancestor::article");
-		await drag(page.getByRole("button", { name: `拖曳 ${designTitle}` }), venueCard);
+		await drag(page.getByRole("button", { name: `拖曳 ${designTitle}` }), venueCard, async () => {
+			await expect(sortControl).toHaveAttribute("data-value", "manual");
+		});
 		const doing = page.locator('section[data-list="doing"]');
 		await expect(doing.getByRole("heading", { level: 3 }).last()).toHaveText(designTitle);
 
@@ -201,7 +361,7 @@ test.describe("SITCON Board demo visual audit", () => {
 	test("dragging near the board edge scrolls horizontally", async ({ page }, testInfo) => {
 		test.skip(testInfo.project.name === "mobile", "desktop pointer regression coverage");
 		await page.setViewportSize({ width: 600, height: 800 });
-		await page.goto("/");
+		await page.goto("/?sort=manual");
 		const board = page.getByRole("region", { name: "SITCON 2027 工作看板" });
 		const handle = page.getByRole("button", { name: "拖曳 [議程組] 確認議程講者資料" });
 		const handleBox = await handle.boundingBox();
@@ -222,8 +382,8 @@ test.describe("SITCON Board demo visual audit", () => {
 
 		await page.getByRole("button", { name: "更多建卡選項" }).click();
 		const dialog = page.getByRole("dialog", { name: "更多建卡選項" });
-		await expect(dialog.getByLabel("新卡片 Status")).toHaveValue("inbox");
-		await dialog.getByLabel("新卡片 Status").selectOption("doing");
+		await expect(dialog.getByRole("button", { name: "新卡片 Status" })).toHaveText("Inbox");
+		await chooseSelectField(page, dialog, "新卡片 Status", "Doing");
 		await dialog.getByLabel("新卡片 Description").fill("確認交接與值班時段");
 		await dialog.getByLabel("搜尋新卡片 Label").fill("Backend");
 		await dialog.getByRole("checkbox", { name: "Backend" }).check();
@@ -233,7 +393,7 @@ test.describe("SITCON Board demo visual audit", () => {
 		await page.getByRole("button", { name: "建立卡片" }).click();
 
 		const doing = page.locator('section[data-list="doing"]');
-		await expect(doing.getByRole("heading", { level: 3 }).first()).toHaveText("[開發組] 新增值班表");
+		await expect(doing.getByRole("heading", { name: "[開發組] 新增值班表" })).toBeVisible();
 		await expect(doing.getByText("確認交接與值班時段")).toBeVisible();
 		await doing.getByRole("heading", { name: "[開發組] 新增值班表" }).click();
 		await expect(page.getByRole("dialog", { name: "新卡片詳細資料" }).getByText("Backend")).toBeVisible();
@@ -261,8 +421,8 @@ test.describe("SITCON Board demo visual audit", () => {
 		await page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }).click();
 
 		const details = page.getByRole("dialog", { name: "#127 卡片詳細資料" });
-		await expect(details.getByLabel("組別", { exact: true })).toHaveValue("development");
-		await expect(details.getByLabel("狀態")).toHaveValue("todo");
+		await expect(details.getByRole("button", { name: "組別", exact: true })).toHaveText("開發組");
+		await expect(details.getByRole("button", { name: "狀態", exact: true })).toHaveText("To do");
 		await expect(details.getByLabel("Start")).toHaveValue("2026-07-17");
 		await expect(details.getByLabel("Due")).toHaveValue("2026-07-21");
 		await expect(details.getByText("Team::開發組")).toBeVisible();
@@ -306,5 +466,57 @@ test.describe("SITCON Board demo visual audit", () => {
 		await page.screenshot({ path: "../docs/assets/sitcon-board-tags-comments-mobile.png", fullPage: true });
 		await expect(details.getByRole("button", { name: "儲存細節" })).toBeVisible();
 		await page.screenshot({ path: "../docs/assets/sitcon-board-details-mobile.png", fullPage: true });
+	});
+
+	test("card relationships create, redirect invalid children, and link work items", async ({ page }, testInfo) => {
+		const mobile = testInfo.project.name === "mobile";
+		await page.addInitScript(() => localStorage.setItem("sitcon-board-theme", "dark"));
+		await page.setViewportSize(mobile ? { width: 320, height: 720 } : { width: 1440, height: 900 });
+		await page.goto("/");
+		await page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }).click();
+
+		const details = page.getByRole("dialog", { name: "#127 卡片詳細資料" });
+		await expect(details.getByText("補上退信重試整合測試")).toBeVisible();
+		await expect(details.getByText("整理志工行前通知")).toBeVisible();
+
+		await details.getByRole("button", { name: "新增 Child item" }).click();
+		await page.getByRole("menuitem", { name: "加入既有 Task" }).click();
+		let relationshipDialog = page.getByRole("dialog", { name: "加入既有 Task" });
+		await relationshipDialog.getByLabel("搜尋 Task 標題或 #IID").fill("#128");
+		await expect(relationshipDialog.getByText(/#128 是 Issue，不能作為 Issue 的 Child item/)).toBeVisible();
+		await relationshipDialog.getByRole("button", { name: "改用 Linked item" }).click();
+		relationshipDialog = page.getByRole("dialog", { name: "新增 Linked item" });
+		await expect(relationshipDialog.getByLabel("搜尋 Issue、Task 或 #IID")).toHaveValue("#128");
+		await relationshipDialog.getByRole("button", { name: "取消" }).click();
+
+		await details.getByRole("button", { name: "新增 Child item" }).click();
+		await page.getByRole("menuitem", { name: "建立新 Task" }).click();
+		relationshipDialog = page.getByRole("dialog", { name: "建立 Child Task" });
+		await relationshipDialog.getByLabel("Task 標題").fill("補上關聯回歸測試");
+		await relationshipDialog.getByRole("button", { name: "建立 Task" }).click();
+		await expect(details.getByText("補上關聯回歸測試")).toBeVisible();
+
+		await details.getByRole("button", { name: "新增 Linked item" }).click();
+		relationshipDialog = page.getByRole("dialog", { name: "新增 Linked item" });
+		await relationshipDialog.getByLabel("搜尋 Issue、Task 或 #IID").fill("#129");
+		await relationshipDialog.getByRole("checkbox", { name: /確認議程講者資料/ }).click();
+		await relationshipDialog.getByLabel("搜尋 Issue、Task 或 #IID").fill("#130");
+		await relationshipDialog.getByRole("checkbox", { name: /製作工作人員識別證/ }).click();
+		await page.screenshot({
+			path: docsAsset(`sitcon-board-linked-multiselect${mobile ? "-mobile" : ""}.png`),
+			fullPage: false
+		});
+		await relationshipDialog.getByRole("button", { name: "新增 2 個關聯" }).click();
+		await expect(details.getByText("確認議程講者資料")).toBeVisible();
+		await expect(details.getByText("製作工作人員識別證")).toBeVisible();
+		await details.getByRole("button", { name: "移除 Linked item #130" }).click();
+		await page.getByRole("alertdialog", { name: "移除 Linked item？" }).getByRole("button", { name: "確認移除" }).click();
+		await expect(details.getByText("製作工作人員識別證")).toBeHidden();
+
+		await details.getByRole("heading", { name: "Linked items" }).scrollIntoViewIfNeeded();
+		await page.screenshot({
+			path: docsAsset(`sitcon-board-relations${mobile ? "-mobile" : ""}.png`),
+			fullPage: false
+		});
 	});
 });

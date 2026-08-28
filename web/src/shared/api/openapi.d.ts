@@ -157,6 +157,42 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/cards/{issueIid}/child-items": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List GitLab child work items for a card */
+		get: operations["listChildItems"];
+		put?: never;
+		/** Create a GitLab Task as a child of a card */
+		post: operations["createChildItem"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/cards/{issueIid}/child-items/{workItemId}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Attach an existing unparented GitLab Task to a card */
+		put: operations["attachChildItem"];
+		post?: never;
+		/** Detach a GitLab Task from its parent without deleting it */
+		delete: operations["detachChildItem"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/cards/{issueIid}/comments": {
 		parameters: {
 			query?: never;
@@ -226,6 +262,41 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/cards/{issueIid}/linked-items": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List GitLab linked work items for a card */
+		get: operations["listLinkedItems"];
+		put?: never;
+		/** Link same-project GitLab Issues or Tasks to a card */
+		post: operations["createLinkedItems"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/cards/{issueIid}/linked-items/{workItemId}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/** Remove a GitLab link between a card and another work item */
+		delete: operations["deleteLinkedItem"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/cards/{issueIid}/position": {
 		parameters: {
 			query?: never;
@@ -236,6 +307,23 @@ export interface paths {
 		get?: never;
 		/** Optimistically move or close a card */
 		put: operations["moveCard"];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/cards/{issueIid}/relationship-candidates": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Search same-project GitLab work items that can be related to a card */
+		get: operations["searchRelationshipCandidates"];
+		put?: never;
 		post?: never;
 		delete?: never;
 		options?: never;
@@ -646,6 +734,12 @@ export interface components {
 			entity: "card";
 			card: components["schemas"]["BoardCard"] | null;
 		} & WithRequired<components["schemas"]["SyncAction"], "entity">;
+		ChildItemsResponse: {
+			items: components["schemas"]["WorkItemSummary"][];
+			/** Format: int32 */
+			totalCount: number;
+			nextCursor: string | null;
+		};
 		CreateCardCommentRequest: {
 			body: string;
 		};
@@ -659,6 +753,28 @@ export interface components {
 			labels: string[];
 			startDate: string | null;
 			dueDate: string | null;
+		};
+		/**
+		 * @example {
+		 *       "title": "確認寄信重試條件"
+		 *     }
+		 */
+		CreateChildItemRequest: {
+			title: string;
+		};
+		/**
+		 * @example {
+		 *       "workItemIds": [
+		 *         9876,
+		 *         9877
+		 *       ],
+		 *       "linkType": "blocks"
+		 *     }
+		 */
+		CreateLinkedItemsRequest: {
+			workItemIds: number[];
+			/** @enum {string} */
+			linkType: "relates_to" | "blocks" | "is_blocked_by";
 		};
 		/**
 		 * @example {
@@ -785,6 +901,16 @@ export interface components {
 			/** @enum {string} */
 			status: "ok";
 		};
+		LinkedItemsResponse: {
+			items: components["schemas"]["LinkedWorkItem"][];
+			/** Format: int32 */
+			totalCount: number;
+			nextCursor: string | null;
+		};
+		LinkedWorkItem: {
+			/** @enum {string} */
+			linkType: "relates_to" | "blocks" | "is_blocked_by";
+		} & components["schemas"]["WorkItemSummary"];
 		ListSyncAction: {
 			/** @enum {string} */
 			entity: "list";
@@ -851,6 +977,9 @@ export interface components {
 				| "TEAM_NOT_FOUND"
 				| "MEMBER_NOT_ASSIGNABLE"
 				| "CARD_NOT_FOUND"
+				| "WORK_ITEM_NOT_FOUND"
+				| "RELATION_CONFLICT"
+				| "GITLAB_FEATURE_UNAVAILABLE"
 				| "OPERATION_NOT_FOUND"
 				| "OPERATION_CONFLICT"
 				| "SNAPSHOT_NOT_READY"
@@ -1020,6 +1149,100 @@ export interface components {
 			accepted: true;
 			duplicate: boolean;
 		};
+		/**
+		 * @example {
+		 *       "gitLabUserId": 114,
+		 *       "username": "yorukot",
+		 *       "displayName": "Yorukot",
+		 *       "avatarUrl": null,
+		 *       "profileUrl": "https://gitlab.com/yorukot"
+		 *     }
+		 */
+		WorkItemAssignee: {
+			/** Format: int64 */
+			gitLabUserId: number;
+			username: string;
+			displayName: string;
+			avatarUrl: string | null;
+			profileUrl: string;
+		};
+		WorkItemCandidatesResponse: {
+			items: components["schemas"]["WorkItemSummary"][];
+		};
+		/**
+		 * @example {
+		 *       "name": "priority::high",
+		 *       "color": "#D73A4A",
+		 *       "textColor": "#FFFFFF"
+		 *     }
+		 */
+		WorkItemLabel: {
+			name: string;
+			color: string;
+			textColor: string;
+		};
+		/**
+		 * @example {
+		 *       "name": "To do",
+		 *       "category": "to_do",
+		 *       "color": "#737278"
+		 *     }
+		 */
+		WorkItemStatus: {
+			name: string;
+			category: string | null;
+			color: string | null;
+		};
+		/**
+		 * @example {
+		 *       "gitLabWorkItemId": 9876,
+		 *       "iid": 128,
+		 *       "type": "task",
+		 *       "title": "確認寄信重試條件",
+		 *       "state": "open",
+		 *       "webUrl": "https://gitlab.com/sitcon-tw/2027/-/work_items/128",
+		 *       "status": {
+		 *         "name": "To do",
+		 *         "category": "to_do",
+		 *         "color": "#737278"
+		 *       },
+		 *       "assignees": [
+		 *         {
+		 *           "gitLabUserId": 114,
+		 *           "username": "yorukot",
+		 *           "displayName": "Yorukot",
+		 *           "avatarUrl": null,
+		 *           "profileUrl": "https://gitlab.com/yorukot"
+		 *         }
+		 *       ],
+		 *       "startDate": "2026-08-28",
+		 *       "dueDate": "2026-09-04",
+		 *       "labels": [
+		 *         {
+		 *           "name": "priority::high",
+		 *           "color": "#D73A4A",
+		 *           "textColor": "#FFFFFF"
+		 *         }
+		 *       ]
+		 *     }
+		 */
+		WorkItemSummary: {
+			/** Format: int64 */
+			gitLabWorkItemId: number;
+			/** Format: int64 */
+			iid: number;
+			/** @enum {string} */
+			type: "issue" | "task";
+			title: string;
+			/** @enum {string} */
+			state: "open" | "closed";
+			webUrl: string;
+			status: components["schemas"]["WorkItemStatus"] | null;
+			assignees: components["schemas"]["WorkItemAssignee"][];
+			startDate: string | null;
+			dueDate: string | null;
+			labels: components["schemas"]["WorkItemLabel"][];
+		};
 		/** Format: uuid */
 		uuid: string;
 	};
@@ -1035,6 +1258,7 @@ export interface components {
 		IssueIidPath: number;
 		OperationIdPath: components["schemas"]["uuid"];
 		ProjectLabelPath: number;
+		WorkItemIdPath: number;
 	};
 	requestBodies: never;
 	headers: never;
@@ -1492,6 +1716,348 @@ export interface operations {
 			};
 		};
 	};
+	listChildItems: {
+		parameters: {
+			query?: {
+				cursor?: string;
+				limit?: number;
+			};
+			header?: never;
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description The request has succeeded. */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ChildItemsResponse"];
+				};
+			};
+			/** @description The server could not understand the request due to invalid syntax. */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	createChildItem: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CreateChildItemRequest"];
+			};
+		};
+		responses: {
+			/** @description The request has succeeded and a new resource has been created as a result. */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["WorkItemSummary"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The request conflicts with the current state of the server. */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	attachChildItem: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+				workItemId: components["parameters"]["WorkItemIdPath"];
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description There is no content to send for this request, but the headers may be useful. */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The request conflicts with the current state of the server. */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	detachChildItem: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+				workItemId: components["parameters"]["WorkItemIdPath"];
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description There is no content to send for this request, but the headers may be useful. */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The request conflicts with the current state of the server. */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
 	listCardComments: {
 		parameters: {
 			query?: never;
@@ -1896,6 +2462,260 @@ export interface operations {
 			};
 		};
 	};
+	listLinkedItems: {
+		parameters: {
+			query?: {
+				cursor?: string;
+				limit?: number;
+			};
+			header?: never;
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description The request has succeeded. */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["LinkedItemsResponse"];
+				};
+			};
+			/** @description The server could not understand the request due to invalid syntax. */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	createLinkedItems: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CreateLinkedItemsRequest"];
+			};
+		};
+		responses: {
+			/** @description There is no content to send for this request, but the headers may be useful. */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The request conflicts with the current state of the server. */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	deleteLinkedItem: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+				workItemId: components["parameters"]["WorkItemIdPath"];
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description There is no content to send for this request, but the headers may be useful. */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The request conflicts with the current state of the server. */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
 	moveCard: {
 		parameters: {
 			query?: never;
@@ -1969,6 +2789,94 @@ export interface operations {
 			};
 			/** @description Server error */
 			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	searchRelationshipCandidates: {
+		parameters: {
+			query: {
+				kind: "child" | "linked";
+				query: string;
+			};
+			header?: never;
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description The request has succeeded. */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["WorkItemCandidatesResponse"];
+				};
+			};
+			/** @description The server could not understand the request due to invalid syntax. */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
 				headers: {
 					[name: string]: unknown;
 				};

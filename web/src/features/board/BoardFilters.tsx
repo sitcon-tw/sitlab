@@ -1,21 +1,31 @@
-import { Chip, Dialog, IconButton, Menu, MenuItem, SelectField } from "@project-template/ui";
-import { Check, ChevronDown, Search, Settings, UsersRound, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Badge, Button, Dialog, EmptyState, IconButton, Menu, MenuItem, SelectField, TextField } from "@project-template/ui";
+import { Check, ChevronDown, Settings, SlidersHorizontal, UsersRound, X } from "lucide-react";
+import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import styles from "./BoardPage.module.css";
 import { GroupedMemberList } from "./GroupedMemberList";
 import { LabelManagerDialog } from "./LabelManagerDialog";
-import { activeMembers, filterDirectoryMembers, type BoardSortMode, type Bootstrap, type DirectoryMember, type ProjectLabel } from "./model";
+import {
+	activeMembers,
+	filterDirectoryMembers,
+	type BoardSortMode,
+	type Bootstrap,
+	type DirectoryMember,
+	type DirectoryTeam,
+	type ProjectLabel
+} from "./model";
 import { TagSwatch } from "./TagSwatch";
 import { useProjectLabels } from "./useProjectLabels";
 
 export interface BoardFiltersProps {
 	bootstrap: Bootstrap;
+	query: string;
 	teamKey: string;
 	memberIds: number[];
 	labels: string[];
 	sortMode: BoardSortMode;
 	visibleCount: number;
 	totalCount: number;
+	onQueryChange: (query: string) => void;
 	onTeamChange: (teamKey: string) => void;
 	onMemberIdsChange: (memberIds: number[]) => void;
 	onLabelsChange: (labels: string[]) => void;
@@ -23,256 +33,541 @@ export interface BoardFiltersProps {
 	onClear: () => void;
 }
 
+const SORT_OPTIONS: ReadonlyArray<{ value: BoardSortMode; label: string }> = [
+	{ value: "manual", label: "手動順序" },
+	{ value: "due-asc", label: "Due date：近到遠" },
+	{ value: "due-desc", label: "Due date：遠到近" },
+	{ value: "start-asc", label: "Start date：近到遠" },
+	{ value: "start-desc", label: "Start date：遠到近" },
+	{ value: "updated-desc", label: "Updated time：新到舊" },
+	{ value: "updated-asc", label: "Updated time：舊到新" }
+];
+
 export function BoardFilters({
 	bootstrap,
+	query,
 	teamKey,
 	memberIds,
 	labels,
 	sortMode,
 	visibleCount,
 	totalCount,
+	onQueryChange,
 	onTeamChange,
 	onMemberIdsChange,
 	onLabelsChange,
 	onSortModeChange,
 	onClear
 }: BoardFiltersProps) {
-	const teams = bootstrap.teams.filter((team) => team.active).sort((a, b) => a.sortOrder - b.sortOrder);
-	const active = Boolean(teamKey || memberIds.length || labels.length);
-
-	return (
-		<section className={styles.filters} aria-label="篩選看板">
-			<SelectField
-				dense
-				className={styles.sortControl}
-				label="排序方式"
-				value={sortMode}
-				onChange={(event) => onSortModeChange(event.target.value as BoardSortMode)}
-				options={[
-					{ value: "manual", label: "手動順序" },
-					{ value: "due-asc", label: "Due date：近到遠" },
-					{ value: "due-desc", label: "Due date：遠到近" },
-					{ value: "start-asc", label: "Start date：近到遠" },
-					{ value: "start-desc", label: "Start date：遠到近" },
-					{ value: "updated-desc", label: "Updated time：新到舊" },
-					{ value: "updated-asc", label: "Updated time：舊到新" }
-				]}
-			/>
-			<Menu
-				label="篩選組別"
-				trigger={
-					<Chip
-						variant="filter"
-						selected={Boolean(teamKey)}
-						label={teams.find((team) => team.key === teamKey)?.name ?? "所有組別"}
-						aria-label="篩選組別"
-						trailing={<ChevronDown size="1.125rem" aria-hidden="true" />}
-					/>
-				}
-			>
-				<MenuItem selected={teamKey === ""} onSelect={() => onTeamChange("")}>
-					所有組別
-				</MenuItem>
-				{teams.map((team) => (
-					<MenuItem key={team.key} selected={teamKey === team.key} onSelect={() => onTeamChange(team.key)}>
-						{team.name}
-					</MenuItem>
-				))}
-			</Menu>
-			<MemberFilter bootstrap={bootstrap} value={memberIds} onChange={onMemberIdsChange} />
-			<LabelFilter value={labels} onChange={onLabelsChange} bootstrap={bootstrap} />
-			<span className={styles.filterResult} role="status" aria-live="polite">
-				{visibleCount} / {totalCount} 張卡片
-			</span>
-			<IconButton
-				className={styles.clearFilters}
-				data-visible={active}
-				disabled={!active}
-				aria-hidden={!active}
-				label="清除篩選"
-				title="清除篩選"
-				icon={<X size="1.25rem" aria-hidden="true" />}
-				onClick={onClear}
-			/>
-		</section>
-	);
-}
-
-function LabelFilter({ value, onChange, bootstrap }: { value: string[]; onChange: (labels: string[]) => void; bootstrap: Bootstrap }) {
-	const [open, setOpen] = useState(false);
+	const [compactOpen, setCompactOpen] = useState(false);
 	const [managerOpen, setManagerOpen] = useState(false);
-	const [query, setQuery] = useState("");
 	const labelsQuery = useProjectLabels();
-	const normalizedQuery = query.trim().toLocaleLowerCase("zh-Hant");
-	const labels = (labelsQuery.data ?? []).filter(
-		(label) => !normalizedQuery || `${label.name} ${label.description ?? ""}`.toLocaleLowerCase("zh-Hant").includes(normalizedQuery)
+	const teams = useMemo(() => bootstrap.teams.filter((team) => team.active).sort((a, b) => a.sortOrder - b.sortOrder), [bootstrap.teams]);
+	const selectedMembers = useMemo(
+		() => memberIds.flatMap((id) => bootstrap.members.find((candidate) => candidate.gitLabUserId === id) ?? []),
+		[bootstrap.members, memberIds]
 	);
-	const metadata = new Map(labelsQuery.data?.map((label) => [label.name, label]));
-	const changeOpen = (next: boolean) => {
-		setOpen(next);
-		if (!next) setQuery("");
-	};
-	const toggle = (label: string) => onChange(value.includes(label) ? value.filter((current) => current !== label) : [...value, label]);
+	const filtersActive = Boolean(query.trim() || teamKey || memberIds.length || labels.length);
+	const advancedCount = Number(Boolean(teamKey)) + Number(memberIds.length > 0) + Number(labels.length > 0) + Number(sortMode !== "due-asc");
+	const sortLabel = SORT_OPTIONS.find((option) => option.value === sortMode)?.label ?? "Due date：近到遠";
 
 	return (
 		<>
-			<Chip
-				className={styles.filterLabels}
-				variant="filter"
-				selected={value.length > 0}
-				label={value.length ? `Labels ${value.length}` : "所有 Labels"}
-				aria-label="篩選 Label"
-				title={value.length ? value.join("、") : "所有 Labels"}
-				trailing={<ChevronDown size="1.125rem" aria-hidden="true" />}
-				onClick={() => setOpen(true)}
-			/>
-			<IconButton
-				className={styles.filterManageLabels}
-				label="管理 Labels"
-				title="管理 Labels"
-				icon={<Settings size="1.25rem" aria-hidden="true" />}
-				onClick={() => setManagerOpen(true)}
+			<section className={styles.filters} aria-label="篩選看板">
+				<Menu
+					label="排序方式"
+					className={styles.sortMenu}
+					trigger={
+						<button type="button" className={`${styles.sortControl} ${styles.desktopFilterControl}`} aria-label="排序方式" data-value={sortMode}>
+							<span className={styles.sortText}>
+								<span className={styles.sortLabel}>排序方式</span>
+								<span className={styles.sortValue}>{sortLabel}</span>
+							</span>
+							<ChevronDown className={styles.sortChevron} size="1.25rem" aria-hidden="true" />
+						</button>
+					}
+				>
+					{SORT_OPTIONS.map((option) => (
+						<MenuItem
+							key={option.value}
+							selected={sortMode === option.value}
+							leading={sortMode === option.value ? <Check size="1.125rem" aria-hidden="true" /> : <span aria-hidden="true" />}
+							onSelect={() => onSortModeChange(option.value)}
+						>
+							{option.label}
+						</MenuItem>
+					))}
+				</Menu>
+
+				<SearchablePicker
+					className={`${styles.filterTeam} ${styles.desktopFilterControl}`}
+					label="搜尋組別"
+					summary={teams.find((team) => team.key === teamKey)?.name ?? "所有組別"}
+					placeholder="輸入組別名稱"
+				>
+					{(pickerQuery, close) => <TeamOptions teams={teams} query={pickerQuery} value={teamKey} onChange={onTeamChange} close={close} />}
+				</SearchablePicker>
+
+				<SearchablePicker
+					className={`${styles.filterPeople} ${styles.desktopFilterControl}`}
+					label="搜尋負責人"
+					summary={memberFilterLabel(selectedMembers)}
+					placeholder="姓名或 GitLab 帳號"
+				>
+					{(pickerQuery) => <MemberOptions bootstrap={bootstrap} query={pickerQuery} value={memberIds} onChange={onMemberIdsChange} />}
+				</SearchablePicker>
+
+				<SearchablePicker
+					className={`${styles.filterLabels} ${styles.desktopFilterControl}`}
+					label="搜尋 Label"
+					summary={labels.length ? `Labels ${labels.length}` : "所有 Labels"}
+					placeholder="名稱或說明"
+				>
+					{(pickerQuery) => (
+						<LabelOptions
+							query={pickerQuery}
+							value={labels}
+							onChange={onLabelsChange}
+							labels={labelsQuery.data ?? []}
+							loading={labelsQuery.isLoading}
+							error={labelsQuery.isError}
+							onRetry={() => void labelsQuery.refetch()}
+						/>
+					)}
+				</SearchablePicker>
+
+				<IconButton
+					className={`${styles.filterManageLabels} ${styles.desktopFilterControl}`}
+					label="管理 Labels"
+					title="管理 Labels"
+					icon={<Settings size="1.25rem" aria-hidden="true" />}
+					onClick={() => setManagerOpen(true)}
+				/>
+
+				<div className={styles.filterSearch}>
+					<TextField
+						id="board-card-search"
+						dense
+						type="search"
+						label="搜尋卡片"
+						value={query}
+						placeholder="標題、編號、人員或 Label"
+						onChange={(event) => onQueryChange(event.target.value)}
+						onKeyDown={(event) => {
+							if (event.key !== "Escape") return;
+							event.stopPropagation();
+							onQueryChange("");
+							event.currentTarget.blur();
+						}}
+					/>
+					{query ? <IconButton size="sm" label="清除卡片搜尋" icon={<X size="1rem" aria-hidden="true" />} onClick={() => onQueryChange("")} /> : null}
+				</div>
+
+				<Button
+					className={styles.compactFilterButton}
+					variant="tonal"
+					leadingIcon={<SlidersHorizontal size="1.125rem" aria-hidden="true" />}
+					onClick={() => setCompactOpen(true)}
+				>
+					篩選與排序{advancedCount ? ` (${advancedCount})` : ""}
+				</Button>
+
+				<span className={styles.filterResult} role="status" aria-live="polite">
+					{visibleCount} / {totalCount} 張卡片
+				</span>
+				<IconButton
+					className={styles.clearFilters}
+					data-visible={filtersActive}
+					disabled={!filtersActive}
+					aria-hidden={!filtersActive}
+					label="清除篩選"
+					title="清除篩選"
+					icon={<X size="1.25rem" aria-hidden="true" />}
+					onClick={onClear}
+				/>
+			</section>
+
+			<CompactFiltersDialog
+				open={compactOpen}
+				onOpenChange={setCompactOpen}
+				bootstrap={bootstrap}
+				teams={teams}
+				teamKey={teamKey}
+				memberIds={memberIds}
+				labels={labels}
+				sortMode={sortMode}
+				projectLabels={labelsQuery.data ?? []}
+				labelsLoading={labelsQuery.isLoading}
+				labelsError={labelsQuery.isError}
+				onRetryLabels={() => void labelsQuery.refetch()}
+				onTeamChange={onTeamChange}
+				onMemberIdsChange={onMemberIdsChange}
+				onLabelsChange={onLabelsChange}
+				onSortModeChange={onSortModeChange}
+				onClearAdvanced={() => {
+					onTeamChange("");
+					onMemberIdsChange([]);
+					onLabelsChange([]);
+				}}
+				onManageLabels={() => {
+					setCompactOpen(false);
+					setManagerOpen(true);
+				}}
 			/>
 			<LabelManagerDialog open={managerOpen} onOpenChange={setManagerOpen} bootstrap={bootstrap} />
-			<Dialog open={open} onOpenChange={changeOpen} title="篩選 Label" description="卡片必須包含所有選取的 Labels">
-				<div className={styles.pickerSearch}>
-					<Search size="1rem" aria-hidden="true" />
-					<input
-						autoFocus
-						type="search"
-						value={query}
-						onChange={(event) => setQuery(event.target.value)}
-						placeholder="搜尋 Label 名稱或說明"
-						aria-label="搜尋篩選 Label"
-					/>
-					{query ? (
-						<button type="button" aria-label="清除搜尋" onClick={() => setQuery("")}>
-							<X size="0.875rem" aria-hidden="true" />
-						</button>
-					) : null}
-				</div>
-				<div className={styles.pickerList}>
-					{value.map((label) =>
-						labels.some((candidate) => candidate.name === label) ? null : (
-							<LabelOption
-								key={label}
-								label={metadata.get(label) ?? { id: 0, name: label, color: "", textColor: "", description: null }}
-								selected
-								onToggle={toggle}
-							/>
-						)
-					)}
-					{labels.map((label) => (
-						<LabelOption key={label.name} label={label} selected={value.includes(label.name)} onToggle={toggle} />
-					))}
-					{labelsQuery.isLoading ? <p role="status">載入中...</p> : null}
-					{labelsQuery.isError ? (
-						<button type="button" className={styles.memberOption} onClick={() => void labelsQuery.refetch()}>
-							重新載入 Labels
-						</button>
-					) : null}
-					{labelsQuery.isSuccess && labels.length === 0 ? <p className={styles.noResults}>找不到符合的 Label</p> : null}
-				</div>
-				<div className={styles.pickerFooter}>
-					<button type="button" disabled={value.length === 0} onClick={() => onChange([])}>
-						清除
-					</button>
-					<span>{value.length ? `已選擇 ${value.length} 個` : "所有 Labels"}</span>
-					<button type="button" onClick={() => changeOpen(false)}>
-						完成
-					</button>
-				</div>
-			</Dialog>
 		</>
 	);
 }
 
-function LabelOption({ label, selected, onToggle }: { label: ProjectLabel; selected: boolean; onToggle: (label: string) => void }) {
+function SearchablePicker({ className, label, summary, placeholder, children }: SearchablePickerProps) {
+	const [open, setOpen] = useState(false);
+	const [query, setQuery] = useState("");
+	const rootRef = useRef<HTMLDivElement>(null);
+	const panelId = useId();
+	const close = () => {
+		setOpen(false);
+		setQuery("");
+	};
 	return (
-		<label className={styles.labelFilterOption}>
-			<input type="checkbox" checked={selected} onChange={() => onToggle(label.name)} />
-			<TagSwatch label={label} />
-			<span>
-				<strong>{label.name}</strong>
-				{label.description ? <small>{label.description}</small> : null}
+		<div
+			ref={rootRef}
+			className={`${styles.searchableFilter} ${className}`}
+			onBlur={(event) => {
+				if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+					setOpen(false);
+					setQuery("");
+				}
+			}}
+			onKeyDown={(event) => {
+				if (event.key !== "Escape" || !open) return;
+				event.preventDefault();
+				event.stopPropagation();
+				close();
+				rootRef.current?.querySelector<HTMLInputElement>("input")?.focus();
+			}}
+		>
+			<TextField
+				dense
+				type="search"
+				role="combobox"
+				label={label}
+				value={open ? query : summary}
+				placeholder={placeholder}
+				autoComplete="off"
+				aria-autocomplete="list"
+				aria-expanded={open}
+				aria-controls={open ? panelId : undefined}
+				onFocus={(event) => {
+					setQuery("");
+					setOpen(true);
+					event.currentTarget.select();
+				}}
+				onChange={(event) => {
+					setOpen(true);
+					setQuery(event.target.value);
+				}}
+				onKeyDown={(event) => {
+					if (event.key !== "ArrowDown" || !open) return;
+					event.preventDefault();
+					rootRef.current?.querySelector<HTMLElement>(".md-menu input, .md-menu button")?.focus();
+				}}
+			/>
+			<ChevronDown className={styles.searchableFilterChevron} size="1.125rem" aria-hidden="true" />
+			{open ? (
+				<div id={panelId} className={`md-menu ${styles.searchableFilterMenu}`} aria-label={label}>
+					{children(query, close)}
+				</div>
+			) : null}
+		</div>
+	);
+}
+
+interface SearchablePickerProps {
+	className: string;
+	label: string;
+	summary: string;
+	placeholder: string;
+	children: (query: string, close: () => void) => ReactNode;
+}
+
+function TeamOptions({ teams, query, value, onChange, close }: TeamOptionsProps) {
+	const normalized = normalizePickerQuery(query);
+	const filtered = teams.filter((team) => !normalized || normalizePickerQuery(`${team.name} ${team.key} ${team.titlePrefix}`).includes(normalized));
+	return (
+		<div className={`md-list ${styles.searchableFilterList}`}>
+			{!normalized ? <TeamOption label="所有組別" teamKey="" checked={value === ""} onChange={onChange} {...(close ? { close } : {})} /> : null}
+			{filtered.map((team) => (
+				<TeamOption key={team.key} label={team.name} teamKey={team.key} checked={value === team.key} onChange={onChange} {...(close ? { close } : {})} />
+			))}
+			{filtered.length === 0 ? <EmptyState title="找不到組別" description="請調整搜尋條件後再試一次。" /> : null}
+		</div>
+	);
+}
+
+interface TeamOptionsProps {
+	teams: DirectoryTeam[];
+	query: string;
+	value: string;
+	onChange: (teamKey: string) => void;
+	close?: () => void;
+}
+
+function TeamOption({ label, teamKey, checked, onChange, close }: TeamOptionProps) {
+	return (
+		<label className={`md-list-item ${styles.teamFilterOption}`}>
+			<span className="md-list-item__leading">
+				<input
+					type="radio"
+					className="md-radio"
+					name="board-team-filter"
+					checked={checked}
+					onChange={() => {
+						onChange(teamKey);
+						close?.();
+					}}
+				/>
+			</span>
+			<span className="md-list-item__text">
+				<span className="md-list-item__headline">{label}</span>
 			</span>
 		</label>
 	);
 }
 
-function MemberFilter({ bootstrap, value, onChange }: { bootstrap: Bootstrap; value: number[]; onChange: (memberIds: number[]) => void }) {
-	const [open, setOpen] = useState(false);
-	const [query, setQuery] = useState("");
-	const selected = value.flatMap((id) => {
-		const member = bootstrap.members.find((candidate) => candidate.gitLabUserId === id);
-		return member ? [member] : [];
-	});
+interface TeamOptionProps {
+	label: string;
+	teamKey: string;
+	checked: boolean;
+	onChange: (teamKey: string) => void;
+	close?: () => void;
+}
+
+function MemberOptions({
+	bootstrap,
+	query,
+	value,
+	onChange
+}: {
+	bootstrap: Bootstrap;
+	query: string;
+	value: number[];
+	onChange: (memberIds: number[]) => void;
+}) {
 	const members = useMemo(() => filterDirectoryMembers(activeMembers(bootstrap), query), [bootstrap, query]);
 	const preferredTeamKey = bootstrap.preferences.defaultTeamKey ?? bootstrap.preferences.directoryTeamKeys[0] ?? "";
-
-	const changeOpen = (next: boolean) => {
-		setOpen(next);
-		if (!next) setQuery("");
-	};
 	return (
-		<>
-			<Chip
-				className={styles.filterPeople}
-				variant="filter"
-				selected={selected.length > 0}
-				label={memberFilterLabel(selected)}
-				aria-label="篩選負責人"
-				title={selected.length ? selected.map((member) => member.displayName).join("、") : "所有人"}
-				leading={<UsersRound size="1.125rem" aria-hidden="true" />}
-				trailing={<ChevronDown size="1.125rem" aria-hidden="true" />}
-				onClick={() => setOpen(true)}
-			/>
-			<Dialog open={open} onOpenChange={changeOpen} title="篩選負責人" description="可複選專案成員">
-				<div className={styles.pickerSearch}>
-					<Search size="1rem" aria-hidden="true" />
-					<input
-						autoFocus
-						type="search"
-						value={query}
-						onChange={(event) => setQuery(event.target.value)}
-						placeholder="搜尋姓名或 GitLab 帳號"
-						aria-label="搜尋篩選成員"
-					/>
-					{query ? (
-						<button type="button" aria-label="清除搜尋" onClick={() => setQuery("")}>
-							<X size="0.875rem" aria-hidden="true" />
-						</button>
+		<div className={`md-list ${styles.searchableFilterList}`}>
+			{!query.trim() ? (
+				<button
+					type="button"
+					className={`md-list-item md-list-item--two-line md-state-layer ${styles.memberOption}`}
+					data-selected={value.length === 0}
+					onClick={() => onChange([])}
+				>
+					<span className="md-list-item__leading">
+						<UsersRound size="1.125rem" aria-hidden="true" />
+					</span>
+					<span className="md-list-item__text">
+						<span className="md-list-item__headline">所有人</span>
+						<span className="md-list-item__supporting">不限制負責人</span>
+					</span>
+					{value.length === 0 ? (
+						<span className="md-list-item__trailing">
+							<Check size="1.125rem" aria-hidden="true" />
+						</span>
 					) : null}
-				</div>
-				<div className={styles.pickerList}>
-					<button type="button" className={styles.memberOption} data-selected={value.length === 0} onClick={() => onChange([])}>
-						<span className={styles.unassignedAvatar}>
-							<UsersRound size="1rem" aria-hidden="true" />
-						</span>
-						<span>
-							<strong>所有人</strong>
-							<small>不限制負責人</small>
-						</span>
-						{value.length === 0 ? <Check size="1rem" aria-hidden="true" /> : null}
-					</button>
-					<GroupedMemberList
-						teams={bootstrap.teams}
-						members={members}
-						value={value}
-						currentUserId={bootstrap.me.gitLabUserId}
-						onChange={onChange}
-						preferredTeamKey={preferredTeamKey}
+				</button>
+			) : null}
+			<GroupedMemberList
+				teams={bootstrap.teams}
+				members={members}
+				value={value}
+				currentUserId={bootstrap.me.gitLabUserId}
+				onChange={onChange}
+				preferredTeamKey={preferredTeamKey}
+			/>
+			{members.length === 0 ? <EmptyState title="找不到成員" description="請調整搜尋條件後再試一次。" /> : null}
+		</div>
+	);
+}
+
+function LabelOptions({ query, value, onChange, labels, loading, error, onRetry }: LabelOptionsProps) {
+	const normalized = normalizePickerQuery(query);
+	const filtered = labels.filter((label) => !normalized || normalizePickerQuery(`${label.name} ${label.description ?? ""}`).includes(normalized));
+	const metadata = new Map(labels.map((label) => [label.name, label]));
+	const toggle = (label: string) => onChange(value.includes(label) ? value.filter((current) => current !== label) : [...value, label]);
+	return (
+		<div className={`md-list ${styles.searchableFilterList}`}>
+			{value.map((label) =>
+				filtered.some((candidate) => candidate.name === label) ? null : (
+					<LabelOption
+						key={label}
+						label={metadata.get(label) ?? { id: 0, name: label, color: "", textColor: "", description: null }}
+						selected
+						onToggle={toggle}
 					/>
-					{members.length === 0 ? <p className={styles.noResults}>找不到符合的成員</p> : null}
-				</div>
+				)
+			)}
+			{filtered.map((label) => (
+				<LabelOption key={label.name} label={label} selected={value.includes(label.name)} onToggle={toggle} />
+			))}
+			{loading ? <p role="status">載入中...</p> : null}
+			{error ? (
+				<EmptyState
+					title="無法載入 Labels"
+					description="請重新載入專案 Labels。"
+					action={
+						<Button variant="text" onClick={onRetry}>
+							重新載入 Labels
+						</Button>
+					}
+				/>
+			) : null}
+			{!loading && !error && filtered.length === 0 ? <EmptyState title="找不到 Label" description="請調整搜尋條件後再試一次。" /> : null}
+		</div>
+	);
+}
+
+interface LabelOptionsProps {
+	query: string;
+	value: string[];
+	onChange: (labels: string[]) => void;
+	labels: ProjectLabel[];
+	loading: boolean;
+	error: boolean;
+	onRetry: () => void;
+}
+
+function LabelOption({ label, selected, onToggle }: { label: ProjectLabel; selected: boolean; onToggle: (label: string) => void }) {
+	return (
+		<label className={`md-list-item md-list-item--two-line ${styles.labelFilterOption}`}>
+			<span className="md-list-item__leading">
+				<input className="md-checkbox" type="checkbox" checked={selected} onChange={() => onToggle(label.name)} />
+			</span>
+			<TagSwatch label={label} />
+			<span className="md-list-item__text">
+				<span className="md-list-item__headline">{label.name}</span>
+				{label.description ? <span className="md-list-item__supporting">{label.description}</span> : null}
+			</span>
+		</label>
+	);
+}
+
+function CompactFiltersDialog(props: CompactFiltersDialogProps) {
+	const {
+		open,
+		onOpenChange,
+		bootstrap,
+		teams,
+		teamKey,
+		memberIds,
+		labels,
+		sortMode,
+		projectLabels,
+		labelsLoading,
+		labelsError,
+		onRetryLabels,
+		onTeamChange,
+		onMemberIdsChange,
+		onLabelsChange,
+		onSortModeChange,
+		onClearAdvanced,
+		onManageLabels
+	} = props;
+	const [teamQuery, setTeamQuery] = useState("");
+	const [memberQuery, setMemberQuery] = useState("");
+	const [labelQuery, setLabelQuery] = useState("");
+	const changeOpen = (next: boolean) => {
+		onOpenChange(next);
+		if (!next) {
+			setTeamQuery("");
+			setMemberQuery("");
+			setLabelQuery("");
+		}
+	};
+	const hasAdvancedFilters = Boolean(teamKey || memberIds.length || labels.length);
+	return (
+		<Dialog
+			open={open}
+			onOpenChange={changeOpen}
+			title="篩選與排序"
+			description="選取後立即更新看板"
+			footer={
 				<div className={styles.pickerFooter}>
-					<span>{value.length ? `已選擇 ${value.length} 人` : "所有人"}</span>
-					<button type="button" onClick={() => changeOpen(false)}>
+					<Button variant="text" disabled={!hasAdvancedFilters} onClick={onClearAdvanced}>
+						清除進階篩選
+					</Button>
+					<Button variant="text" onClick={() => changeOpen(false)}>
 						完成
-					</button>
+					</Button>
 				</div>
-			</Dialog>
-		</>
+			}
+		>
+			<div className={styles.compactFilters}>
+				<SelectField
+					label="排序方式"
+					value={sortMode}
+					options={SORT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+					onValueChange={(value) => onSortModeChange(value as BoardSortMode)}
+				/>
+				<CompactFilterSection title="組別" count={teamKey ? 1 : 0}>
+					<TextField type="search" label="搜尋組別" value={teamQuery} onChange={(event) => setTeamQuery(event.target.value)} />
+					<TeamOptions teams={teams} query={teamQuery} value={teamKey} onChange={onTeamChange} />
+				</CompactFilterSection>
+				<CompactFilterSection title="負責人" count={memberIds.length}>
+					<TextField type="search" label="搜尋負責人" value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} />
+					<MemberOptions bootstrap={bootstrap} query={memberQuery} value={memberIds} onChange={onMemberIdsChange} />
+				</CompactFilterSection>
+				<CompactFilterSection title="Labels" count={labels.length}>
+					<div className={styles.compactLabelHeading}>
+						<TextField type="search" label="搜尋 Label" value={labelQuery} onChange={(event) => setLabelQuery(event.target.value)} />
+						<IconButton label="管理 Labels" title="管理 Labels" icon={<Settings size="1.125rem" aria-hidden="true" />} onClick={onManageLabels} />
+					</div>
+					<LabelOptions
+						query={labelQuery}
+						value={labels}
+						onChange={onLabelsChange}
+						labels={projectLabels}
+						loading={labelsLoading}
+						error={labelsError}
+						onRetry={onRetryLabels}
+					/>
+				</CompactFilterSection>
+			</div>
+		</Dialog>
+	);
+}
+
+interface CompactFiltersDialogProps {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	bootstrap: Bootstrap;
+	teams: DirectoryTeam[];
+	teamKey: string;
+	memberIds: number[];
+	labels: string[];
+	sortMode: BoardSortMode;
+	projectLabels: ProjectLabel[];
+	labelsLoading: boolean;
+	labelsError: boolean;
+	onRetryLabels: () => void;
+	onTeamChange: (teamKey: string) => void;
+	onMemberIdsChange: (memberIds: number[]) => void;
+	onLabelsChange: (labels: string[]) => void;
+	onSortModeChange: (sortMode: BoardSortMode) => void;
+	onClearAdvanced: () => void;
+	onManageLabels: () => void;
+}
+
+function CompactFilterSection({ title, count, children }: { title: string; count: number; children: ReactNode }) {
+	return (
+		<section className={styles.compactFilterSection} aria-label={title}>
+			<header>
+				<h3 className="md-typescale-title-small">{title}</h3>
+				{count ? <Badge tone="neutral">{count}</Badge> : null}
+			</header>
+			{children}
+		</section>
 	);
 }
 
@@ -280,4 +575,8 @@ function memberFilterLabel(members: DirectoryMember[]) {
 	if (!members.length) return "所有人";
 	if (members.length <= 2) return members.map((member) => member.displayName).join("、");
 	return `${members[0]?.displayName ?? "成員"}等 ${members.length} 人`;
+}
+
+function normalizePickerQuery(query: string) {
+	return query.normalize("NFKC").trim().toLocaleLowerCase("zh-Hant");
 }
