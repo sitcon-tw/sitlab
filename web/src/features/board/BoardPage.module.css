@@ -4,6 +4,16 @@
 	background: var(--sb-page);
 }
 
+/* Board mode owns the viewport so its chrome never joins the card scroll. The
+ * Gantt view keeps its existing document flow and internal timeline scroller. */
+.app[data-view="board"] {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	height: 100svh;
+	overflow: hidden;
+}
+
 .topbar {
 	position: sticky;
 	top: 0;
@@ -52,6 +62,13 @@
 	width: 100%;
 	padding: 0.75rem 0.75rem 1.5rem;
 	overflow: hidden;
+}
+
+.app[data-view="board"] .main {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
 }
 
 /* One shared surface for the quick-create and filter rows; the rows themselves
@@ -509,6 +526,12 @@
 	scrollbar-gutter: stable;
 }
 
+.app[data-view="board"] .board {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: hidden;
+}
+
 .board::-webkit-scrollbar {
 	height: 0.75rem;
 }
@@ -537,6 +560,13 @@
 	overflow: hidden;
 	background: var(--sb-lane);
 	border-radius: var(--md-sys-shape-corner-large);
+}
+
+.app[data-view="board"] .lane {
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr);
+	height: 100%;
+	min-height: 0;
 }
 
 .lane[data-drag-over="true"] {
@@ -604,6 +634,12 @@
 	gap: var(--md-space-2);
 	align-content: start;
 	padding: var(--md-space-2);
+}
+
+.app[data-view="board"] .cardList {
+	overflow-y: auto;
+	overscroll-behavior-y: contain;
+	scrollbar-gutter: stable;
 }
 
 .card {
