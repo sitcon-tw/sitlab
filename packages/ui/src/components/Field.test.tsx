@@ -68,6 +68,7 @@ describe("field primitives", () => {
 		const trigger = screen.getByRole("button", { name: "Status" });
 		await user.click(trigger);
 		const menu = await screen.findByRole("menu", { name: "Status選項" });
+		expect(trigger.closest(".md-field__box")).not.toContainElement(menu);
 		await user.click(within(menu).getByRole("menuitemcheckbox", { name: "Done" }));
 		expect(trigger).toHaveTextContent("Done");
 	});

@@ -220,7 +220,6 @@ export function SelectField({
 			<Menu
 				label={`${label}選項`}
 				className="md-select-menu"
-				portalled={false}
 				trigger={
 					<button
 						id={id}
