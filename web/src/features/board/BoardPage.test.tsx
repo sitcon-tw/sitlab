@@ -949,16 +949,22 @@ describe("SITCON Board interactions", () => {
 		);
 	});
 
-	it("offers GitLab quick actions inside a description", async () => {
+	it("navigates GitLab quick actions inside a description", async () => {
 		const user = userEvent.setup();
 		render(<Harness />);
 
 		await user.click(screen.getByRole("heading", { name: "[議程組] 確認議程講者資料" }));
 		const dialog = screen.getByRole("dialog", { name: /129 卡片詳細資料/ });
 		const input = within(dialog).getByLabelText("描述");
-		await user.type(input, "/cl{Enter}");
+		await user.type(input, "/");
+		const suggestions = screen.getByRole("listbox", { name: "GitLab autocomplete" });
+		expect(within(suggestions).getByRole("option", { name: /\/assign/ })).toHaveAttribute("aria-selected", "true");
+
+		await user.keyboard("{ArrowDown}");
+		expect(within(suggestions).getByRole("option", { name: /\/close/ })).toHaveAttribute("aria-selected", "true");
+
+		await user.keyboard("{Enter}");
 		expect(input).toHaveValue("/close");
-		expect(within(dialog).queryByLabelText("Quick action")).not.toBeInTheDocument();
 	});
 
 	it("selects more than one assignee", async () => {

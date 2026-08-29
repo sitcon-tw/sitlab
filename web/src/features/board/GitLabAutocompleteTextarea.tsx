@@ -151,7 +151,9 @@ export function GitLabAutocompleteTextarea({
 					onClick?.(event);
 				}}
 				onKeyUp={(event) => {
-					updateCursor(event.currentTarget);
+					if (!open || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) {
+						updateCursor(event.currentTarget);
+					}
 					onKeyUp?.(event);
 				}}
 				onSelect={(event) => {
