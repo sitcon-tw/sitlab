@@ -123,25 +123,27 @@
 	letter-spacing: 0;
 }
 
+/* The chip's padding sits on the inner button and the button stretches, so
+ * wherever the chip is drawn wider than its content the whole box stays the
+ * click target rather than just the avatar and name. */
 .assigneeControl {
-	grid-area: assignee;
 	min-width: 0;
-}
-
-/* Match the filled look of the neighbouring quick-create fields. The chip's
- * padding moves onto the inner button and the button stretches, so the whole
- * box is the click target rather than just the avatar and name. */
-.quickCreate .assigneeControl {
 	padding: 0;
-	background: var(--sb-control);
-	border-radius: var(--md-sys-shape-corner-medium);
 }
 
-.quickCreate .assigneeControl :global(.md-chip__button) {
+.assigneeControl :global(.md-chip__button) {
 	flex: 1;
 	align-self: stretch;
 	justify-content: inherit;
 	padding-inline: var(--md-space-2) var(--md-space-3);
+}
+
+/* Only the quick-create grid names an assignee area; match the filled look of
+ * its neighbouring fields. */
+.quickCreate .assigneeControl {
+	grid-area: assignee;
+	background: var(--sb-control);
+	border-radius: var(--md-sys-shape-corner-medium);
 }
 
 .assigneeCompact {
