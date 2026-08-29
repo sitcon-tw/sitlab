@@ -22,23 +22,29 @@
  *   extra-small    4  text field · menu · snackbar
  *   none           0  list item · top app bar
  *
- * SIZE
- *   button        44dp; 24dp inline padding, 16dp on a leading-icon side; 18dp icon
+ * SIZE  Compact density is the product default (design.md deviation 10): most
+ *   metrics sit one step below stock MD3 while touch stays at 44-48dp.
+ *   button        40dp visual / 48dp touch via a non-layout ::after; --sm 32dp;
+ *                 24dp inline padding, 16dp on a leading-icon side; 18dp icon
  *   icon button   40dp visual / 48dp touch via a non-layout ::after; --sm 32/48
- *   chip          32dp; 12dp inline padding, 8dp on an input chip's leading side
- *   text field    56dp; 16dp padding; 3dp focus outline
- *   list item     56dp single line / 72dp two line; 40dp leading; 16dp inline
- *   menu item     48dp; 12dp inline padding
- *   top app bar   64dp; 16dp inline padding
- *   dialog        24dp padding
+ *   chip          28dp; 12dp inline padding, 8dp on an input chip's leading
+ *                 side; --sm 24dp read-only metadata chip
+ *   text field    56dp in dialogs; dense 44dp in board chrome and drawers;
+ *                 16dp padding; 3dp focus outline
+ *   list item     40dp single line / 56dp two line; 40dp leading; 12dp inline
+ *   menu item     36dp; 12dp inline padding
+ *   top app bar   56dp; 16dp inline padding
+ *   dialog        24dp padding; drawer header/body tighten to 16-20dp
+ *   table row     48dp
  *   snackbar      48dp min height; 16dp padding; 344dp max width
  *   checkbox 18dp · radio 20dp, each with a 40dp state layer
  *
  * TYPE  Inter Variable with CJK/system fallbacks. Sizes come from the 15
  *   type-scale roles; product headings may use the strong 600/700 roles.
- *   headline-small dialog title · title-large app bar · title-medium card title
- *   title-small lane header · body-large field text · body-medium card body
- *   body-small supporting text · label-large button/chip/menu · label-small badge
+ *   headline-small dialog title · title-large app bar
+ *   title-small card title · lane header · body-large field text
+ *   body-medium card body · body-small supporting text
+ *   label-large button/chip/menu · label-small badge
  *
  * STATE  hover .08 · focus .10 · pressed .10 · dragged .16, applied as the
  *   surface's own content color through `background-color: currentColor`.

@@ -153,7 +153,7 @@
 .md-list {
 	display: flex;
 	flex-direction: column;
-	padding: var(--md-space-2) 0;
+	padding: var(--md-space-1) 0;
 	margin: 0;
 	list-style: none;
 }
@@ -163,8 +163,8 @@
 	gap: var(--md-space-4);
 	align-items: center;
 	width: 100%;
-	min-height: 3.5rem;
-	padding: var(--md-space-2) var(--md-space-4);
+	min-height: 2.5rem;
+	padding: var(--md-space-1) var(--md-space-3);
 	color: var(--md-sys-color-on-surface);
 	text-align: start;
 	background: none;
@@ -172,7 +172,7 @@
 }
 
 .md-list-item--two-line {
-	min-height: 4.5rem;
+	min-height: 3.5rem;
 }
 
 .md-list-item__leading {
@@ -317,7 +317,7 @@
 .md-menu {
 	z-index: 100;
 	min-width: 7rem;
-	padding: var(--md-space-2) 0;
+	padding: var(--md-space-1) 0;
 	background: var(--md-sys-color-surface-container-low);
 	border-radius: var(--md-sys-shape-corner-small);
 }
@@ -328,7 +328,7 @@
 	gap: var(--md-space-3);
 	align-items: center;
 	width: 100%;
-	min-height: 3rem;
+	min-height: 2.25rem;
 	padding: 0 var(--md-space-3);
 	overflow: hidden;
 	font-size: var(--md-sys-typescale-label-large-size);
@@ -483,7 +483,7 @@
 	gap: var(--md-space-2);
 	align-items: center;
 	justify-content: center;
-	min-height: 2.75rem;
+	min-height: 2.5rem;
 	padding: 0 var(--md-space-6);
 	overflow: hidden;
 	font-family: var(--md-sys-typescale-label-large-font);
@@ -503,6 +503,17 @@
 
 .md-button:active:not(:disabled) {
 	transform: scale(0.98);
+}
+
+/* 48dp touch target that does not affect layout, mirroring the icon button. */
+.md-button::after {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 100%;
+	height: 3rem;
+	transform: translate(-50%, -50%);
+	content: "";
 }
 
 .md-button:has(.md-button__icon:first-child) {
@@ -558,7 +569,7 @@
 }
 
 .md-button--sm {
-	min-height: 2.25rem;
+	min-height: 2rem;
 	padding-inline: var(--md-space-4);
 	font-size: var(--md-sys-typescale-label-medium-size);
 	letter-spacing: var(--md-sys-typescale-label-medium-tracking);
@@ -667,7 +678,7 @@
 	display: inline-flex;
 	gap: var(--md-space-2);
 	align-items: center;
-	min-height: 2rem;
+	min-height: 1.75rem;
 	max-width: 100%;
 	padding: 0 var(--md-space-3);
 	overflow: hidden;
@@ -728,6 +739,17 @@
 	padding-inline-start: var(--md-space-2);
 }
 
+/* Metadata chip for dense rows such as board-card labels. Read-only scale: the
+ * 24dp box is below the touch floor, so interactive chips stay at the default. */
+.md-chip--sm {
+	min-height: 1.5rem;
+	padding: 0 var(--md-space-2);
+	font-size: var(--md-sys-typescale-label-medium-size);
+	font-weight: var(--md-sys-typescale-label-medium-weight);
+	line-height: var(--md-sys-typescale-label-medium-line-height);
+	letter-spacing: var(--md-sys-typescale-label-medium-tracking);
+}
+
 .md-chip--elevated {
 	background-color: var(--md-sys-color-surface-container-low);
 }
@@ -778,7 +800,7 @@
 	gap: var(--md-space-2);
 	align-items: center;
 	justify-content: center;
-	min-height: 2.75rem;
+	min-height: 2.5rem;
 	padding: 0 var(--md-space-3);
 	overflow: hidden;
 	font-family: var(--md-sys-typescale-label-large-font);
@@ -1030,9 +1052,10 @@
 }
 
 /* Dense product chrome for data-heavy views. The board's quick-create and
- * filter rows use this; dialogs stay at the more comfortable 56dp size. */
+ * filter rows and the drawer forms use this; dialogs stay at the more
+ * comfortable 56dp size. */
 .md-field.md-field--dense .md-field__box {
-	min-height: 3rem;
+	min-height: 2.75rem;
 }
 
 .md-field.md-field--dense .md-field__input {
@@ -1280,7 +1303,7 @@
 	display: flex;
 	gap: var(--md-space-3);
 	align-items: center;
-	height: 4rem;
+	height: 3.5rem;
 	padding-inline: var(--md-space-4);
 	color: var(--md-sys-color-on-surface);
 	background: var(--md-sys-color-surface);
@@ -1402,7 +1425,7 @@
 }
 
 .md-data-table th {
-	height: 3.5rem;
+	height: 3rem;
 	padding: 0 var(--md-space-4);
 	font-size: var(--md-sys-typescale-label-large-size);
 	font-weight: var(--md-sys-typescale-label-large-weight);
@@ -1415,7 +1438,7 @@
 }
 
 .md-data-table td {
-	height: 3.5rem;
+	height: 3rem;
 	padding: 0 var(--md-space-4);
 	font-size: var(--md-sys-typescale-body-medium-size);
 	line-height: var(--md-sys-typescale-body-medium-line-height);
@@ -1532,6 +1555,15 @@
 	background: var(--md-sys-color-surface);
 	border-start-start-radius: var(--md-sys-shape-corner-large);
 	border-end-start-radius: var(--md-sys-shape-corner-large);
+}
+
+/* Drawers are dense working surfaces; dialogs keep the 24dp Material padding. */
+.md-drawer .md-dialog__header {
+	padding: var(--md-space-4) var(--md-space-5) var(--md-space-2);
+}
+
+.md-drawer .md-dialog__body {
+	padding: 0 var(--md-space-5) var(--md-space-5);
 }
 
 .md-dialog__header {
