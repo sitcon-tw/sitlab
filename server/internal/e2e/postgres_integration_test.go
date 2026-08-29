@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strconv"
@@ -58,7 +59,7 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	defer pool.Close()
 	if _, err := pool.Exec(ctx, `
 		TRUNCATE gitlab_webhook_deliveries, durable_operations, issue_cache, board_lists, user_preferences,
-		         directory_team_memberships, directory_members, directory_teams,
+		         directory_team_memberships, directory_members, directory_teams, directory_milestones,
 		         sync_snapshots, oauth_states, auth_sessions, users
 		RESTART IDENTITY CASCADE
 	`); err != nil {
@@ -315,6 +316,10 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 			GitLabUserID: 202, Username: "bob", DisplayName: "Bob", ProfileURL: "https://gitlab.com/bob",
 			AccessLevel: 30, State: domaindirectory.MemberActive, TeamKeys: []string{"development"},
 		}},
+		Milestones: []domaindirectory.Milestone{
+			{Name: "一籌", Date: "2026-08-29", Kind: domaindirectory.MilestoneOrganizing},
+			{Name: "年會", Date: "2027-03-13", Kind: domaindirectory.MilestoneConference},
+		},
 		SourceRevision: "member-revocation", SyncedAt: now.Add(3 * time.Minute),
 	}
 	if err := store.ReplaceDirectory(ctx, revokedDirectory); err != nil {
@@ -325,6 +330,33 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	}
 	if _, err := oauthRepo.OAuthCredential(ctx, user.ID); !errors.Is(err, identity.ErrOAuthCredentialNotFound) {
 		t.Fatalf("revoked member OAuth credential error = %v", err)
+	}
+
+	storedDirectory, err := store.Snapshot(ctx)
+	if err != nil || !reflect.DeepEqual(storedDirectory.Milestones, revokedDirectory.Milestones) {
+		t.Fatalf("stored milestones = %#v, error %v, want %#v", storedDirectory.Milestones, err, revokedDirectory.Milestones)
+	}
+	var milestoneActions int
+	if err := pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM sync_actions WHERE entity = 'milestone' AND entity_id = 'directory' AND op = 'upsert'
+	`).Scan(&milestoneActions); err != nil {
+		t.Fatal(err)
+	}
+	if milestoneActions != 1 {
+		t.Fatalf("milestone sync actions = %d, want exactly 1", milestoneActions)
+	}
+	// An identical replace must stay silent: the five-minute directory refresh cannot
+	// wake every browser with an unchanged calendar.
+	if err := store.ReplaceDirectory(ctx, revokedDirectory); err != nil {
+		t.Fatalf("replace directory with identical milestones: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM sync_actions WHERE entity = 'milestone'
+	`).Scan(&milestoneActions); err != nil {
+		t.Fatal(err)
+	}
+	if milestoneActions != 1 {
+		t.Fatalf("milestone sync actions after quiet refresh = %d, want still 1", milestoneActions)
 	}
 }
 

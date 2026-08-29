@@ -96,3 +96,133 @@ teams:
     active: true
     members: []
     leaders: []
+
+# 顯示在甘特圖時間軸上的會議日期。kind: organizing = 籌會、standup = 站立會議、conference = 年會。
+milestones:
+  - name: 負一籌與 BoF
+    date: 2026-08-08
+    kind: organizing
+
+  - name: 零籌
+    date: 2026-08-15
+    kind: organizing
+
+  - name: 站立會議
+    date: 2026-08-22
+    kind: standup
+
+  - name: 一籌
+    date: 2026-08-29
+    kind: organizing
+
+  - name: 站立會議
+    date: 2026-09-05
+    kind: standup
+
+  - name: 二籌
+    date: 2026-09-12
+    kind: organizing
+
+  - name: 站立會議
+    date: 2026-09-19
+    kind: standup
+
+  - name: 三籌
+    date: 2026-09-26
+    kind: organizing
+
+  - name: 站立會議
+    date: 2026-10-03
+    kind: standup
+
+  - name: 四籌
+    date: 2026-10-10
+    kind: organizing
+
+  - name: 站立會議
+    date: 2026-10-17
+    kind: standup
+
+  - name: 五籌
+    date: 2026-10-24
+    kind: organizing
+
+  - name: 站立會議
+    date: 2026-10-31
+    kind: standup
+
+  - name: 六籌
+    date: 2026-11-07
+    kind: organizing
+
+  - name: 站立會議
+    date: 2026-11-14
+    kind: standup
+
+  - name: 七籌
+    date: 2026-11-21
+    kind: organizing
+
+  - name: 站立會議
+    date: 2026-11-28
+    kind: standup
+
+  - name: 八籌
+    date: 2026-12-05
+    kind: organizing
+
+  - name: 站立會議
+    date: 2026-12-12
+    kind: standup
+
+  - name: 九籌
+    date: 2026-12-19
+    kind: organizing
+
+  - name: 站立會議
+    date: 2026-12-26
+    kind: standup
+
+  - name: 十籌
+    date: 2027-01-02
+    kind: organizing
+
+  - name: 站立會議
+    date: 2027-01-09
+    kind: standup
+
+  - name: 十一籌
+    date: 2027-01-16
+    kind: organizing
+
+  - name: 十二籌
+    date: 2027-01-23
+    kind: organizing
+
+  - name: 十三籌
+    date: 2027-01-30
+    kind: organizing
+
+  - name: 十四籌
+    date: 2027-02-06
+    kind: organizing
+
+  - name: 十五籌
+    date: 2027-02-13
+    kind: organizing
+
+  - name: 十六籌
+    date: 2027-02-20
+    kind: organizing
+
+  - name: 十七籌
+    date: 2027-02-27
+    kind: organizing
+
+  - name: 十八籌
+    date: 2027-03-06
+    kind: organizing
+
+  - name: 年會
+    date: 2027-03-13
+    kind: conference

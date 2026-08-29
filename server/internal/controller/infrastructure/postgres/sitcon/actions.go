@@ -85,6 +85,14 @@ func (b *actionBatch) member(member domaindirectory.Member) {
 	b.upsert("member", formatIID(member.GitLabUserID), member)
 }
 
+// milestones records the whole calendar as one action, like laneOrder does for a lane:
+// the set is small, changes a handful of times a year, and per-row keying would need
+// delete/upsert pairs whenever a meeting is renamed. Never emits delete; an empty
+// calendar is an upsert of an empty list.
+func (b *actionBatch) milestones(list []domaindirectory.Milestone) {
+	b.upsert("milestone", "directory", map[string]any{"milestones": list})
+}
+
 func (b *actionBatch) deleteMember(gitLabUserID int64) {
 	b.remove("member", formatIID(gitLabUserID))
 }

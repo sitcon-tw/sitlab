@@ -61,6 +61,7 @@ model BootstrapResponse {
 
 	teams: DirectoryTeam[];
 	members: DirectoryMember[];
+	milestones: DirectoryMilestone[];
 	board: BoardSnapshot;
 	preferences: UserPreferences;
 	sync: SyncStatus;

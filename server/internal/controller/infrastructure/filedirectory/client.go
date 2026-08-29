@@ -79,6 +79,11 @@ func (c *Client) load(ctx context.Context) (snapshot, error) {
 			Members     []string `yaml:"members"`
 			Leaders     []string `yaml:"leaders"`
 		} `yaml:"teams"`
+		Milestones []struct {
+			Name string `yaml:"name"`
+			Date string `yaml:"date"`
+			Kind string `yaml:"kind"`
+		} `yaml:"milestones"`
 	}
 	if err := yaml.Unmarshal(content, &source); err != nil {
 		return snapshot{}, fmt.Errorf("parse board directory YAML: %w", err)
@@ -90,6 +95,17 @@ func (c *Client) load(ctx context.Context) (snapshot, error) {
 			GitLabLabel: team.GitLabLabel, Active: team.Active, Members: team.Members, Leaders: team.Leaders,
 		})
 	}
-	revision := fmt.Sprintf("%x", sha256.Sum256(content))
+	file.Milestones = make([]directory.MilestoneConfig, 0, len(source.Milestones))
+	for _, milestone := range source.Milestones {
+		file.Milestones = append(file.Milestones, directory.MilestoneConfig{
+			Name: milestone.Name, Date: milestone.Date, Kind: directory.MilestoneKind(milestone.Kind),
+		})
+	}
+	// The format prefix makes every revision stored by an older build a mismatch, so
+	// the first refresh after a deploy re-reads the file instead of trusting the
+	// snapshot fast path. Without it, an old process that consumed a YAML change the
+	// new build parses more fully (milestones, say) would pin the richer fields empty
+	// until the file happened to change again. Bump it when load() learns new fields.
+	revision := fmt.Sprintf("v2:%x", sha256.Sum256(content))
 	return snapshot{file: file, revision: revision}, nil
 }

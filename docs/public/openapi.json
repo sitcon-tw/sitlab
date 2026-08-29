@@ -3631,7 +3631,7 @@
 			},
 			"BootstrapResponse": {
 				"type": "object",
-				"required": ["revision", "me", "csrfToken", "teams", "members", "board", "preferences", "sync"],
+				"required": ["revision", "me", "csrfToken", "teams", "members", "milestones", "board", "preferences", "sync"],
 				"properties": {
 					"revision": {
 						"type": "string"
@@ -3653,6 +3653,12 @@
 						"type": "array",
 						"items": {
 							"$ref": "#/components/schemas/DirectoryMember"
+						}
+					},
+					"milestones": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/DirectoryMilestone"
 						}
 					},
 					"board": {
@@ -4120,6 +4126,32 @@
 					}
 				]
 			},
+			"DirectoryMilestone": {
+				"type": "object",
+				"required": ["name", "date", "kind"],
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 80
+					},
+					"date": {
+						"type": "string",
+						"format": "date"
+					},
+					"kind": {
+						"type": "string",
+						"enum": ["organizing", "standup", "conference"]
+					}
+				},
+				"examples": [
+					{
+						"name": "一籌",
+						"date": "2026-08-29",
+						"kind": "organizing"
+					}
+				]
+			},
 			"DirectoryResponse": {
 				"type": "object",
 				"required": ["directory"],
@@ -4131,7 +4163,7 @@
 			},
 			"DirectorySnapshot": {
 				"type": "object",
-				"required": ["teams", "members", "sourceRevision", "syncedAt"],
+				"required": ["teams", "members", "milestones", "sourceRevision", "syncedAt"],
 				"properties": {
 					"teams": {
 						"type": "array",
@@ -4143,6 +4175,12 @@
 						"type": "array",
 						"items": {
 							"$ref": "#/components/schemas/DirectoryMember"
+						}
+					},
+					"milestones": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/DirectoryMilestone"
 						}
 					},
 					"sourceRevision": {
@@ -4357,6 +4395,28 @@
 						"$ref": "#/components/schemas/SyncAction"
 					}
 				]
+			},
+			"MilestoneSyncAction": {
+				"type": "object",
+				"required": ["entity", "milestones"],
+				"properties": {
+					"entity": {
+						"type": "string",
+						"enum": ["milestone"]
+					},
+					"milestones": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/DirectoryMilestone"
+						}
+					}
+				},
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/SyncAction"
+					}
+				],
+				"description": "The full milestone calendar. Replaced wholesale: the set is small, changes rarely, and per-row keying would need delete/upsert pairs on every rename."
 			},
 			"MoveCardRequest": {
 				"type": "object",
@@ -4654,6 +4714,9 @@
 								},
 								{
 									"$ref": "#/components/schemas/SyncStatusSyncAction"
+								},
+								{
+									"$ref": "#/components/schemas/MilestoneSyncAction"
 								}
 							]
 						}

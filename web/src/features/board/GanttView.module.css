@@ -100,6 +100,27 @@
 	pointer-events: none;
 }
 
+/* z-index sits below .todayLine so 今天 wins when a meeting lands on today. */
+.milestoneLine {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: calc(var(--gantt-issue-column) + (var(--gantt-offset-days) + 0.5) * var(--gantt-day-width));
+	z-index: 1;
+	width: 2px;
+	background: color-mix(in srgb, var(--md-sys-color-primary) 75%, transparent);
+	pointer-events: none;
+}
+
+.milestoneLine[data-kind="standup"] {
+	width: 1px;
+	background: color-mix(in srgb, var(--md-sys-color-outline) 60%, transparent);
+}
+
+.milestoneLine[data-kind="conference"] {
+	background: var(--md-sys-color-tertiary);
+}
+
 .timelineHeader,
 .groupHeader,
 .issueRow {
@@ -176,6 +197,42 @@
 	background: var(--md-sys-color-error-container);
 	border-radius: var(--md-sys-shape-corner-small);
 	transform: translateX(-50%);
+}
+
+/* Anchored to the header's bottom edge; the 今天 pill owns the top edge, so a
+   meeting landing on today never collides with it. */
+.milestoneLabel {
+	position: absolute;
+	bottom: var(--md-space-1);
+	left: calc((var(--gantt-offset-days) + 0.5) * var(--gantt-day-width));
+	z-index: 1;
+	padding: 0 var(--md-space-1);
+	font-size: var(--md-sys-typescale-label-small-size);
+	font-weight: var(--md-sys-typescale-label-small-weight);
+	line-height: var(--md-sys-typescale-label-small-line-height);
+	color: var(--md-sys-color-on-primary-container);
+	letter-spacing: var(--md-sys-typescale-label-small-tracking);
+	white-space: nowrap;
+	background: var(--md-sys-color-primary-container);
+	border-radius: var(--md-sys-shape-corner-small);
+	transform: translateX(-50%);
+	pointer-events: none;
+}
+
+.milestoneLabel[data-kind="standup"] {
+	color: var(--md-sys-color-on-surface-variant);
+	background: var(--md-sys-color-surface-container-highest);
+}
+
+.milestoneLabel[data-kind="conference"] {
+	color: var(--md-sys-color-on-tertiary-container);
+	background: var(--md-sys-color-tertiary-container);
+}
+
+/* Week scale packs weekly markers seven day-widths apart; the four-character
+   站立會議 pill is the noise there, so its line stays and its label goes. */
+.viewport[data-scale="week"] .milestoneLabel[data-kind="standup"] {
+	display: none;
 }
 
 .group {

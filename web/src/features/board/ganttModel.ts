@@ -1,4 +1,4 @@
-import type { BoardCard, BoardList, DirectoryTeam } from "./model";
+import type { BoardCard, BoardList, DirectoryMilestone, DirectoryTeam } from "./model";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -81,6 +81,23 @@ export function createGanttViewModel(cards: BoardCard[], teams: DirectoryTeam[],
 		timeline: createTimeline(scheduledItems, today),
 		orderedCards: [...groups.flatMap((group) => group.scheduled.map((item) => item.card)), ...groups.flatMap((group) => group.unscheduled)]
 	};
+}
+
+export interface GanttMilestoneMarker {
+	name: string;
+	kind: DirectoryMilestone["kind"];
+	date: string;
+	day: number;
+}
+
+// Milestones never widen the timeline: it stays derived from card dates, and
+// meetings outside that window simply do not render.
+export function ganttMilestoneMarkers(milestones: DirectoryMilestone[], timeline: GanttTimeline | null): GanttMilestoneMarker[] {
+	if (!timeline) return [];
+	return milestones
+		.map((milestone) => ({ name: milestone.name, kind: milestone.kind, date: milestone.date, day: plainDateToDay(milestone.date) }))
+		.filter((marker) => marker.day >= timeline.startDay && marker.day < timeline.endDay)
+		.sort((a, b) => a.day - b.day || a.name.localeCompare(b.name, "zh-Hant"));
 }
 
 export function plainDateToDay(value: string) {

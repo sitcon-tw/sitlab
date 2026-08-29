@@ -1,4 +1,4 @@
-import type { BoardCard, Bootstrap, DirectoryMember, DirectoryTeam } from "@/features/board/model";
+import type { BoardCard, Bootstrap, DirectoryMember, DirectoryMilestone, DirectoryTeam } from "@/features/board/model";
 
 const teamDefinitions = [
 	["administration", "行政組", "行政", [101, 102]],
@@ -60,6 +60,43 @@ const members: DirectoryMember[] = memberDefinitions.map(([gitLabUserId, usernam
 	teamKeys: teams.filter((team) => team.memberGitLabUserIds.includes(gitLabUserId)).map((team) => team.key)
 }));
 
+const milestoneDefinitions = [
+	["負一籌與 BoF", "2026-08-08", "organizing"],
+	["零籌", "2026-08-15", "organizing"],
+	["站立會議", "2026-08-22", "standup"],
+	["一籌", "2026-08-29", "organizing"],
+	["站立會議", "2026-09-05", "standup"],
+	["二籌", "2026-09-12", "organizing"],
+	["站立會議", "2026-09-19", "standup"],
+	["三籌", "2026-09-26", "organizing"],
+	["站立會議", "2026-10-03", "standup"],
+	["四籌", "2026-10-10", "organizing"],
+	["站立會議", "2026-10-17", "standup"],
+	["五籌", "2026-10-24", "organizing"],
+	["站立會議", "2026-10-31", "standup"],
+	["六籌", "2026-11-07", "organizing"],
+	["站立會議", "2026-11-14", "standup"],
+	["七籌", "2026-11-21", "organizing"],
+	["站立會議", "2026-11-28", "standup"],
+	["八籌", "2026-12-05", "organizing"],
+	["站立會議", "2026-12-12", "standup"],
+	["九籌", "2026-12-19", "organizing"],
+	["站立會議", "2026-12-26", "standup"],
+	["十籌", "2027-01-02", "organizing"],
+	["站立會議", "2027-01-09", "standup"],
+	["十一籌", "2027-01-16", "organizing"],
+	["十二籌", "2027-01-23", "organizing"],
+	["十三籌", "2027-01-30", "organizing"],
+	["十四籌", "2027-02-06", "organizing"],
+	["十五籌", "2027-02-13", "organizing"],
+	["十六籌", "2027-02-20", "organizing"],
+	["十七籌", "2027-02-27", "organizing"],
+	["十八籌", "2027-03-06", "organizing"],
+	["年會", "2027-03-13", "conference"]
+] as const satisfies ReadonlyArray<readonly [string, string, DirectoryMilestone["kind"]]>;
+
+const milestones: DirectoryMilestone[] = milestoneDefinitions.map(([name, date, kind]) => ({ name, date, kind }));
+
 function card(
 	issueIid: number,
 	title: string,
@@ -110,6 +147,7 @@ export const demoBootstrap: Bootstrap = {
 	csrfToken: "demo-csrf-token",
 	teams,
 	members,
+	milestones,
 	board: {
 		lists: [
 			{ key: "wating", name: "Waiting", position: 0, closed: false, color: "critical" },

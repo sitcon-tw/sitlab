@@ -664,6 +664,7 @@ export interface components {
 			csrfToken: string;
 			teams: components["schemas"]["DirectoryTeam"][];
 			members: components["schemas"]["DirectoryMember"][];
+			milestones: components["schemas"]["DirectoryMilestone"][];
 			board: components["schemas"]["BoardSnapshot"];
 			preferences: components["schemas"]["UserPreferences"];
 			sync: components["schemas"]["SyncStatus"];
@@ -841,12 +842,27 @@ export interface components {
 			state: "active" | "blocked" | "deactivated";
 			teamKeys: string[];
 		};
+		/**
+		 * @example {
+		 *       "name": "一籌",
+		 *       "date": "2026-08-29",
+		 *       "kind": "organizing"
+		 *     }
+		 */
+		DirectoryMilestone: {
+			name: string;
+			/** Format: date */
+			date: string;
+			/** @enum {string} */
+			kind: "organizing" | "standup" | "conference";
+		};
 		DirectoryResponse: {
 			directory: components["schemas"]["DirectorySnapshot"];
 		};
 		DirectorySnapshot: {
 			teams: components["schemas"]["DirectoryTeam"][];
 			members: components["schemas"]["DirectoryMember"][];
+			milestones: components["schemas"]["DirectoryMilestone"][];
 			sourceRevision: string;
 			/** Format: date-time */
 			syncedAt: string;
@@ -920,6 +936,12 @@ export interface components {
 			/** @enum {string} */
 			entity: "member";
 			member: components["schemas"]["DirectoryMember"] | null;
+		} & WithRequired<components["schemas"]["SyncAction"], "entity">;
+		/** @description The full milestone calendar. Replaced wholesale: the set is small, changes rarely, and per-row keying would need delete/upsert pairs on every rename. */
+		MilestoneSyncAction: {
+			/** @enum {string} */
+			entity: "milestone";
+			milestones: components["schemas"]["DirectoryMilestone"][];
 		} & WithRequired<components["schemas"]["SyncAction"], "entity">;
 		MoveCardRequest: {
 			operationId: components["schemas"]["uuid"];
@@ -1064,6 +1086,7 @@ export interface components {
 				| components["schemas"]["MemberSyncAction"]
 				| components["schemas"]["PreferenceSyncAction"]
 				| components["schemas"]["SyncStatusSyncAction"]
+				| components["schemas"]["MilestoneSyncAction"]
 			)[];
 			/** @description More actions remain past this batch; request again from the new checkpoint. */
 			hasMore: boolean;

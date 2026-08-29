@@ -16,18 +16,29 @@ const (
 	MemberDeactivated MemberState = "deactivated"
 )
 
+type MilestoneKind string
+
+const (
+	MilestoneOrganizing MilestoneKind = "organizing"
+	MilestoneStandup    MilestoneKind = "standup"
+	MilestoneConference MilestoneKind = "conference"
+)
+
 var (
 	ErrUnsupportedVersion  = errors.New("unsupported directory version")
 	ErrInvalidTeam         = errors.New("invalid directory team")
 	ErrDuplicateTeam       = errors.New("duplicate directory team")
 	ErrDuplicateUsername   = errors.New("duplicate GitLab username")
+	ErrInvalidMilestone    = errors.New("invalid directory milestone")
+	ErrDuplicateMilestone  = errors.New("duplicate directory milestone")
 	ErrSnapshotNotFound    = errors.New("directory snapshot not found")
 	ErrPreferencesNotFound = errors.New("user preferences not found")
 )
 
 type File struct {
-	Version int
-	Teams   []TeamConfig
+	Version    int
+	Teams      []TeamConfig
+	Milestones []MilestoneConfig
 }
 
 type TeamConfig struct {
@@ -38,6 +49,18 @@ type TeamConfig struct {
 	Active      bool
 	Members     []string
 	Leaders     []string
+}
+
+type MilestoneConfig struct {
+	Name string
+	Date string
+	Kind MilestoneKind
+}
+
+type Milestone struct {
+	Name string
+	Date string
+	Kind MilestoneKind
 }
 
 type GitLabMember struct {
@@ -86,6 +109,7 @@ type MissingMember struct {
 type Snapshot struct {
 	Teams          []Team
 	Members        []Member
+	Milestones     []Milestone
 	SourceRevision string
 	SyncedAt       time.Time
 }
@@ -176,6 +200,35 @@ func Normalize(file File, gitLabMembers []GitLabMember, sourceRevision string, s
 		teams = append(teams, team)
 	}
 
+	milestones := make([]Milestone, 0, len(file.Milestones))
+	milestoneKeys := make(map[string]struct{}, len(file.Milestones))
+	for index, config := range file.Milestones {
+		name := strings.TrimSpace(config.Name)
+		if name == "" {
+			return Snapshot{}, nil, fmt.Errorf("%w at index %d: empty name", ErrInvalidMilestone, index)
+		}
+		parsed, err := time.Parse(time.DateOnly, config.Date)
+		if err != nil {
+			return Snapshot{}, nil, fmt.Errorf("%w at index %d: date %q", ErrInvalidMilestone, index, config.Date)
+		}
+		if !validMilestoneKind(config.Kind) {
+			return Snapshot{}, nil, fmt.Errorf("%w at index %d: kind %q", ErrInvalidMilestone, index, config.Kind)
+		}
+		milestone := Milestone{Name: name, Date: parsed.Format(time.DateOnly), Kind: config.Kind}
+		duplicateKey := milestone.Date + "\x00" + milestone.Name
+		if _, exists := milestoneKeys[duplicateKey]; exists {
+			return Snapshot{}, nil, fmt.Errorf("%w: %s %s", ErrDuplicateMilestone, milestone.Date, milestone.Name)
+		}
+		milestoneKeys[duplicateKey] = struct{}{}
+		milestones = append(milestones, milestone)
+	}
+	sort.SliceStable(milestones, func(i, j int) bool {
+		if milestones[i].Date == milestones[j].Date {
+			return milestones[i].Name < milestones[j].Name
+		}
+		return milestones[i].Date < milestones[j].Date
+	})
+
 	members := make([]Member, 0, len(gitLabMembers))
 	for _, source := range gitLabMembers {
 		teamsForMember := append([]string(nil), memberTeams[source.GitLabUserID]...)
@@ -194,7 +247,7 @@ func Normalize(file File, gitLabMembers []GitLabMember, sourceRevision string, s
 		return left < right
 	})
 
-	return Snapshot{Teams: teams, Members: members, SourceRevision: sourceRevision, SyncedAt: syncedAt.UTC()}, missing, nil
+	return Snapshot{Teams: teams, Members: members, Milestones: milestones, SourceRevision: sourceRevision, SyncedAt: syncedAt.UTC()}, missing, nil
 }
 
 func (s Snapshot) TeamExists(teamKey string) bool {
@@ -241,6 +294,15 @@ func (s Snapshot) Team(teamKey string) (Team, bool) {
 func validMemberState(state MemberState) bool {
 	switch state {
 	case MemberActive, MemberBlocked, MemberDeactivated:
+		return true
+	default:
+		return false
+	}
+}
+
+func validMilestoneKind(kind MilestoneKind) bool {
+	switch kind {
+	case MilestoneOrganizing, MilestoneStandup, MilestoneConference:
 		return true
 	default:
 		return false

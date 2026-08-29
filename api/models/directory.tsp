@@ -65,9 +65,22 @@ model DirectoryTeam {
 	leaderGitLabUserIds: int64[];
 }
 
+alias DirectoryMilestoneKind = "organizing" | "standup" | "conference";
+
+@example(#{ name: "一籌", date: plainDate.fromISO("2026-08-29"), kind: "organizing" })
+model DirectoryMilestone {
+	@minLength(1)
+	@maxLength(80)
+	name: string;
+
+	date: plainDate;
+	kind: DirectoryMilestoneKind;
+}
+
 model DirectorySnapshot {
 	teams: DirectoryTeam[];
 	members: DirectoryMember[];
+	milestones: DirectoryMilestone[];
 	sourceRevision: string;
 	syncedAt: utcDateTime;
 }

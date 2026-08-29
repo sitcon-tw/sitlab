@@ -192,6 +192,17 @@ func (r *Repository) ReplaceDirectory(ctx context.Context, snapshot domaindirect
 				}
 			}
 		}
+		if _, err := tx.Exec(ctx, `DELETE FROM directory_milestones`); err != nil {
+			return err
+		}
+		for _, milestone := range snapshot.Milestones {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO directory_milestones (date, name, kind, source_revision, updated_at)
+				VALUES ($1::date, $2, $3, $4, $5)
+			`, milestone.Date, milestone.Name, milestone.Kind, snapshot.SourceRevision, snapshot.SyncedAt); err != nil {
+				return err
+			}
+		}
 		for _, resource := range []string{"directory", "members"} {
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO sync_snapshots
@@ -246,6 +257,10 @@ func emitDirectoryChanges(ctx context.Context, tx pgx.Tx, batch *actionBatch, be
 	}
 	for gitLabUserID := range previousMembers {
 		batch.deleteMember(gitLabUserID)
+	}
+
+	if !slices.Equal(before.Milestones, after.Milestones) {
+		batch.milestones(after.Milestones)
 	}
 	return nil
 }
@@ -743,7 +758,38 @@ func loadDirectorySnapshot(ctx context.Context, tx pgx.Tx) (domaindirectory.Snap
 		}
 		snapshot.Members = append(snapshot.Members, member)
 	}
-	return snapshot, memberRows.Err()
+	if err := memberRows.Err(); err != nil {
+		return snapshot, err
+	}
+
+	snapshot.Milestones, err = queryDirectoryMilestones(ctx, tx)
+	return snapshot, err
+}
+
+func queryDirectoryMilestones(ctx context.Context, db postgres.DBTX) ([]domaindirectory.Milestone, error) {
+	rows, err := db.Query(ctx, `
+		SELECT name, date, kind
+		FROM directory_milestones
+		ORDER BY date, name
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list directory milestones: %w", err)
+	}
+	defer rows.Close()
+	milestones := make([]domaindirectory.Milestone, 0)
+	for rows.Next() {
+		var milestone domaindirectory.Milestone
+		var date pgtype.Date
+		if err := rows.Scan(&milestone.Name, &date, &milestone.Kind); err != nil {
+			return nil, fmt.Errorf("scan directory milestone: %w", err)
+		}
+		milestone.Date = date.Time.Format(time.DateOnly)
+		milestones = append(milestones, milestone)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate directory milestones: %w", err)
+	}
+	return milestones, nil
 }
 
 func (r *Repository) Snapshot(ctx context.Context) (domaindirectory.Snapshot, error) {
@@ -860,7 +906,11 @@ func (r *Repository) Snapshot(ctx context.Context) (domaindirectory.Snapshot, er
 	if err := directoryMembershipRows.Err(); err != nil {
 		return domaindirectory.Snapshot{}, fmt.Errorf("iterate GitLab directory memberships: %w", err)
 	}
-	return domaindirectory.Snapshot{Teams: teams, Members: members, SourceRevision: revision, SyncedAt: syncedAt.UTC()}, nil
+	milestones, err := queryDirectoryMilestones(ctx, db)
+	if err != nil {
+		return domaindirectory.Snapshot{}, err
+	}
+	return domaindirectory.Snapshot{Teams: teams, Members: members, Milestones: milestones, SourceRevision: revision, SyncedAt: syncedAt.UTC()}, nil
 }
 
 func (r *Repository) Preferences(ctx context.Context, userID string) (domaindirectory.Preferences, error) {

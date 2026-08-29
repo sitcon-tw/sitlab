@@ -1,7 +1,7 @@
 import { Badge, Button, EmptyState, SegmentedButton, type SegmentedOption } from "@project-template/ui";
 import { CalendarClock, CalendarDays, CalendarRange, CircleAlert } from "lucide-react";
 import { useEffect, useRef, type CSSProperties, type RefObject } from "react";
-import { type GanttScheduledItem, type GanttTimeline, type GanttViewModel } from "./ganttModel";
+import { ganttMilestoneMarkers, type GanttScheduledItem, type GanttTimeline, type GanttViewModel } from "./ganttModel";
 import styles from "./GanttView.module.css";
 import type { BoardCard, Bootstrap, GanttScale } from "./model";
 
@@ -138,6 +138,7 @@ function Timeline({ bootstrap, groups, timeline, scale, onOpen, viewportRef, cor
 	const units = timelineUnits(timeline, scale);
 	const canvasStyle: GanttStyle = { "--gantt-unit-count": units.length };
 	const todayStyle = offsetStyle(timeline.todayDay, timeline);
+	const milestoneMarkers = ganttMilestoneMarkers(bootstrap.milestones ?? [], timeline);
 	return (
 		<div className={styles.viewport} ref={viewportRef} tabIndex={0} aria-label="甘特圖時間軸，可水平與垂直捲動" data-scale={scale}>
 			<div className={styles.canvas} style={canvasStyle}>
@@ -146,6 +147,15 @@ function Timeline({ bootstrap, groups, timeline, scale, onOpen, viewportRef, cor
 						<span key={unit.startDate} />
 					))}
 				</div>
+				{milestoneMarkers.map((marker) => (
+					<span
+						key={`${marker.date}-${marker.name}`}
+						className={styles.milestoneLine}
+						data-kind={marker.kind}
+						style={offsetStyle(marker.day, timeline)}
+						aria-hidden="true"
+					/>
+				))}
 				<span className={styles.todayLine} style={todayStyle} aria-hidden="true" />
 				<header className={styles.timelineHeader}>
 					<div className={styles.corner} ref={cornerRef}>
@@ -157,6 +167,17 @@ function Timeline({ bootstrap, groups, timeline, scale, onOpen, viewportRef, cor
 								<strong>{shortDate(unit.startDate)}</strong>
 								<span>{scale === "day" ? weekday(unit.startDate) : `– ${shortDate(unit.endDate)}`}</span>
 							</div>
+						))}
+						{milestoneMarkers.map((marker) => (
+							<span
+								key={`${marker.date}-${marker.name}`}
+								className={styles.milestoneLabel}
+								data-kind={marker.kind}
+								style={offsetStyle(marker.day, timeline)}
+								aria-hidden="true"
+							>
+								{marker.name}
+							</span>
 						))}
 						<span className={styles.todayLabel} style={todayStyle} aria-hidden="true">
 							今天

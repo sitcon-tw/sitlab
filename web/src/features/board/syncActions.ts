@@ -41,6 +41,7 @@ export function applySyncActions(current: Bootstrap, checkpoint: string, actions
 	let lists = current.board.lists;
 	let teams = current.teams;
 	let members = current.members;
+	let milestones = current.milestones;
 	let preferences = current.preferences;
 	let sync = current.sync;
 
@@ -81,6 +82,10 @@ export function applySyncActions(current: Bootstrap, checkpoint: string, actions
 			case "syncStatus":
 				sync = action.sync;
 				break;
+			case "milestone":
+				// The whole calendar arrives in one action; never a delete.
+				milestones = action.milestones;
+				break;
 		}
 	}
 
@@ -89,6 +94,7 @@ export function applySyncActions(current: Bootstrap, checkpoint: string, actions
 		revision: checkpoint,
 		teams,
 		members,
+		milestones,
 		preferences,
 		sync,
 		board: { ...current.board, lists, cards }

@@ -206,7 +206,9 @@ func (f *directorySourceFake) DirectoryFile(context.Context) (directory.File, st
 	return directory.File{Version: 1, Teams: []directory.TeamConfig{{
 		Key: "development", Name: "開發組", TitlePrefix: "[開發組]",
 		GitLabLabel: "組別::開發", Active: true, Members: []string{"alice"},
-	}}}, f.revision, nil
+	}}, Milestones: []directory.MilestoneConfig{
+		{Name: "一籌", Date: "2026-08-29", Kind: directory.MilestoneOrganizing},
+	}}, f.revision, nil
 }
 func (f *gitLabFake) ProjectMembers(context.Context) ([]directory.GitLabMember, error) {
 	return f.members, nil
@@ -358,6 +360,12 @@ func TestRefreshDirectoryUsesRevisionAndRefreshesMembers(t *testing.T) {
 	}
 	if directorySource.fileCalls != 1 || repo.directory.Members[0].DisplayName != "Alice Updated" {
 		t.Fatalf("unchanged revision downloaded again or member stale: files=%d snapshot=%#v", directorySource.fileCalls, repo.directory)
+	}
+	// The unchanged-revision path rebuilds the file from the stored snapshot; losing
+	// milestones there would wipe the calendar on every five-minute refresh.
+	wantMilestones := []directory.Milestone{{Name: "一籌", Date: "2026-08-29", Kind: directory.MilestoneOrganizing}}
+	if !reflect.DeepEqual(repo.directory.Milestones, wantMilestones) {
+		t.Fatalf("milestones after unchanged-revision refresh = %#v, want %#v", repo.directory.Milestones, wantMilestones)
 	}
 }
 

@@ -1,7 +1,7 @@
 import { demoBootstrap } from "@/test/demoBootstrap";
 import { describe, expect, it } from "vitest";
-import { createGanttViewModel, dayToPlainDate, openBoardCards, plainDateToDay } from "./ganttModel";
-import type { BoardCard } from "./model";
+import { createGanttViewModel, dayToPlainDate, ganttMilestoneMarkers, openBoardCards, plainDateToDay } from "./ganttModel";
+import type { BoardCard, DirectoryMilestone } from "./model";
 
 function card(overrides: Partial<BoardCard>): BoardCard {
 	return { ...demoBootstrap.board.cards[0]!, ...overrides };
@@ -40,5 +40,47 @@ describe("Gantt view model", () => {
 
 	it("uses stable UTC day arithmetic for plain dates", () => {
 		expect(dayToPlainDate(plainDateToDay("2026-08-28") + 1)).toBe("2026-08-29");
+	});
+});
+
+describe("Gantt milestone markers", () => {
+	const milestones: DirectoryMilestone[] = [
+		{ name: "一籌", date: "2026-08-29", kind: "organizing" },
+		{ name: "站立會議", date: "2026-08-22", kind: "standup" },
+		{ name: "年會", date: "2027-03-13", kind: "conference" }
+	];
+
+	it("returns nothing without a timeline", () => {
+		expect(ganttMilestoneMarkers(milestones, null)).toEqual([]);
+	});
+
+	it("keeps only markers inside the timeline range, sorted by day", () => {
+		// Timeline spans 2026-07-27 .. 2026-08-24 (endDay exclusive), so 站立會議 on
+		// 08-22 is in, 一籌 on 08-29 and 年會 far out are not.
+		const model = createGanttViewModel([card({ startDate: "2026-08-05", dueDate: "2026-08-12" })], demoBootstrap.teams, "2026-08-06");
+		const markers = ganttMilestoneMarkers(milestones, model.timeline);
+
+		expect(markers.map((marker) => marker.name)).toEqual(["站立會議"]);
+		expect(markers[0]).toEqual({ name: "站立會議", kind: "standup", date: "2026-08-22", day: plainDateToDay("2026-08-22") });
+	});
+
+	it("includes the start boundary and excludes the exclusive end boundary", () => {
+		const model = createGanttViewModel([card({ startDate: "2026-08-05", dueDate: "2026-08-12" })], demoBootstrap.teams, "2026-08-06");
+		const timeline = model.timeline!;
+		const boundaries: DirectoryMilestone[] = [
+			{ name: "起點", date: dayToPlainDate(timeline.startDay), kind: "organizing" },
+			{ name: "終點", date: dayToPlainDate(timeline.endDay), kind: "organizing" }
+		];
+
+		expect(ganttMilestoneMarkers(boundaries, timeline).map((marker) => marker.name)).toEqual(["起點"]);
+	});
+
+	it("never widens the card-derived timeline", () => {
+		// Milestones are not an input to createGanttViewModel; this pins the bounds so a
+		// future refactor cannot quietly let the calendar stretch the axis.
+		const model = createGanttViewModel([card({ startDate: "2026-08-05", dueDate: "2026-08-12" })], demoBootstrap.teams, "2026-08-06");
+
+		expect(dayToPlainDate(model.timeline!.startDay)).toBe("2026-07-27");
+		expect(dayToPlainDate(model.timeline!.endDay)).toBe("2026-08-24");
 	});
 });

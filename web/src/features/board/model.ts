@@ -5,6 +5,7 @@ export type BoardCard = components["schemas"]["BoardCard"];
 export type BoardList = components["schemas"]["BoardList"];
 export type DirectoryTeam = components["schemas"]["DirectoryTeam"];
 export type DirectoryMember = components["schemas"]["DirectoryMember"];
+export type DirectoryMilestone = components["schemas"]["DirectoryMilestone"];
 export type CurrentUser = components["schemas"]["CurrentUser"];
 export type UserPreferences = components["schemas"]["UserPreferences"];
 export type CardMutation = components["schemas"]["CardMutationResponse"];

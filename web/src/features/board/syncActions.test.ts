@@ -42,6 +42,7 @@ function bootstrap(cards: BoardCard[] = [card()]): Bootstrap {
 		csrfToken: "test-token",
 		teams: [],
 		members: [],
+		milestones: [],
 		board: {
 			lists: [
 				{ key: "inbox", name: "Inbox", position: 0, closed: false, color: "#000000" },
@@ -178,6 +179,23 @@ describe("applySyncActions", () => {
 		const next = applySyncActions(bootstrap(), "12", [cardAction("10", card({ title: "Stale" }))], idleGuard);
 		expect(next.revision).toBe("12");
 		expect(next.board.cards[0]?.title).toBe("Local title");
+	});
+
+	it("replaces the milestone calendar wholesale", () => {
+		const calendar: SyncAction = {
+			entity: "milestone",
+			syncId: "11",
+			entityId: "directory",
+			operation: "upsert",
+			actorGitLabUserId: null,
+			occurredAt: "2026-08-28T00:00:00Z",
+			milestones: [{ name: "一籌", date: "2026-08-29", kind: "organizing" }]
+		};
+		const next = applySyncActions(bootstrap(), "11", [calendar], idleGuard);
+		expect(next.milestones).toEqual([{ name: "一籌", date: "2026-08-29", kind: "organizing" }]);
+
+		const stale = applySyncActions(next, "12", [{ ...calendar, syncId: "10", milestones: [] }], idleGuard);
+		expect(stale.milestones).toEqual(next.milestones);
 	});
 });
 

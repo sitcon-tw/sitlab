@@ -582,6 +582,14 @@ func directoryFileFromSnapshot(snapshot directory.Snapshot) directory.File {
 			Leaders: append([]string(nil), team.DirectoryLeaderUsernames...),
 		})
 	}
+	// Milestones must round-trip too: dropping them here would wipe the stored
+	// calendar on the first unchanged-revision refresh.
+	file.Milestones = make([]directory.MilestoneConfig, 0, len(snapshot.Milestones))
+	for _, milestone := range snapshot.Milestones {
+		file.Milestones = append(file.Milestones, directory.MilestoneConfig{
+			Name: milestone.Name, Date: milestone.Date, Kind: milestone.Kind,
+		})
+	}
 	return file
 }
 

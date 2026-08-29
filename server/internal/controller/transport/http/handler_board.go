@@ -34,7 +34,7 @@ func (h handler) directoryState(w http.ResponseWriter, r *http.Request) {
 		members = append(members, mapDirectoryMember(member))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"directory": map[string]any{
-		"teams": teams, "members": members,
+		"teams": teams, "members": members, "milestones": mapDirectoryMilestones(snapshot.Milestones),
 		"sourceRevision": snapshot.SourceRevision, "syncedAt": snapshot.SyncedAt,
 	}})
 }

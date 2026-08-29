@@ -22,19 +22,20 @@ type cardOrderResponse struct {
 // syncActionResponse is the union the contract describes. Every payload field is
 // optional on the wire and exactly one is set, chosen by entity.
 type syncActionResponse struct {
-	Entity            string                   `json:"entity"`
-	SyncID            string                   `json:"syncId"`
-	EntityID          string                   `json:"entityId"`
-	Operation         string                   `json:"operation"`
-	ActorGitLabUserID *int64                   `json:"actorGitLabUserId"`
-	OccurredAt        time.Time                `json:"occurredAt"`
-	Card              *cardResponse            `json:"card,omitempty"`
-	Order             *cardOrderResponse       `json:"order,omitempty"`
-	List              *boardListResponse       `json:"list,omitempty"`
-	Team              *teamResponse            `json:"team,omitempty"`
-	Member            *directoryMemberResponse `json:"member,omitempty"`
-	Preferences       *preferencesResponse     `json:"preferences,omitempty"`
-	Sync              *syncStatusResponse      `json:"sync,omitempty"`
+	Entity            string                       `json:"entity"`
+	SyncID            string                       `json:"syncId"`
+	EntityID          string                       `json:"entityId"`
+	Operation         string                       `json:"operation"`
+	ActorGitLabUserID *int64                       `json:"actorGitLabUserId"`
+	OccurredAt        time.Time                    `json:"occurredAt"`
+	Card              *cardResponse                `json:"card,omitempty"`
+	Order             *cardOrderResponse           `json:"order,omitempty"`
+	List              *boardListResponse           `json:"list,omitempty"`
+	Team              *teamResponse                `json:"team,omitempty"`
+	Member            *directoryMemberResponse     `json:"member,omitempty"`
+	Preferences       *preferencesResponse         `json:"preferences,omitempty"`
+	Sync              *syncStatusResponse          `json:"sync,omitempty"`
+	Milestones        []directoryMilestoneResponse `json:"milestones,omitempty"`
 }
 
 type syncDeltaResponse struct {
@@ -67,6 +68,8 @@ func (response syncActionResponse) MarshalJSON() ([]byte, error) {
 		wire["preferences"] = response.Preferences
 	case "syncStatus":
 		wire["sync"] = response.Sync
+	case "milestone":
+		wire["milestones"] = response.Milestones
 	}
 	return json.Marshal(wire)
 }
@@ -80,6 +83,7 @@ var wireEntity = map[string]string{
 	"member":      "member",
 	"preference":  "preference",
 	"sync_status": "syncStatus",
+	"milestone":   "milestone",
 }
 
 func (h handler) syncDelta(w http.ResponseWriter, r *http.Request) {
@@ -198,6 +202,16 @@ func mapSyncAction(action board.SyncAction) (syncActionResponse, error) {
 		response.Sync = &syncStatusResponse{
 			State: status.State, LastSuccessAt: status.LastSuccessAt, Message: optionalString(status.Message),
 		}
+	case "milestone":
+		// Milestone actions never carry a delete: an emptied calendar arrives as an
+		// upsert of an empty list, so the required array must survive marshalling.
+		var payload struct {
+			Milestones []directory.Milestone `json:"milestones"`
+		}
+		if err := json.Unmarshal(action.Payload, &payload); err != nil {
+			return syncActionResponse{}, err
+		}
+		response.Milestones = mapDirectoryMilestones(payload.Milestones)
 	}
 	return response, nil
 }

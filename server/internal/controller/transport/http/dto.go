@@ -165,15 +165,22 @@ type linkedWorkItemResponse struct {
 	LinkType apprelation.LinkType `json:"linkType"`
 }
 
+type directoryMilestoneResponse struct {
+	Name string `json:"name"`
+	Date string `json:"date"`
+	Kind string `json:"kind"`
+}
+
 type bootstrapResponse struct {
-	Revision    string                    `json:"revision"`
-	Me          userResponse              `json:"me"`
-	CSRFToken   string                    `json:"csrfToken"`
-	Teams       []teamResponse            `json:"teams"`
-	Members     []directoryMemberResponse `json:"members"`
-	Board       boardSnapshotResponse     `json:"board"`
-	Preferences preferencesResponse       `json:"preferences"`
-	Sync        syncStatusResponse        `json:"sync"`
+	Revision    string                       `json:"revision"`
+	Me          userResponse                 `json:"me"`
+	CSRFToken   string                       `json:"csrfToken"`
+	Teams       []teamResponse               `json:"teams"`
+	Members     []directoryMemberResponse    `json:"members"`
+	Milestones  []directoryMilestoneResponse `json:"milestones"`
+	Board       boardSnapshotResponse        `json:"board"`
+	Preferences preferencesResponse          `json:"preferences"`
+	Sync        syncStatusResponse           `json:"sync"`
 }
 
 func mapUser(item identity.User) userResponse {
@@ -201,6 +208,18 @@ func mapDirectoryMember(item directory.Member) directoryMemberResponse {
 		ProfileURL: item.ProfileURL, AccessLevel: item.AccessLevel,
 		State: item.State, TeamKeys: append([]string{}, item.TeamKeys...),
 	}
+}
+
+func mapDirectoryMilestone(item directory.Milestone) directoryMilestoneResponse {
+	return directoryMilestoneResponse{Name: item.Name, Date: item.Date, Kind: string(item.Kind)}
+}
+
+func mapDirectoryMilestones(items []directory.Milestone) []directoryMilestoneResponse {
+	milestones := make([]directoryMilestoneResponse, 0, len(items))
+	for _, item := range items {
+		milestones = append(milestones, mapDirectoryMilestone(item))
+	}
+	return milestones
 }
 
 func mapPreferences(item appdirectory.Preferences) preferencesResponse {
@@ -304,7 +323,8 @@ func mapBootstrap(item appbootstrap.Result) bootstrapResponse {
 	}
 	return bootstrapResponse{
 		Revision: item.Revision, Me: mapUser(item.Me), CSRFToken: item.CSRFToken, Teams: teams, Members: members,
-		Board: mapBoardSnapshot(item.Board), Preferences: mapPreferences(item.Preferences),
+		Milestones: mapDirectoryMilestones(item.Directory.Milestones),
+		Board:      mapBoardSnapshot(item.Board), Preferences: mapPreferences(item.Preferences),
 		Sync: syncStatusResponse{
 			State: item.Sync.State, LastSuccessAt: item.Sync.LastSuccessAt,
 			Message: optionalString(item.Sync.Message),

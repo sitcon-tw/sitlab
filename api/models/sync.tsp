@@ -56,9 +56,23 @@ model SyncStatusSyncAction extends SyncAction {
 	sync: SyncStatus;
 }
 
+@doc("The full milestone calendar. Replaced wholesale: the set is small, changes rarely, and per-row keying would need delete/upsert pairs on every rename.")
+model MilestoneSyncAction extends SyncAction {
+	entity: "milestone";
+	milestones: DirectoryMilestone[];
+}
+
 // Listed explicitly so generated clients get a union that narrows on `entity`
 // rather than the open base model.
-alias AnySyncAction = CardSyncAction | CardOrderSyncAction | ListSyncAction | TeamSyncAction | MemberSyncAction | PreferenceSyncAction | SyncStatusSyncAction;
+alias AnySyncAction =
+	| CardSyncAction
+	| CardOrderSyncAction
+	| ListSyncAction
+	| TeamSyncAction
+	| MemberSyncAction
+	| PreferenceSyncAction
+	| SyncStatusSyncAction
+	| MilestoneSyncAction;
 
 model SyncDeltaResponse {
 	@doc("The checkpoint reached. Store it and send it back as `since` next time.")
