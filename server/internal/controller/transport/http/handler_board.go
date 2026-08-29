@@ -233,14 +233,83 @@ func (h handler) createCardComment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
-	comment, err := h.activity.CreateComment(r.Context(), appactivity.CreateCommentInput{
+	result, err := h.activity.CreateComment(r.Context(), appactivity.CreateCommentInput{
 		ActorUserID: actorID(r), IssueIID: issueIID, Body: body.Body,
 	})
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, mapCardComment(comment))
+	if result.QuickActionsApplied {
+		h.sync.RequestRefresh()
+	}
+	status := http.StatusAccepted
+	var comment *cardCommentResponse
+	if result.Comment != nil {
+		mapped := mapCardComment(*result.Comment)
+		comment = &mapped
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, map[string]any{
+		"comment": comment, "quickActionsApplied": result.QuickActionsApplied, "summary": stringSlice(result.Summary),
+	})
+}
+
+func (h handler) listQuickActions(w http.ResponseWriter, r *http.Request) {
+	var issueIID int64
+	if value := r.URL.Query().Get("issueIid"); value != "" {
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || parsed <= 0 {
+			writeError(w, r, apperror.Invalid("VALIDATION_FAILED", "issueIid must be a positive integer"))
+			return
+		}
+		issueIID = parsed
+	}
+	commands, err := h.activity.QuickActions(r.Context(), actorID(r), issueIID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	items := make([]map[string]any, 0, len(commands))
+	for _, command := range commands {
+		items = append(items, map[string]any{
+			"name": command.Name, "aliases": stringSlice(command.Aliases), "params": stringSlice(command.Params),
+			"description": optionalString(command.Description), "warning": optionalString(command.Warning), "icon": optionalString(command.Icon),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"commands": items})
+}
+
+func stringSlice(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
+}
+
+func (h handler) listQuickActionSuggestions(w http.ResponseWriter, r *http.Request) {
+	var issueIID int64
+	if value := r.URL.Query().Get("issueIid"); value != "" {
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || parsed <= 0 {
+			writeError(w, r, apperror.Invalid("VALIDATION_FAILED", "issueIid must be a positive integer"))
+			return
+		}
+		issueIID = parsed
+	}
+	items, err := h.activity.QuickActionSuggestions(r.Context(), actorID(r), r.URL.Query().Get("kind"), r.URL.Query().Get("query"), issueIID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	suggestions := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		suggestions = append(suggestions, map[string]any{
+			"id": item.ID, "kind": item.Kind, "value": item.Value, "label": item.Label,
+			"detail": optionalString(item.Detail), "avatarUrl": optionalString(item.AvatarURL), "color": optionalString(item.Color),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"suggestions": suggestions})
 }
 
 func (h handler) moveCard(w http.ResponseWriter, r *http.Request) {

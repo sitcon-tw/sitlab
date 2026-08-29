@@ -69,7 +69,7 @@ type Repository interface {
 	QuarantineCard(ctx context.Context, issueIID int64, gitLabUpdatedAt time.Time, reason string, at time.Time) error
 	RecordSyncFailure(context.Context, string, time.Time, string) error
 	ClaimOperation(context.Context, time.Time) (board.PendingOperation, error)
-	CompleteOperation(context.Context, board.PendingOperation, board.CanonicalIssue, time.Time) error
+	CompleteOperation(context.Context, board.PendingOperation, board.CanonicalIssue, *board.Card, time.Time) error
 	FailOperation(context.Context, board.PendingOperation, time.Time, string, string) error
 	EnqueueWebhook(context.Context, board.WebhookDelivery) (bool, error)
 	ClaimWebhook(context.Context, time.Time) (board.WebhookDelivery, error)

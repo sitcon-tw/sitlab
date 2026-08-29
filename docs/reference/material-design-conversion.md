@@ -102,7 +102,7 @@ themes.
 P5b and P6 implementation is complete in the working tree:
 
 - Assignee, member, and label pickers use `Chip`, `TextField`, `IconButton`, native `md-checkbox` controls, Material list rows, dialog footers, and shared empty states.
-- The member drawer uses Material lists; Quick Actions use the outlined field and Material menu classes; the directory warning uses `Panel` and `Button`.
+- The member drawer uses Material lists; native Quick Action autocomplete in description and Comment fields uses the Material menu classes; the directory warning uses `Panel` and `Button`.
 - Label management uses Material fields and list rows, color targets are 40dp visual / 48dp touch, and save feedback uses the shared `Spinner`.
 - Login uses `Button asChild`. Onboarding uses `TopAppBar`, outlined `Panel`, native `md-radio`, and Material lists.
 - Feature focus rings were removed; `md3.css` now provides the 3dp focus indicator once for native and primitive controls.

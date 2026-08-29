@@ -307,7 +307,7 @@ func (f *repoFake) ClaimOperation(context.Context, time.Time) (PendingOperation,
 	}
 	return *f.pending, nil
 }
-func (f *repoFake) CompleteOperation(context.Context, PendingOperation, GitLabIssue, time.Time) error {
+func (f *repoFake) CompleteOperation(context.Context, PendingOperation, GitLabIssue, *board.Card, time.Time) error {
 	f.completed = true
 	return nil
 }
@@ -479,6 +479,34 @@ func TestProcessOneBuildsCanonicalIssueMutation(t *testing.T) {
 	}
 	if gitlab.token != "actor-token" {
 		t.Fatalf("actor token = %q", gitlab.token)
+	}
+}
+
+func TestProcessOneUsesStoredDescriptionAndScopesTheMutation(t *testing.T) {
+	t.Parallel()
+	gitlab := &gitLabFake{}
+	repo := &repoFake{
+		directory: directory.Snapshot{Teams: []directory.Team{{Key: "development", TitlePrefix: "[開發組]", GitLabLabel: "Team::開發組", Active: true}}},
+		board:     appboard.Snapshot{Lists: DefaultBoardLists},
+		pending: &PendingOperation{
+			Operation: board.Operation{ID: "operation", Kind: board.OperationUpdateDetails},
+			Card: board.Card{
+				IssueIID: 42, Title: "newer optimistic title", Description: "/close", TeamKey: "development", ListKey: "doing",
+				Labels: []string{"Team::開發組"}, GitLabStatusName: "Doing",
+			},
+			Payload: map[string]any{"title": "saved title", "description": "/label ~Backend"},
+		},
+	}
+	service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
+	processed, err := service.ProcessOne(context.Background())
+	if err != nil || !processed {
+		t.Fatalf("ProcessOne() = %v, %v", processed, err)
+	}
+	if gitlab.applied == nil || gitlab.applied.Description != "/label ~Backend" || gitlab.applied.Title != "[開發組] saved title" {
+		t.Fatalf("mutation = %#v, want stored details payload", gitlab.applied)
+	}
+	if !gitlab.applied.Fields.Title || !gitlab.applied.Fields.Description || gitlab.applied.Fields.Labels || gitlab.applied.Fields.Assignees || gitlab.applied.Fields.Status {
+		t.Fatalf("mutation fields = %#v, want details only", gitlab.applied.Fields)
 	}
 }
 

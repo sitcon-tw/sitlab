@@ -194,12 +194,27 @@ type IssueMutation struct {
 	StartDate             string
 	DueDate               string
 	GitLabStatusName      string
+	Fields                IssueMutationFields
+}
+
+// IssueMutationFields keeps updates sparse. This is especially important for
+// descriptions: GitLab executes quick actions embedded in the description, so an
+// unrelated mutation must never resend that text.
+type IssueMutationFields struct {
+	Title       bool
+	Description bool
+	Labels      bool
+	Assignees   bool
+	StartDate   bool
+	DueDate     bool
+	Status      bool
 }
 
 type PendingOperation struct {
 	Operation         Operation
 	Card              Card
 	RequestedByUserID string
+	Payload           map[string]any
 }
 
 type SyncStatus struct {

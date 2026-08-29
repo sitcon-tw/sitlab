@@ -338,8 +338,37 @@ func TestProjectLabelsAndCommentsUseExpectedCredentialsAndPagination(t *testing.
 		t.Fatalf("Comments() = %#v, %v", comments, err)
 	}
 	created, err := client.CreateComment(context.Background(), 42, "new comment", "token")
-	if err != nil || created.ID != 4 || created.Body != "new comment" {
+	if err != nil || created.Comment == nil || created.Comment.ID != 4 || created.Comment.Body != "new comment" {
 		t.Fatalf("CreateComment() = %#v, %v", created, err)
+	}
+}
+
+func TestCommandOnlyCommentReturnsAcceptedQuickActionResult(t *testing.T) {
+	t.Parallel()
+	client, _ := New(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		assertBearer(t, request)
+		return response(http.StatusAccepted, `{"commands_changes":{"assignee_ids":[101]},"summary":["Assigned @alice."]}`), nil
+	})}, Config{BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027"})
+
+	result, err := client.CreateComment(context.Background(), 42, "/assign @alice", "token")
+	if err != nil || result.Comment != nil || !result.QuickActionsApplied || len(result.Summary) != 1 {
+		t.Fatalf("CreateComment() = %#v, %v", result, err)
+	}
+}
+
+func TestQuickActionSuggestionsUseActorAccessAndNormalizeReferences(t *testing.T) {
+	t.Parallel()
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		assertBearer(t, request)
+		if request.URL.Query().Get("query") != "ali" || request.URL.Query().Get("per_page") != "20" {
+			t.Errorf("suggestion query = %q", request.URL.RawQuery)
+		}
+		return response(http.StatusOK, `[{"id":101,"username":"alice","name":"Alice","avatar_url":"https://img.example/alice.png","state":"active"}]`), nil
+	})
+	client, _ := New(&http.Client{Transport: transport}, Config{BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027"})
+	items, err := client.QuickActionSuggestions(context.Background(), "member", "ali", 42, "token")
+	if err != nil || len(items) != 1 || items[0].Value != "@alice" || items[0].Detail != "Alice" {
+		t.Fatalf("QuickActionSuggestions() = %#v, %v", items, err)
 	}
 }
 
@@ -592,7 +621,7 @@ func TestApplyIssueDropsAVanishedLabelButNotAVanishedTeamLabel(t *testing.T) {
 	var sent []any
 	mutation := sync.IssueMutation{
 		IssueIID: 10, Title: "[開發組] 修正流程", GitLabStatusName: "To do",
-		Labels: []string{"Team::開發組", "Deleted::Label"},
+		Labels: []string{"Team::開發組", "Deleted::Label"}, Fields: board.IssueMutationFields{Labels: true},
 	}
 	if _, err := newClient(&sent).ApplyIssue(context.Background(), mutation, "actor-token"); err != nil {
 		t.Fatalf("ApplyIssue() with a vanished ordinary label = %v, want it dropped", err)
@@ -600,7 +629,7 @@ func TestApplyIssueDropsAVanishedLabelButNotAVanishedTeamLabel(t *testing.T) {
 
 	missingTeam := sync.IssueMutation{
 		IssueIID: 10, Title: "[新組] 修正流程", GitLabStatusName: "To do",
-		Labels: []string{"Team::新組"},
+		Labels: []string{"Team::新組"}, Fields: board.IssueMutationFields{Labels: true},
 	}
 	if _, err := newClient(&sent).ApplyIssue(context.Background(), missingTeam, "actor-token"); err == nil {
 		t.Fatal("ApplyIssue() with a vanished team label = nil, want an error")

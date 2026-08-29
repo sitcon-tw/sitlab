@@ -55,7 +55,9 @@ type CardActivityService interface {
 	UpdateLabel(context.Context, appactivity.UpdateLabelInput) (appactivity.ProjectLabel, error)
 	DeleteLabel(context.Context, appactivity.DeleteLabelInput) error
 	Comments(context.Context, string, int64) ([]appactivity.Comment, error)
-	CreateComment(context.Context, appactivity.CreateCommentInput) (appactivity.Comment, error)
+	CreateComment(context.Context, appactivity.CreateCommentInput) (appactivity.CommentResult, error)
+	QuickActions(context.Context, string, int64) ([]appactivity.QuickActionCommand, error)
+	QuickActionSuggestions(context.Context, string, string, string, int64) ([]appactivity.QuickActionSuggestion, error)
 }
 
 type CardRelationService interface {

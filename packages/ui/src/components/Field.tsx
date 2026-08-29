@@ -1,5 +1,5 @@
 import { Check } from "lucide-react";
-import { useId, useState, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import { forwardRef, useId, useState, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { classNames } from "../lib/classNames";
 import { Menu, MenuItem } from "./Menu";
 
@@ -115,19 +115,10 @@ export function TextField({
 
 export interface TextAreaFieldProps extends TextareaHTMLAttributes<HTMLTextAreaElement>, FieldMetaProps {}
 
-export function TextAreaField({
-	label,
-	description,
-	error,
-	optional,
-	dense,
-	alwaysFloatLabel,
-	id: explicitId,
-	className,
-	placeholder,
-	"aria-describedby": ariaDescribedBy,
-	...props
-}: TextAreaFieldProps) {
+export const TextAreaField = forwardRef<HTMLTextAreaElement, TextAreaFieldProps>(function TextAreaField(
+	{ label, description, error, optional, dense, alwaysFloatLabel, id: explicitId, className, placeholder, "aria-describedby": ariaDescribedBy, ...props },
+	ref
+) {
 	const generatedId = useId();
 	const id = explicitId ?? generatedId;
 	return (
@@ -142,6 +133,7 @@ export function TextAreaField({
 			className={classNames("md-field--textarea", className)}
 		>
 			<textarea
+				ref={ref}
 				id={id}
 				className="md-field__input md-field__input--textarea"
 				placeholder={placeholder ?? " "}
@@ -151,7 +143,7 @@ export function TextAreaField({
 			/>
 		</FieldFrame>
 	);
-}
+});
 
 export interface SelectOption {
 	value: string;

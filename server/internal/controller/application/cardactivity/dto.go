@@ -55,6 +55,31 @@ type Comment struct {
 	UpdatedAt time.Time
 }
 
+type CommentResult struct {
+	Comment             *Comment
+	QuickActionsApplied bool
+	Summary             []string
+}
+
+type QuickActionCommand struct {
+	Name        string
+	Aliases     []string
+	Params      []string
+	Description string
+	Warning     string
+	Icon        string
+}
+
+type QuickActionSuggestion struct {
+	ID        string
+	Kind      string
+	Value     string
+	Label     string
+	Detail    string
+	AvatarURL string
+	Color     string
+}
+
 type CreateCommentInput struct {
 	ActorUserID string
 	IssueIID    int64

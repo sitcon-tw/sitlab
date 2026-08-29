@@ -306,74 +306,106 @@ func (c *Client) Comments(ctx context.Context, issueIID int64, actorAccessToken 
 	return result, nil
 }
 
-func (c *Client) CreateComment(ctx context.Context, issueIID int64, commentBody, actorAccessToken string) (appactivity.Comment, error) {
+func (c *Client) CreateComment(ctx context.Context, issueIID int64, commentBody, actorAccessToken string) (appactivity.CommentResult, error) {
 	payload, err := json.Marshal(map[string]string{"body": commentBody})
 	if err != nil {
-		return appactivity.Comment{}, fmt.Errorf("encode GitLab issue note: %w", err)
+		return appactivity.CommentResult{}, fmt.Errorf("encode GitLab issue note: %w", err)
 	}
 	requestURL := c.projectEndpoint("/issues/") + strconv.FormatInt(issueIID, 10) + "/notes"
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, strings.NewReader(string(payload)))
 	if err != nil {
-		return appactivity.Comment{}, fmt.Errorf("create GitLab issue note request: %w", err)
+		return appactivity.CommentResult{}, fmt.Errorf("create GitLab issue note request: %w", err)
 	}
 	request.Header.Set("Authorization", "Bearer "+actorAccessToken)
 	request.Header.Set("Content-Type", "application/json")
 	response, err := c.http.Do(request)
 	if err != nil {
-		return appactivity.Comment{}, identity.ErrGitLabUnavailable
+		return appactivity.CommentResult{}, identity.ErrGitLabUnavailable
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode >= 500 {
-		return appactivity.Comment{}, identity.ErrGitLabUnavailable
+		return appactivity.CommentResult{}, identity.ErrGitLabUnavailable
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return appactivity.Comment{}, mapActivityStatus(&httpStatusError{status: response.StatusCode})
+		return appactivity.CommentResult{}, mapActivityStatus(&httpStatusError{status: response.StatusCode})
+	}
+	if response.StatusCode == http.StatusAccepted {
+		var commands noteCommandsWire
+		if err := decodeJSON(response.Body, &commands); err != nil {
+			return appactivity.CommentResult{}, fmt.Errorf("decode GitLab quick action result: %w", err)
+		}
+		return appactivity.CommentResult{QuickActionsApplied: true, Summary: commands.Summary}, nil
 	}
 	var row noteWire
 	if err := decodeJSON(response.Body, &row); err != nil {
-		return appactivity.Comment{}, fmt.Errorf("decode GitLab issue note mutation: %w", err)
+		return appactivity.CommentResult{}, fmt.Errorf("decode GitLab issue note mutation: %w", err)
 	}
-	return mapNoteWire(row), nil
+	comment := mapNoteWire(row)
+	return appactivity.CommentResult{Comment: &comment, QuickActionsApplied: len(row.CommandsChanges) > 0}, nil
 }
 
 func (c *Client) ApplyIssue(ctx context.Context, mutation appsync.IssueMutation, actorAccessToken string) (appsync.GitLabIssue, error) {
-	metadata, err := c.workItemMetadata(ctx, actorAccessToken)
-	if err != nil {
-		return appsync.GitLabIssue{}, err
+	var metadata workItemMetadata
+	var err error
+	if mutation.Create || mutation.Fields.Labels || mutation.Fields.Status {
+		metadata, err = c.workItemMetadata(ctx, actorAccessToken)
+		if err != nil {
+			return appsync.GitLabIssue{}, err
+		}
 	}
-	if _, ok := metadata.statuses[strings.ToLower(mutation.GitLabStatusName)]; !ok {
-		return appsync.GitLabIssue{}, fmt.Errorf("GitLab lifecycle does not contain required status %q", mutation.GitLabStatusName)
+	if mutation.Create || mutation.Fields.Status {
+		if _, ok := metadata.statuses[strings.ToLower(mutation.GitLabStatusName)]; !ok {
+			return appsync.GitLabIssue{}, fmt.Errorf("GitLab lifecycle does not contain required status %q", mutation.GitLabStatusName)
+		}
 	}
 	labelIDs := make([]string, 0, len(mutation.Labels))
-	for _, label := range mutation.Labels {
-		id, ok := metadata.labels[label]
-		if !ok {
-			// The worker replays labels captured on the optimistic row, so a
-			// rename or delete landing while an operation is pending would
-			// otherwise fail it permanently: retryOperation re-reads the same
-			// stale names and fails identically. Drop the vanished label and
-			// continue. The board never lets a user type a free-form label, so
-			// the only ways here are that race and an out-of-band deletion.
-			//
-			// Team labels are the exception: issueTeam needs one to keep the
-			// card on the board at all.
-			if strings.HasPrefix(label, board.TeamLabelPrefix) {
-				return appsync.GitLabIssue{}, fmt.Errorf("GitLab project label %q does not exist", label)
+	if mutation.Create || mutation.Fields.Labels {
+		for _, label := range mutation.Labels {
+			id, ok := metadata.labels[label]
+			if !ok {
+				// The worker replays labels captured on the optimistic row, so a
+				// rename or delete landing while an operation is pending would
+				// otherwise fail it permanently: retryOperation re-reads the same
+				// stale names and fails identically. Drop the vanished label and
+				// continue. The board never lets a user type a free-form label, so
+				// the only ways here are that race and an out-of-band deletion.
+				//
+				// Team labels are the exception: issueTeam needs one to keep the
+				// card on the board at all.
+				if strings.HasPrefix(label, board.TeamLabelPrefix) {
+					return appsync.GitLabIssue{}, fmt.Errorf("GitLab project label %q does not exist", label)
+				}
+				continue
 			}
-			continue
+			labelIDs = append(labelIDs, id)
 		}
-		labelIDs = append(labelIDs, id)
 	}
 	assigneeIDs := make([]string, 0, len(mutation.AssigneeGitLabUserIDs))
 	for _, id := range mutation.AssigneeGitLabUserIDs {
 		assigneeIDs = append(assigneeIDs, fmt.Sprintf("gid://gitlab/User/%d", id))
 	}
-	base := map[string]any{
-		"title":                 mutation.Title,
-		"descriptionWidget":     map[string]any{"description": mutation.Description},
-		"assigneesWidget":       map[string]any{"assigneeIds": assigneeIDs},
-		"startAndDueDateWidget": map[string]any{"startDate": nullableGraphQLDate(mutation.StartDate), "dueDate": nullableGraphQLDate(mutation.DueDate), "isFixed": true},
-		"statusWidget":          map[string]any{"name": mutation.GitLabStatusName},
+	base := make(map[string]any)
+	if mutation.Create || mutation.Fields.Title {
+		base["title"] = mutation.Title
+	}
+	if mutation.Create || mutation.Fields.Description {
+		base["descriptionWidget"] = map[string]any{"description": mutation.Description}
+	}
+	if mutation.Create || mutation.Fields.Assignees {
+		base["assigneesWidget"] = map[string]any{"assigneeIds": assigneeIDs}
+	}
+	if mutation.Create || mutation.Fields.StartDate || mutation.Fields.DueDate {
+		dates := map[string]any{"isFixed": true}
+		if mutation.Create || mutation.Fields.StartDate {
+			dates["startDate"] = nullableGraphQLDate(mutation.StartDate)
+		}
+		if mutation.Create || mutation.Fields.DueDate {
+			dates["dueDate"] = nullableGraphQLDate(mutation.DueDate)
+		}
+		base["startAndDueDateWidget"] = dates
+	}
+	if mutation.Create || mutation.Fields.Status {
+		base["statusWidget"] = map[string]any{"name": mutation.GitLabStatusName}
 	}
 	var data workItemMutationData
 	if mutation.Create {
@@ -387,8 +419,10 @@ func (c *Client) ApplyIssue(ctx context.Context, mutation appsync.IssueMutation,
 			return appsync.GitLabIssue{}, currentErr
 		}
 		base["id"] = fmt.Sprintf("gid://gitlab/WorkItem/%d", current.GitLabIssueID)
-		add, remove := labelDelta(current.Labels, mutation.Labels, metadata.labels)
-		base["labelsWidget"] = map[string]any{"addLabelIds": add, "removeLabelIds": remove}
+		if mutation.Fields.Labels {
+			add, remove := labelDelta(current.Labels, mutation.Labels, metadata.labels)
+			base["labelsWidget"] = map[string]any{"addLabelIds": add, "removeLabelIds": remove}
+		}
 		err = c.graphQL(ctx, workItemUpdateMutation, map[string]any{"input": base}, "", actorAccessToken, &data)
 	}
 	if err != nil {
@@ -1015,12 +1049,18 @@ type labelWire struct {
 }
 
 type noteWire struct {
-	ID        int64      `json:"id"`
-	Body      string     `json:"body"`
-	Author    gitLabUser `json:"author"`
-	System    bool       `json:"system"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	ID              int64          `json:"id"`
+	Body            string         `json:"body"`
+	Author          gitLabUser     `json:"author"`
+	System          bool           `json:"system"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	CommandsChanges map[string]any `json:"commands_changes"`
+}
+
+type noteCommandsWire struct {
+	CommandsChanges map[string]any `json:"commands_changes"`
+	Summary         []string       `json:"summary"`
 }
 
 func mapNoteWire(row noteWire) appactivity.Comment {

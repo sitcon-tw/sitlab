@@ -8,6 +8,8 @@ import {
 	createCard,
 	createComment,
 	listComments,
+	listQuickActions,
+	listQuickActionSuggestions,
 	moveCard,
 	retryOperation,
 	updateAssignee,
@@ -43,6 +45,8 @@ vi.mock("./boardApi", () => ({
 	createCard: vi.fn(),
 	createComment: vi.fn(),
 	listComments: vi.fn(),
+	listQuickActions: vi.fn(),
+	listQuickActionSuggestions: vi.fn(),
 	logout: vi.fn(),
 	moveCard: vi.fn(),
 	retryOperation: vi.fn(),
@@ -139,6 +143,8 @@ describe("SITCON Board interactions", () => {
 		vi.mocked(createCard).mockReset();
 		vi.mocked(createComment).mockReset();
 		vi.mocked(listComments).mockReset();
+		vi.mocked(listQuickActions).mockReset();
+		vi.mocked(listQuickActionSuggestions).mockReset();
 		vi.mocked(listProjectLabels).mockReset();
 		vi.mocked(moveCard).mockReset();
 		vi.mocked(retryOperation).mockReset();
@@ -163,6 +169,12 @@ describe("SITCON Board interactions", () => {
 			{ id: 4, name: "Backend", color: "#1D76DB", textColor: "#FFFFFF", description: null }
 		]);
 		vi.mocked(listComments).mockResolvedValue([]);
+		vi.mocked(listQuickActions).mockResolvedValue([
+			{ name: "assign", aliases: [], params: ["@user"], description: "Assign users", warning: null, icon: null },
+			{ name: "close", aliases: [], params: [], description: "Close this work item", warning: null, icon: null },
+			{ name: "label", aliases: [], params: ["~label"], description: "Add labels", warning: null, icon: null }
+		]);
+		vi.mocked(listQuickActionSuggestions).mockResolvedValue([]);
 		vi.mocked(listChildItems).mockResolvedValue({ items: [], totalCount: 0, nextCursor: null });
 		vi.mocked(listLinkedItems).mockResolvedValue({ items: [], totalCount: 0, nextCursor: null });
 		vi.mocked(searchRelationshipCandidates).mockResolvedValue([]);
@@ -813,12 +825,16 @@ describe("SITCON Board interactions", () => {
 		vi.mocked(createComment)
 			.mockRejectedValueOnce(new Error("GitLab unavailable"))
 			.mockResolvedValueOnce({
-				id: 3,
-				body: "請協助 review",
-				author: { gitLabUserId: 114, username: "yorukot", displayName: "Yorukot", avatarUrl: null, profileUrl: "https://gitlab.com/yorukot" },
-				system: false,
-				createdAt: "2026-07-29T08:00:00Z",
-				updatedAt: "2026-07-29T08:00:00Z"
+				comment: {
+					id: 3,
+					body: "請協助 review",
+					author: { gitLabUserId: 114, username: "yorukot", displayName: "Yorukot", avatarUrl: null, profileUrl: "https://gitlab.com/yorukot" },
+					system: false,
+					createdAt: "2026-07-29T08:00:00Z",
+					updatedAt: "2026-07-29T08:00:00Z"
+				},
+				quickActionsApplied: false,
+				summary: []
 			});
 		render(<Harness />);
 
@@ -833,7 +849,7 @@ describe("SITCON Board interactions", () => {
 		expect(within(comments as HTMLElement).getByText("[行政組]")).toBeVisible();
 		expect(within(comments as HTMLElement).queryByText(/<code/)).toBeNull();
 
-		const composer = within(dialog).getByRole("textbox", { name: "Comment" });
+		const composer = within(dialog).getByRole("combobox", { name: "Comment" });
 		await user.type(composer, "請協助 review");
 		await user.click(within(dialog).getByRole("button", { name: "送出 Comment" }));
 		expect(await within(dialog).findByRole("alert")).toHaveTextContent("GitLab unavailable");
@@ -874,7 +890,6 @@ describe("SITCON Board interactions", () => {
 		const first = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
 		await user.clear(within(first).getByLabelText("標題"));
 		await user.type(within(first).getByLabelText("標題"), "尚未儲存的標題");
-		await user.type(within(first).getByLabelText("Quick action"), "/due");
 		await user.click(within(first).getByRole("button", { name: "下一張卡片" }));
 
 		// Unsaved edits hold the drawer on this card until saved or reverted.
@@ -887,7 +902,6 @@ describe("SITCON Board interactions", () => {
 
 		expect(screen.getByRole("dialog", { name: /130 卡片詳細資料/ })).toBeVisible();
 		expect(screen.getByLabelText("標題")).toHaveValue("製作工作人員識別證");
-		expect(screen.getByLabelText("Quick action")).toHaveValue("");
 		expect(screen.queryByText("小心，你還沒儲存")).not.toBeInTheDocument();
 	});
 
@@ -935,32 +949,16 @@ describe("SITCON Board interactions", () => {
 		);
 	});
 
-	it("executes supported slash commands through typed card mutations", async () => {
+	it("offers GitLab quick actions inside a description", async () => {
 		const user = userEvent.setup();
-		vi.mocked(updateDueDate).mockReturnValue(new Promise(() => undefined));
 		render(<Harness />);
 
-		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
-		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
-		await user.type(within(dialog).getByLabelText("Quick action"), "/due 2026-07-31");
-		await user.click(within(dialog).getByRole("button", { name: "執行" }));
-
-		expect(updateDueDate).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), "2026-07-31");
-	});
-
-	it("chooses and executes a quick action from the keyboard", async () => {
-		const user = userEvent.setup();
-		vi.mocked(moveCard).mockReturnValue(new Promise(() => undefined));
-		render(<Harness />);
-
-		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
-		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
-		const input = within(dialog).getByLabelText("Quick action");
+		await user.click(screen.getByRole("heading", { name: "[議程組] 確認議程講者資料" }));
+		const dialog = screen.getByRole("dialog", { name: /129 卡片詳細資料/ });
+		const input = within(dialog).getByLabelText("描述");
 		await user.type(input, "/cl{Enter}");
 		expect(input).toHaveValue("/close");
-		await user.keyboard("{Enter}");
-
-		expect(moveCard).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), "closed");
+		expect(within(dialog).queryByLabelText("Quick action")).not.toBeInTheDocument();
 	});
 
 	it("selects more than one assignee", async () => {

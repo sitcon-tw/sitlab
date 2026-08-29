@@ -1,5 +1,5 @@
 import { api, expectData, getCsrfToken } from "@/shared/api/client";
-import type { BoardCard, CardComment } from "./model";
+import type { BoardCard, CardComment, CreateCardCommentResult, QuickActionCommand, QuickActionSuggestion, QuickActionSuggestionKind } from "./model";
 
 const demo = import.meta.env.VITE_SITCON_DEMO === "true";
 
@@ -104,21 +104,25 @@ export async function listComments(card: BoardCard): Promise<CardComment[]> {
 	).comments;
 }
 
-export async function createComment(card: BoardCard, body: string): Promise<CardComment> {
+export async function createComment(card: BoardCard, body: string): Promise<CreateCardCommentResult> {
 	if (demo) {
 		return {
-			id: Date.now(),
-			body,
-			author: {
-				gitLabUserId: 114,
-				username: "yorukot",
-				displayName: "Yorukot",
-				avatarUrl: null,
-				profileUrl: "https://gitlab.com/yorukot"
+			comment: {
+				id: Date.now(),
+				body,
+				author: {
+					gitLabUserId: 114,
+					username: "yorukot",
+					displayName: "Yorukot",
+					avatarUrl: null,
+					profileUrl: "https://gitlab.com/yorukot"
+				},
+				system: false,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString()
 			},
-			system: false,
-			createdAt: new Date().toISOString(),
-			updatedAt: new Date().toISOString()
+			quickActionsApplied: false,
+			summary: []
 		};
 	}
 	return expectData(
@@ -128,6 +132,35 @@ export async function createComment(card: BoardCard, body: string): Promise<Card
 		})
 	);
 }
+
+export async function listQuickActions(issueIid?: number): Promise<QuickActionCommand[]> {
+	if (demo) return demoQuickActions;
+	return expectData(
+		await api.GET("/quick-actions", {
+			params: { query: issueIid && issueIid > 0 ? { issueIid } : {} }
+		})
+	).commands;
+}
+
+export async function listQuickActionSuggestions(kind: QuickActionSuggestionKind, query: string, issueIid?: number): Promise<QuickActionSuggestion[]> {
+	if (demo) return [];
+	return expectData(
+		await api.GET("/quick-actions/suggestions", {
+			params: { query: { kind, ...(query ? { query } : {}), ...(issueIid && issueIid > 0 ? { issueIid } : {}) } }
+		})
+	).suggestions;
+}
+
+const demoQuickActions: QuickActionCommand[] = [
+	{ name: "assign", aliases: [], params: ["@user"], description: "Assign one or more users", warning: null, icon: null },
+	{ name: "unassign", aliases: [], params: ["[@user]"], description: "Remove assignees", warning: null, icon: null },
+	{ name: "label", aliases: [], params: ["~label"], description: "Add one or more labels", warning: null, icon: null },
+	{ name: "unlabel", aliases: [], params: ["~label"], description: "Remove one or more labels", warning: null, icon: null },
+	{ name: "status", aliases: [], params: ['"status"'], description: "Set lifecycle status", warning: null, icon: null },
+	{ name: "due", aliases: [], params: ["<date>"], description: "Set due date", warning: null, icon: null },
+	{ name: "close", aliases: [], params: [], description: "Close the work item", warning: null, icon: null },
+	{ name: "reopen", aliases: [], params: [], description: "Reopen the work item", warning: null, icon: null }
+];
 
 export async function moveCard(card: BoardCard, operationId: string, listKey: string, position?: number) {
 	if (demo) return demoMutation(card, position === undefined ? { listKey } : { listKey, position }, operationId);

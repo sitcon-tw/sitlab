@@ -28,7 +28,7 @@ The dark product header uses the official white SITCON logo shipped by the `sitc
 - Every actionable surface carries an MD3 state layer (hover 8%, focus 10%, pressed 10%, dragged 16%) and a ripple. Under `prefers-reduced-motion` the ripple is removed and a pressed state layer takes its place.
 - Buttons use a 44dp visual container. Standard icon controls keep a 40dp visual container with a 48dp touch target supplied by a non-layout overlay. Dialog fields remain 56dp, while supported dense board chrome uses 48dp fields.
 - Healthy background sync, optimistic pending, processing, and success remain visually quiet, except on the field the user just edited: it shows an in-place saving indicator that resolves to a brief saved marker, announced through one live region per drawer. Offline snapshots and durable failures are visible and retryable.
-- Card surfaces expose title, description preview, due date, and assignees. Team and status controls live in the navigable right-side detail drawer with editable title, GFM Markdown edit/preview modes, typed Quick Actions, multiple assignees, GitLab Start/Due dates, and the issue link. Markdown preview does not enable raw HTML.
+- Card surfaces expose title, description preview, due date, and assignees. Team and status controls live in the navigable right-side detail drawer with editable title, GFM Markdown edit/preview modes, multiple assignees, GitLab Start/Due dates, and the issue link. Quick Actions are entered natively in description and Comment fields, whose shared autocomplete resolves permission-aware GitLab commands and reference parameters. Markdown preview does not enable raw HTML.
 - Controls keep stable dimensions so dynamic labels and counters do not shift the surrounding layout.
 
 ## Verification

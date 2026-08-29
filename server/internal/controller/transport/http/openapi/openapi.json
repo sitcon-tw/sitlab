@@ -1096,7 +1096,17 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/CardComment"
+									"$ref": "#/components/schemas/CreateCardCommentResult"
+								}
+							}
+						}
+					},
+					"202": {
+						"description": "The request has been accepted for processing, but processing has not yet completed.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CreateCardCommentResult"
 								}
 							}
 						}
@@ -2985,6 +2995,207 @@
 				]
 			}
 		},
+		"/quick-actions": {
+			"get": {
+				"operationId": "listQuickActions",
+				"summary": "List GitLab quick actions available to the current user",
+				"parameters": [
+					{
+						"name": "issueIid",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"format": "int64"
+						},
+						"explode": false
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The request has succeeded.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/QuickActionCommandsResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
+		"/quick-actions/suggestions": {
+			"get": {
+				"operationId": "listQuickActionSuggestions",
+				"summary": "Search GitLab values accepted by Quick Action parameters",
+				"parameters": [
+					{
+						"name": "kind",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"enum": ["member", "label", "work_item", "merge_request", "epic", "milestone", "iteration", "snippet", "branch", "project"]
+						},
+						"explode": false
+					},
+					{
+						"name": "query",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						},
+						"explode": false
+					},
+					{
+						"name": "issueIid",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"format": "int64"
+						},
+						"explode": false
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The request has succeeded.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/QuickActionSuggestionsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The server could not understand the request due to invalid syntax.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "The server cannot find the requested resource.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Cards"],
+				"security": [
+					{
+						"SessionCookieAuth": []
+					}
+				]
+			}
+		},
 		"/sync": {
 			"get": {
 				"operationId": "getSyncDelta",
@@ -3879,6 +4090,31 @@
 					}
 				}
 			},
+			"CreateCardCommentResult": {
+				"type": "object",
+				"required": ["comment", "quickActionsApplied", "summary"],
+				"properties": {
+					"comment": {
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/CardComment"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"quickActionsApplied": {
+						"type": "boolean"
+					},
+					"summary": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				}
+			},
 			"CreateCardRequest": {
 				"type": "object",
 				"required": ["operationId", "title", "teamKey", "listKey", "description", "assigneeGitLabUserIds", "labels", "startDate", "dueDate"],
@@ -4623,6 +4859,130 @@
 						"type": "array",
 						"items": {
 							"$ref": "#/components/schemas/ProjectLabel"
+						}
+					}
+				}
+			},
+			"QuickActionCommand": {
+				"type": "object",
+				"required": ["name", "aliases", "params", "description", "warning", "icon"],
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"aliases": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"params": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"warning": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"icon": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				}
+			},
+			"QuickActionCommandsResponse": {
+				"type": "object",
+				"required": ["commands"],
+				"properties": {
+					"commands": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/QuickActionCommand"
+						}
+					}
+				}
+			},
+			"QuickActionSuggestion": {
+				"type": "object",
+				"required": ["id", "kind", "value", "label", "detail", "avatarUrl", "color"],
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"kind": {
+						"type": "string",
+						"enum": ["member", "label", "work_item", "merge_request", "epic", "milestone", "iteration", "snippet", "branch", "project"]
+					},
+					"value": {
+						"type": "string"
+					},
+					"label": {
+						"type": "string"
+					},
+					"detail": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"avatarUrl": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"color": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				}
+			},
+			"QuickActionSuggestionsResponse": {
+				"type": "object",
+				"required": ["suggestions"],
+				"properties": {
+					"suggestions": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/QuickActionSuggestion"
 						}
 					}
 				}
