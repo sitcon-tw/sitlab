@@ -25,6 +25,22 @@ function closedLaneBootstrap(count: number) {
 	return bootstrap;
 }
 
+function tallLaneBootstrap(count: number) {
+	const bootstrap = structuredClone(demoBootstrap);
+	const list = bootstrap.board.lists.find((item) => item.name === "To do")!;
+	const template = bootstrap.board.cards.find((card) => card.listKey === list.key)!;
+	bootstrap.board.cards = [
+		...bootstrap.board.cards.filter((card) => card.listKey !== list.key),
+		...Array.from({ length: count }, (_, index) => ({
+			...template,
+			issueIid: 3_000 + index,
+			title: `待辦卡片 ${index + 1}`,
+			position: index
+		}))
+	];
+	return bootstrap;
+}
+
 async function injectBootstrap(page: Page, bootstrap: typeof demoBootstrap) {
 	await page.route("**/", async (route) => {
 		const response = await route.fetch();
@@ -116,8 +132,8 @@ test.describe("SITCON Board demo visual audit", () => {
 		}
 	}
 
-	test("wide board keeps full-width lanes and scrolls horizontally", async ({ page }) => {
-		await page.setViewportSize({ width: 2048, height: 900 });
+	test("desktop board keeps full-width lanes and scrolls horizontally", async ({ page }) => {
+		await page.setViewportSize({ width: 1440, height: 900 });
 		await page.goto("/");
 		const board = page.getByRole("region", { name: "SITCON 2027 工作看板" });
 		const dimensions = await board.evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
@@ -125,6 +141,42 @@ test.describe("SITCON Board demo visual audit", () => {
 		await board.evaluate((element) => element.scrollTo({ left: element.scrollWidth }));
 		await expect.poll(() => board.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
 	});
+
+	for (const viewport of [
+		{ name: "desktop", width: 1440, height: 900 },
+		{ name: "narrow", width: 320, height: 720 }
+	]) {
+		test(`card scrolling stays inside one column at ${viewport.name} width`, async ({ page }) => {
+			await injectBootstrap(page, tallLaneBootstrap(40));
+			await page.setViewportSize(viewport);
+			await page.goto("/");
+
+			const filters = page.getByRole("region", { name: "篩選看板" });
+			const todoLane = page.locator('section[data-list="todo"]');
+			const todoHeader = todoLane.getByRole("heading", { name: "To do" });
+			const todoCardList = todoLane.getByRole("article").first().locator("..");
+			const inboxCardList = page.locator('section[data-list="inbox"]').getByRole("article").first().locator("..");
+			const before = {
+				filters: await filters.boundingBox(),
+				header: await todoHeader.boundingBox()
+			};
+
+			const dimensions = await todoCardList.evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight }));
+			expect(dimensions.scrollHeight).toBeGreaterThan(dimensions.clientHeight);
+			await todoCardList.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+			await expect.poll(() => todoCardList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+			const after = {
+				filters: await filters.boundingBox(),
+				header: await todoHeader.boundingBox()
+			};
+			expect(after.filters?.y).toBeCloseTo(before.filters?.y ?? 0, 0);
+			expect(after.header?.y).toBeCloseTo(before.header?.y ?? 0, 0);
+			expect(await inboxCardList.evaluate((element) => element.scrollTop)).toBe(0);
+			expect(await page.evaluate(() => window.scrollY)).toBe(0);
+			expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(viewport.height);
+		});
+	}
 
 	for (const viewport of [
 		{ name: "desktop", width: 1440, height: 900 },
