@@ -74,6 +74,7 @@ import { BoardFilters } from "./BoardFilters";
 import { planCardMove } from "./boardOrder";
 import styles from "./BoardPage.module.css";
 import { boardSearchTerms, createBoardSearchIndex, matchesBoardSearch } from "./boardSearch";
+import { allowsCardDragActivation } from "./cardDrag";
 import { CardLabels } from "./CardLabels";
 import { CardRelationships } from "./CardRelationships";
 import { createGanttViewModel, openBoardCards } from "./ganttModel";
@@ -153,10 +154,20 @@ const pointerIntersection: BoardCollisionDetector = ({ dragOperation, droppable 
 	};
 };
 const boardPointerSensor = PointerSensor.configure({
-	activationConstraints(event) {
-		return event.pointerType === "touch"
-			? [new PointerActivationConstraints.Delay({ value: 180, tolerance: { x: 8, y: 8 } })]
-			: [new PointerActivationConstraints.Distance({ value: 6 })];
+	// The whole card is a pointer drag surface (policy in cardDrag.ts); the
+	// KeyboardSensor keeps binding to the handle, so keyboard drags are unchanged.
+	activatorElements: (source) => [source.element],
+	preventActivation: (event, source) => !allowsCardDragActivation(event.target, source),
+	activationConstraints(event, source) {
+		if (event.pointerType === "touch") {
+			return [new PointerActivationConstraints.Delay({ value: 180, tolerance: { x: 8, y: 8 } })];
+		}
+		// A mouse press on the explicit handle grabs instantly; anywhere else
+		// must travel a little so plain clicks stay clicks.
+		if (event.target instanceof Element && source.handle?.contains(event.target)) {
+			return undefined;
+		}
+		return [new PointerActivationConstraints.Distance({ value: 6 })];
 	}
 });
 
@@ -1111,7 +1122,7 @@ function CardItem({
 					</IconButton>
 				) : null}
 			</div>
-			<button type="button" className={styles.cardTitle} onClick={onOpen}>
+			<button type="button" className={styles.cardTitle} data-card-drag-surface onClick={onOpen}>
 				<h3>
 					{/* Visual metadata only: keeping the iid out of the accessible name
 					 * leaves the heading and every derived control label as the title. */}
