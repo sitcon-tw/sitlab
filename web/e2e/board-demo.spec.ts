@@ -61,6 +61,45 @@ test.describe("SITCON Board demo visual audit", () => {
 		});
 	}
 
+	test("scrolling the board stays inside the active column", async ({ page }) => {
+		const expectColumnScrollToStayContained = async () => {
+			const filters = page.getByRole("region", { name: "篩選看板" });
+			const waitingLane = page.getByRole("heading", { name: "Wating" }).locator("..").locator("..");
+			const waitingCards = waitingLane.locator(":scope > div");
+			const inboxCards = page.getByRole("heading", { name: "Inbox" }).locator("..").locator("..").locator(":scope > div");
+			await waitingCards.evaluate((cardList) => {
+				const card = cardList.firstElementChild;
+				if (!card) throw new Error("Wating column has no card to duplicate");
+				for (let index = 0; index < 10; index += 1) cardList.append(card.cloneNode(true));
+			});
+
+			const filterTop = await filters.evaluate((element) => element.getBoundingClientRect().top);
+			await waitingCards.hover();
+			await page.mouse.wheel(0, 600);
+
+			await expect.poll(() => waitingCards.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+			expect(await inboxCards.evaluate((element) => element.scrollTop)).toBe(0);
+			expect(await page.evaluate(() => window.scrollY)).toBe(0);
+			expect(await filters.evaluate((element) => element.getBoundingClientRect().top)).toBe(filterTop);
+		};
+
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await page.goto("/");
+		await expectColumnScrollToStayContained();
+
+		await page.setViewportSize({ width: 320, height: 720 });
+		await page.reload();
+		await expectColumnScrollToStayContained();
+		const board = page.getByRole("region", { name: "SITCON 2027 工作看板" });
+		const horizontalScroll = await board.evaluate((element) => {
+			const overflow = element.scrollWidth - element.clientWidth;
+			element.scrollLeft = Math.min(100, overflow);
+			return { overflow, scrollLeft: element.scrollLeft };
+		});
+		expect(horizontalScroll.overflow).toBeGreaterThan(0);
+		expect(horizontalScroll.scrollLeft).toBeGreaterThan(0);
+	});
+
 	test("team and people filters combine on the board", async ({ page }) => {
 		await page.setViewportSize({ width: 608, height: 800 });
 		await page.goto("/");
