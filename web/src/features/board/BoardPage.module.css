@@ -1,6 +1,9 @@
 .app {
-	min-height: 100vh;
-	min-height: 100svh;
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	height: 100svh;
+	overflow: hidden;
 	background: var(--sb-page);
 }
 
@@ -163,6 +166,10 @@
 }
 
 .main {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-height: 0;
 	width: 100%;
 	padding: 1rem 1.25rem 2rem;
 	overflow: hidden;
@@ -605,9 +612,11 @@
 
 .board {
 	display: grid;
+	flex: 1;
 	grid-auto-columns: minmax(17.5rem, 1fr);
 	grid-auto-flow: column;
 	gap: 0.875rem;
+	min-height: 0;
 	width: 100%;
 	padding-bottom: 1rem;
 	overflow-x: auto;
@@ -615,8 +624,11 @@
 }
 
 .lane {
+	display: flex;
+	flex-direction: column;
 	min-width: 0;
-	min-height: calc(100svh - 8.5rem);
+	min-height: 0;
+	overflow: hidden;
 	background: var(--sb-lane);
 	border-top: 0.1875rem solid var(--sb-border-strong);
 	border-radius: 0.25rem 0.25rem 0 0;
@@ -648,6 +660,7 @@
 
 .laneHeader {
 	display: flex;
+	flex: 0 0 auto;
 	align-items: center;
 	justify-content: space-between;
 	height: 2.75rem;
@@ -675,9 +688,13 @@
 
 .cardList {
 	display: grid;
+	flex: 1;
 	gap: 0.625rem;
 	align-content: start;
+	min-height: 0;
 	padding: 0.625rem;
+	overflow-y: auto;
+	overscroll-behavior-block: contain;
 }
 
 .card {
