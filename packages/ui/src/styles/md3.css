@@ -1554,13 +1554,30 @@
 	top: 50%;
 	left: 50%;
 	z-index: 51;
+	display: flex;
+	flex-direction: column;
 	width: min(calc(100vw - 2rem), 32rem);
 	max-height: calc(100svh - 2rem);
-	overflow-y: auto;
+	overflow: hidden;
 	color: var(--md-sys-color-on-surface);
 	background: var(--md-sys-color-surface-container-low);
 	border-radius: var(--md-sys-shape-corner-extra-large);
 	transform: translate(-50%, -50%);
+}
+
+/* Only the body scrolls, so on short viewports the title and footer stay in
+ * reach instead of scrolling away and the surface never looks cut off. Direct
+ * children only: the drawer keeps .md-drawer as its single scrollport, which
+ * in-drawer sticky elements depend on. */
+.md-dialog > .md-dialog__header,
+.md-dialog > .md-dialog__footer {
+	flex: 0 0 auto;
+}
+
+.md-dialog > .md-dialog__body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
 }
 
 /* Modal side sheet: the card detail and member panels are detail surfaces, not

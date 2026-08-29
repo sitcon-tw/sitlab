@@ -303,6 +303,35 @@ test.describe("SITCON Board demo visual audit", () => {
 		await expect(page.getByRole("button", { name: "新增卡片" })).toBeFocused();
 	});
 
+	test("create dialog pins its title and stays inside a short viewport", async ({ page }) => {
+		await page.setViewportSize({ width: 1112, height: 320 });
+		await page.goto("/");
+		await page.getByRole("button", { name: "新增卡片" }).click();
+		await expect(page.getByRole("dialog", { name: "新增卡片" })).toBeVisible();
+
+		const geometry = await page.evaluate(() => {
+			const surface = document.querySelector<HTMLElement>(".md-dialog")!;
+			const body = surface.querySelector<HTMLElement>(".md-dialog__body")!;
+			const rect = surface.getBoundingClientRect();
+			return {
+				viewport: window.innerHeight,
+				top: rect.top,
+				bottom: rect.bottom,
+				bodyScrollable: body.scrollHeight > body.clientHeight
+			};
+		});
+		expect(geometry.top).toBeGreaterThanOrEqual(0);
+		expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewport);
+		expect(geometry.bodyScrollable).toBe(true);
+
+		// The submit control is reachable by scrolling the body, and the pinned
+		// title never scrolls away with it.
+		const create = page.getByRole("button", { name: "建立卡片" });
+		await create.scrollIntoViewIfNeeded();
+		await expect(create).toBeVisible();
+		await expect(page.getByRole("dialog", { name: "新增卡片" }).locator(".md-dialog__title")).toBeInViewport();
+	});
+
 	test("team and people filters combine on the board", async ({ page }) => {
 		await page.setViewportSize({ width: 608, height: 800 });
 		await page.goto("/");
