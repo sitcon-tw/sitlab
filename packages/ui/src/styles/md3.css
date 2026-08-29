@@ -1147,6 +1147,8 @@
 .md-select-menu {
 	min-width: var(--radix-dropdown-menu-trigger-width);
 	max-width: min(24rem, var(--radix-dropdown-menu-content-available-width));
+	max-height: var(--radix-dropdown-menu-content-available-height);
+	overflow-y: auto;
 }
 
 /* Placeholder text is only meaningful once the label has floated out of its way. */
