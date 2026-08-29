@@ -185,6 +185,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 	const [ganttScale, setGanttScale] = useState<GanttScale>(initialView.ganttScale);
 	const [closedLaneExpansion, setClosedLaneExpansion] = useState<ClosedLaneExpansion>({ scopeKey: "", limits: {} });
 	const [undo, setUndo] = useState<{ cardIid: number; assigneeIds: number[]; assigneeNames: string[] } | null>(null);
+	const [createOpen, setCreateOpen] = useState(false);
 	const internalRetries = useRef(new Map<string, () => void>());
 	const localRetries = inflightOperations ?? internalRetries;
 	const save = useFieldSaveState();
@@ -605,29 +606,44 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 					/>
 				) : null}
 				<div className={styles.toolbar}>
-					<QuickCreate bootstrap={bootstrap} onCreate={handleCreate} />
-					<BoardFilters
-						bootstrap={bootstrap}
-						query={filterQuery}
-						teamKey={filterTeamKey}
-						memberIds={filterMemberIds}
-						labels={filterLabels}
-						sortMode={sortMode}
-						viewMode={viewMode}
-						visibleCount={viewMode === "gantt" ? ganttCards.length : filteredCards.length}
-						totalCount={viewMode === "gantt" ? openCards.length : cards.length}
-						onQueryChange={changeFilterQuery}
-						onTeamChange={setFilterTeamKey}
-						onMemberIdsChange={setFilterMemberIds}
-						onLabelsChange={setFilterLabels}
-						onSortModeChange={setSortMode}
-						onClear={() => {
-							changeFilterQuery("");
-							setFilterTeamKey("");
-							setFilterMemberIds([]);
-							setFilterLabels([]);
-						}}
-					/>
+					<div className={styles.toolbarRow}>
+						<Dialog
+							open={createOpen}
+							onOpenChange={setCreateOpen}
+							title="新增卡片"
+							trigger={
+								<Button variant="filled" leadingIcon={<Plus size="1rem" aria-hidden="true" />}>
+									新增卡片
+								</Button>
+							}
+						>
+							<QuickCreate bootstrap={bootstrap} onCreate={handleCreate} />
+						</Dialog>
+						<div className={styles.toolbarFilters}>
+							<BoardFilters
+								bootstrap={bootstrap}
+								query={filterQuery}
+								teamKey={filterTeamKey}
+								memberIds={filterMemberIds}
+								labels={filterLabels}
+								sortMode={sortMode}
+								viewMode={viewMode}
+								visibleCount={viewMode === "gantt" ? ganttCards.length : filteredCards.length}
+								totalCount={viewMode === "gantt" ? openCards.length : cards.length}
+								onQueryChange={changeFilterQuery}
+								onTeamChange={setFilterTeamKey}
+								onMemberIdsChange={setFilterMemberIds}
+								onLabelsChange={setFilterLabels}
+								onSortModeChange={setSortMode}
+								onClear={() => {
+									changeFilterQuery("");
+									setFilterTeamKey("");
+									setFilterMemberIds([]);
+									setFilterLabels([]);
+								}}
+							/>
+						</div>
+					</div>
 				</div>
 				{viewMode === "board" ? (
 					<DragDropProvider

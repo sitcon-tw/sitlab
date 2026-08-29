@@ -66,12 +66,32 @@
 	border-radius: var(--md-sys-shape-corner-large);
 }
 
+/* Quick Create lives in a dialog now, so the stacked title-plus-controls
+ * layout that used to be the mobile variant is the only layout. */
 .quickCreate {
 	display: grid;
-	grid-template-columns: minmax(7.5rem, 9rem) minmax(7.5rem, 9rem) minmax(12rem, 1fr) minmax(8rem, 11rem) minmax(8rem, 10rem) 2.5rem 2.5rem;
+	grid-template-columns: repeat(4, minmax(0, 1fr)) 2.5rem 2.5rem;
 	align-items: start;
-	grid-template-areas: "mode team title assignee date more create";
+	grid-template-areas:
+		"mode mode mode mode mode mode"
+		"title title title title title title"
+		"team team assignee assignee assignee assignee"
+		"date date date date more create";
 	gap: var(--md-space-2);
+}
+
+/* The create trigger shares one row with the filters and hands the row back
+ * to them when the viewport gets too narrow for both. */
+.toolbarRow {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--md-space-2);
+	align-items: flex-start;
+}
+
+.toolbarFilters {
+	flex: 1 1 58rem;
+	min-width: 0;
 }
 
 .createModes {
@@ -110,6 +130,13 @@
 	width: 100%;
 	height: 2.5rem;
 	min-height: 2.5rem;
+}
+
+/* The mode switch spans the dialog, so its segments split the pill evenly
+ * instead of leaving the stretched remainder empty. */
+.quickCreate :global(.md-segmented-button__segment) {
+	flex: 1 1 0;
+	min-width: 0;
 }
 
 .quickCreate :global(.md-field__input) {
@@ -1468,17 +1495,6 @@
 	clip: rect(0, 0, 0, 0);
 	white-space: nowrap;
 	border: 0;
-}
-
-@media (max-width: 60rem) {
-	.quickCreate {
-		grid-template-columns: repeat(4, minmax(0, 1fr)) 2.5rem 2.5rem;
-		grid-template-areas:
-			"mode mode mode mode mode mode"
-			"title title title title title title"
-			"team team assignee assignee assignee assignee"
-			"date date date date more create";
-	}
 }
 
 @media (max-width: 48rem) {

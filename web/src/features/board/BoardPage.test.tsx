@@ -100,6 +100,11 @@ async function chooseSort(user: ReturnType<typeof userEvent.setup>, name: string
 	await user.click(await screen.findByRole("menuitemcheckbox", { name }));
 }
 
+async function openQuickCreate(user: ReturnType<typeof userEvent.setup>) {
+	await user.click(screen.getByRole("button", { name: "新增卡片" }));
+	await screen.findByRole("dialog", { name: "新增卡片" });
+}
+
 async function chooseSelectField(user: ReturnType<typeof userEvent.setup>, label: string, option: string, root: HTMLElement = document.body) {
 	await user.click(within(root).getByRole("button", { name: label }));
 	const menu = await screen.findByRole("menu", { name: `${label}選項` });
@@ -164,6 +169,10 @@ describe("SITCON Board interactions", () => {
 		const user = userEvent.setup();
 		render(<Harness />);
 
+		// Creation is closed by default and lives behind the toolbar button.
+		expect(screen.queryByLabelText("卡片標題")).not.toBeInTheDocument();
+		await openQuickCreate(user);
+
 		expect(screen.getByRole("button", { name: "新卡片組別" })).toHaveTextContent("開發組");
 		expect(screen.getByRole("button", { name: "選擇新卡片 Assignee" })).toHaveTextContent("Yorukot");
 		expect((screen.getByLabelText("新卡片期限") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -177,6 +186,7 @@ describe("SITCON Board interactions", () => {
 	it("discards unapplied more options and restores focus", async () => {
 		const user = userEvent.setup();
 		render(<Harness />);
+		await openQuickCreate(user);
 		const moreButton = screen.getByRole("button", { name: "更多建卡選項" });
 
 		await user.click(moreButton);
@@ -214,6 +224,7 @@ describe("SITCON Board interactions", () => {
 	it("clears the default assignee when quick create switches to another team", async () => {
 		const user = userEvent.setup();
 		render(<Harness />);
+		await openQuickCreate(user);
 
 		await chooseSelectField(user, "新卡片組別", "設計組");
 
@@ -225,6 +236,7 @@ describe("SITCON Board interactions", () => {
 		const user = userEvent.setup();
 		vi.mocked(createCard).mockReturnValue(new Promise(() => undefined));
 		render(<Harness />);
+		await openQuickCreate(user);
 
 		await user.click(screen.getByRole("button", { name: "更多建卡選項" }));
 		let dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
@@ -236,6 +248,17 @@ describe("SITCON Board interactions", () => {
 		await user.type(screen.getByLabelText("卡片標題"), "新增值班表");
 		await user.click(screen.getByRole("button", { name: "建立卡片" }));
 
+		// The dialog stays open for the next card of this entry session: the
+		// chosen Status sticks while description and labels reset.
+		await user.click(screen.getByRole("button", { name: "更多建卡選項" }));
+		dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
+		expect(within(dialog).getByRole("button", { name: "新卡片 Status" })).toHaveTextContent("Doing");
+		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
+		expect(within(dialog).getByRole("checkbox", { name: "Backend" })).not.toBeChecked();
+		await user.click(within(dialog).getByRole("button", { name: "取消" }));
+		// The modal create dialog hides the board from the accessibility tree.
+		await user.keyboard("{Escape}");
+
 		expect(screen.getByRole("heading", { name: "[開發組] 新增值班表" })).toBeVisible();
 		const doingLane = screen.getByRole("heading", { name: "Doing" }).closest("section");
 		expect(within(doingLane as HTMLElement).getByRole("heading", { name: "[開發組] 新增值班表" })).toBeVisible();
@@ -245,12 +268,6 @@ describe("SITCON Board interactions", () => {
 		await user.click(screen.getByRole("heading", { name: "[開發組] 新增值班表" }));
 		expect(screen.getByRole("dialog", { name: "新卡片詳細資料" })).toHaveTextContent("Backend");
 		await user.click(screen.getByRole("button", { name: "Close drawer" }));
-
-		await user.click(screen.getByRole("button", { name: "更多建卡選項" }));
-		dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
-		expect(within(dialog).getByRole("button", { name: "新卡片 Status" })).toHaveTextContent("Doing");
-		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
-		expect(within(dialog).getByRole("checkbox", { name: "Backend" })).not.toBeChecked();
 	});
 
 	it("renders the configured board columns in order", () => {
@@ -388,6 +405,7 @@ describe("SITCON Board interactions", () => {
 		expect(within(groups[0] as HTMLElement).getAllByRole("checkbox")[1]).toHaveAccessibleName(/Yorukot/);
 		await user.keyboard("{Escape}");
 
+		await openQuickCreate(user);
 		await chooseSelectField(user, "新卡片組別", "設計組");
 		const assigneeTrigger = screen.getByRole("button", { name: "選擇新卡片 Assignee" });
 		expect(assigneeTrigger.closest(".md-chip")).toHaveClass("md-chip--input");
@@ -844,6 +862,7 @@ describe("SITCON Board interactions", () => {
 		const user = userEvent.setup();
 		vi.mocked(createCard).mockReturnValue(new Promise(() => undefined));
 		render(<Harness />);
+		await openQuickCreate(user);
 
 		await user.click(screen.getByRole("button", { name: "所有組長" }));
 		await user.click(screen.getByRole("button", { name: "更多建卡選項" }));

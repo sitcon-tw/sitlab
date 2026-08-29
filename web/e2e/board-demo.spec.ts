@@ -224,28 +224,16 @@ test.describe("SITCON Board demo visual audit", () => {
 		await expect(page.locator('section[data-list="review"]').getByRole("heading", { name: "[行銷組] 完成主視覺社群素材" })).toBeVisible();
 	});
 
-	test("quick create controls align and use one focus indicator", async ({ page }) => {
+	test("quick create opens as a dialog and uses one focus indicator", async ({ page }) => {
 		await page.setViewportSize({ width: 1360, height: 800 });
 		await page.goto("/");
-		const title = page.getByLabel("卡片標題");
-		const initialAlignment = await title.evaluate((input) => {
-			const form = input.closest("form");
-			if (!form) return { labels: [], inputs: [] };
-			const fieldLabels = [...form.querySelectorAll<HTMLElement>(".md-field__label")];
-			const assigneeLabel = [...form.querySelectorAll<HTMLElement>("span")].find((element) => element.textContent?.trim() === "新卡片負責人");
-			const labels = [...fieldLabels, ...(assigneeLabel ? [assigneeLabel] : [])].map((element) => {
-				const rect = element.getBoundingClientRect();
-				return { top: rect.top, height: rect.height };
-			});
-			const inputs = [...form.querySelectorAll<HTMLElement>(".md-field__input")].map((element) => element.getBoundingClientRect().height);
-			return { labels, inputs };
-		});
-		expect(initialAlignment.labels).toHaveLength(4);
-		for (const label of initialAlignment.labels) {
-			expect(Math.abs(label.top - initialAlignment.labels[0]!.top)).toBeLessThanOrEqual(1);
-			expect(Math.abs(label.height - initialAlignment.labels[0]!.height)).toBeLessThanOrEqual(1);
-		}
-		for (const inputHeight of initialAlignment.inputs) expect(Math.abs(inputHeight - 40)).toBeLessThanOrEqual(1);
+
+		// Creation is closed by default; the toolbar button opens the dialog.
+		await expect(page.getByLabel("卡片標題")).toHaveCount(0);
+		await page.getByRole("button", { name: "新增卡片" }).click();
+		const dialog = page.getByRole("dialog", { name: "新增卡片" });
+		const title = dialog.getByLabel("卡片標題");
+		await expect(title).toBeVisible();
 
 		await title.focus();
 		await expect
@@ -256,38 +244,11 @@ test.describe("SITCON Board demo visual audit", () => {
 				})
 			)
 			.toBeGreaterThanOrEqual(2);
+		expect(await title.evaluate((input) => getComputedStyle(input).outlineStyle)).toBe("none");
 
-		const layout = await title.evaluate((input) => {
-			const form = input.closest("form");
-			const controls = form
-				? [...form.children].filter((element) => {
-						const rect = element.getBoundingClientRect();
-						return rect.width > 0 && rect.height > 0 && element.getAttribute("role") !== "status";
-					})
-				: [];
-			const boxes = controls.map((element) => {
-				const rect = element.getBoundingClientRect();
-				return { top: rect.top, height: rect.height };
-			});
-			const formRect = form?.getBoundingClientRect();
-			const firstTop = Math.min(...boxes.map((box) => box.top));
-			const lastBottom = Math.max(...boxes.map((box) => box.top + box.height));
-			return {
-				boxes,
-				inputOutlineStyle: getComputedStyle(input).outlineStyle,
-				verticalInsets: formRect ? { top: firstTop - formRect.top, bottom: formRect.bottom - lastBottom } : null
-			};
-		});
-
-		const first = layout.boxes[0]!;
-		expect(layout.boxes).toHaveLength(7);
-		for (const box of layout.boxes) {
-			expect(Math.abs(box.top - first.top)).toBeLessThanOrEqual(1);
-			expect(Math.abs(box.height - first.height)).toBeLessThanOrEqual(1);
-		}
-		expect(layout.verticalInsets).not.toBeNull();
-		expect(Math.abs(layout.verticalInsets!.top - layout.verticalInsets!.bottom)).toBeLessThanOrEqual(1);
-		expect(layout.inputOutlineStyle).toBe("none");
+		await page.keyboard.press("Escape");
+		await expect(dialog).toHaveCount(0);
+		await expect(page.getByRole("button", { name: "新增卡片" })).toBeFocused();
 	});
 
 	test("team and people filters combine on the board", async ({ page }) => {
@@ -495,6 +456,7 @@ test.describe("SITCON Board demo visual audit", () => {
 		await page.setViewportSize({ width: 390, height: 844 });
 		await page.goto("/");
 
+		await page.getByRole("button", { name: "新增卡片" }).click();
 		await page.getByRole("button", { name: "更多建卡選項" }).click();
 		const dialog = page.getByRole("dialog", { name: "更多建卡選項" });
 		await expect(dialog.getByRole("button", { name: "新卡片 Status" })).toHaveText("Inbox");
@@ -506,6 +468,8 @@ test.describe("SITCON Board demo visual audit", () => {
 		await dialog.getByRole("button", { name: "套用" }).click();
 		await page.getByLabel("卡片標題").fill("新增值班表");
 		await page.getByRole("button", { name: "建立卡片" }).click();
+		// Close the create dialog so the board is visible and accessible again.
+		await page.keyboard.press("Escape");
 
 		const doing = page.locator('section[data-list="doing"]');
 		await expect(doing.getByRole("heading", { name: "[開發組] 新增值班表" })).toBeVisible();
