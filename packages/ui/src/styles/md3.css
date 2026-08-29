@@ -762,6 +762,7 @@
 /* The remove affordance is its own button, so it needs its own state layer and
  * cannot inherit the chip's overflow clip for a ripple. */
 .md-chip__remove {
+	position: relative;
 	display: grid;
 	flex: 0 0 auto;
 	place-items: center;
@@ -772,6 +773,20 @@
 	background: none;
 	border: 0;
 	border-radius: var(--md-sys-shape-corner-full);
+}
+
+/* 44dp touch floor for the remove affordance, mirroring the icon button's
+ * non-layout extender. 44dp instead of 48dp because chips sit inline and a
+ * larger extender would swallow the neighboring chip's body; later siblings
+ * still win overlapping hit-tests, which degrades gracefully. */
+.md-chip__remove::after {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 2.75rem;
+	height: 2.75rem;
+	transform: translate(-50%, -50%);
+	content: "";
 }
 
 .md-chip__remove:hover:not(:disabled) {
@@ -1030,6 +1045,12 @@
 	background: var(--sb-control);
 	border-radius: var(--md-sys-shape-corner-medium);
 	transition: background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+
+/* Leading content (e.g. token chips) joins the box's flex flow directly, so
+ * consumers control wrapping without the primitive taking a layout stance. */
+.md-field__leading {
+	display: contents;
 }
 
 .md-field:hover .md-field__box {

@@ -83,6 +83,23 @@ function ComponentCatalog() {
 					/>
 					<TextAreaField label="Description" optional />
 					<TextField label="Invalid field" error="A title is required." />
+					<TextField
+						label="Filter"
+						alwaysFloatLabel
+						placeholder="Type to search"
+						leading={
+							<>
+								<Chip
+									label="Team: Design"
+									variant="input"
+									onRemove={() => {}}
+									removeLabel="Remove team filter"
+									removeIcon={<span aria-hidden="true">×</span>}
+								/>
+								<Chip label="Backend" variant="input" onRemove={() => {}} removeLabel="Remove label filter" removeIcon={<span aria-hidden="true">×</span>} />
+							</>
+						}
+					/>
 				</div>
 			</Panel>
 			<div className="storybook-row">

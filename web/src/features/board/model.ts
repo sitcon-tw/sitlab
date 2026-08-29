@@ -91,6 +91,11 @@ export function filterDirectoryMembers(members: DirectoryMember[], query: string
 	return members.filter((member) => !normalized || `${member.displayName} ${member.username}`.toLocaleLowerCase("zh-Hant").includes(normalized));
 }
 
+/** Shared picker-search normalization: full-width forms and case fold away. */
+export function normalizePickerQuery(query: string) {
+	return query.normalize("NFKC").trim().toLocaleLowerCase("zh-Hant");
+}
+
 export function teamMembers(bootstrap: Bootstrap, teamKey: string) {
 	return activeMembers(bootstrap).filter((member) => member.teamKeys.includes(teamKey));
 }

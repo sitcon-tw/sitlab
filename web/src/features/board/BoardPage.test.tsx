@@ -306,7 +306,7 @@ describe("SITCON Board interactions", () => {
 		const user = userEvent.setup();
 		render(<Harness />);
 
-		const search = screen.getByRole("searchbox", { name: "搜尋卡片" });
+		const search = screen.getByRole("combobox", { name: "搜尋卡片" });
 		expect(search).toHaveValue("Backend");
 		expect(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 		expect(within(screen.getByRole("region", { name: "篩選看板" })).getByRole("status")).toHaveTextContent("1 / 7 張卡片");
@@ -324,7 +324,7 @@ describe("SITCON Board interactions", () => {
 	it("focuses card search with slash and clears it with Escape", async () => {
 		const user = userEvent.setup();
 		render(<Harness />);
-		const search = screen.getByRole("searchbox", { name: "搜尋卡片" });
+		const search = screen.getByRole("combobox", { name: "搜尋卡片" });
 
 		fireEvent.keyDown(window, { key: "/" });
 		expect(search).toHaveFocus();
@@ -351,6 +351,95 @@ describe("SITCON Board interactions", () => {
 		expect(window.location.search).toContain("label=Backend");
 		expect(window.location.search).toContain("sort=updated-asc");
 		expect(window.location.search).toContain("demo=1");
+	});
+
+	it("inserts filter tokens from the token search suggestions", async () => {
+		const user = userEvent.setup();
+		render(<Harness />);
+
+		const search = screen.getByRole("combobox", { name: "搜尋卡片" });
+		await user.click(search);
+		await user.click(screen.getByRole("option", { name: /^組別/ }));
+		await user.type(search, "設計");
+		await user.click(screen.getByRole("option", { name: "設計組" }));
+
+		expect(screen.getByRole("button", { name: "移除組別篩選 設計組" })).toBeVisible();
+		expect(screen.getByRole("combobox", { name: "搜尋組別" })).toHaveValue("設計組");
+		expect(window.location.search).toContain("team=design");
+		expect(window.location.search).not.toContain("q=");
+		expect(screen.getByRole("heading", { name: "[設計組] 製作工作人員識別證" })).toBeVisible();
+		expect(screen.queryByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).not.toBeInTheDocument();
+	});
+
+	it("removes filter tokens and syncs the pickers", async () => {
+		window.history.replaceState(null, "", "/?team=development&member=114&label=Backend");
+		const user = userEvent.setup();
+		render(<Harness />);
+
+		expect(screen.getByRole("button", { name: "移除組別篩選 開發組" })).toBeVisible();
+		expect(screen.getByRole("button", { name: "移除負責人篩選 Yorukot" })).toBeVisible();
+		expect(screen.getByRole("button", { name: "移除 Label 篩選 Backend" })).toBeVisible();
+
+		await user.click(screen.getByRole("button", { name: "移除 Label 篩選 Backend" }));
+		expect(screen.getByRole("combobox", { name: "搜尋 Label" })).toHaveValue("所有 Labels");
+		expect(window.location.search).not.toContain("label=Backend");
+		expect(window.location.search).toContain("team=development");
+	});
+
+	it("removes the last token with backspace and cancels a pending category instead of a chip", async () => {
+		window.history.replaceState(null, "", "/?member=114&label=Backend");
+		const user = userEvent.setup();
+		render(<Harness />);
+
+		const search = screen.getByRole("combobox", { name: "搜尋卡片" });
+		await user.click(search);
+		await user.keyboard("{Backspace}");
+		expect(screen.queryByRole("button", { name: "移除 Label 篩選 Backend" })).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "移除負責人篩選 Yorukot" })).toBeVisible();
+		expect(window.location.search).not.toContain("label=");
+
+		await user.click(screen.getByRole("option", { name: /^負責人/ }));
+		expect(screen.getByText("負責人：")).toBeVisible();
+		await user.keyboard("{Backspace}");
+		expect(screen.queryByText("負責人：")).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "移除負責人篩選 Yorukot" })).toBeVisible();
+	});
+
+	it("keeps already selected values out of the token suggestions", async () => {
+		window.history.replaceState(null, "", "/?member=114");
+		const user = userEvent.setup();
+		render(<Harness />);
+
+		await user.click(screen.getByRole("combobox", { name: "搜尋卡片" }));
+		await user.click(screen.getByRole("option", { name: /^負責人/ }));
+		expect(screen.getAllByRole("option").length).toBeGreaterThan(0);
+		expect(screen.queryByRole("option", { name: /Yorukot/ })).not.toBeInTheDocument();
+	});
+
+	it("walks the token search escape ladder and consumes a chosen category prefix", async () => {
+		const user = userEvent.setup();
+		render(<Harness />);
+
+		const search = screen.getByRole("combobox", { name: "搜尋卡片" });
+		await user.click(search);
+		expect(screen.getAllByRole("option")).toHaveLength(3);
+		await user.keyboard("{Escape}");
+		expect(search).toHaveFocus();
+		expect(screen.queryAllByRole("option")).toHaveLength(0);
+
+		await user.keyboard("{ArrowDown}");
+		expect(screen.getAllByRole("option")).toHaveLength(3);
+
+		await user.type(search, "組");
+		expect(screen.getAllByRole("option")).toHaveLength(1);
+		await user.keyboard("{Enter}");
+		expect(screen.getByText("組別：")).toBeVisible();
+		expect(search).toHaveValue("");
+		expect(window.location.search).not.toContain("q=");
+
+		await user.keyboard("{Escape}");
+		expect(screen.queryByText("組別：")).not.toBeInTheDocument();
+		expect(search).toHaveFocus();
 	});
 
 	it("searches and combines selected Labels with AND semantics", async () => {
@@ -956,7 +1045,7 @@ describe("SITCON Board interactions", () => {
 		expect(within(doneLane).getByRole("heading", { name: /近期完成 1$/ })).toBeVisible();
 		expect(within(doneLane).queryByRole("button", { name: /顯示更多/ })).not.toBeInTheDocument();
 
-		await user.type(screen.getByRole("searchbox", { name: "搜尋卡片" }), "近期完成");
+		await user.type(screen.getByRole("combobox", { name: "搜尋卡片" }), "近期完成");
 		await waitFor(() => expect(within(doneLane).getAllByRole("article")).toHaveLength(50));
 		expect(within(doneLane).getByText("已顯示最近 50 / 55 個 Issue")).toBeVisible();
 	});

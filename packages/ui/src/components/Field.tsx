@@ -65,7 +65,10 @@ function describedBy(id: string, description?: string, error?: string, explicit?
 	return [explicit, description ? `${id}-description` : null, error ? `${id}-error` : null].filter(Boolean).join(" ") || undefined;
 }
 
-export interface TextFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "size">, FieldMetaProps {}
+export interface TextFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "size">, FieldMetaProps {
+	/** Content rendered inside the field box before the input, e.g. token chips. */
+	leading?: ReactNode | undefined;
+}
 
 export function TextField({
 	label,
@@ -74,6 +77,7 @@ export function TextField({
 	optional,
 	dense,
 	alwaysFloatLabel,
+	leading,
 	id: explicitId,
 	className,
 	placeholder,
@@ -93,6 +97,7 @@ export function TextField({
 			floating={alwaysFloatLabel}
 			className={className}
 		>
+			{leading ? <span className="md-field__leading">{leading}</span> : null}
 			<input
 				id={id}
 				className="md-field__input"

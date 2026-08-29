@@ -380,12 +380,12 @@ test.describe("SITCON Board demo visual audit", () => {
 		await expect(page.getByRole("combobox", { name: "搜尋組別" })).toHaveValue("開發組");
 		await expect(page.getByRole("button", { name: "排序方式" })).toHaveAttribute("data-value", "due-desc");
 		await expect(page.getByRole("combobox", { name: "搜尋 Label" })).toHaveValue("Labels 1");
-		await expect(page.getByRole("searchbox", { name: "搜尋卡片" })).toHaveValue("Priority");
+		await expect(page.getByRole("combobox", { name: "搜尋卡片" })).toHaveValue("Priority");
 		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 		await page.reload();
 		await expect(page.getByRole("combobox", { name: "搜尋組別" })).toHaveValue("開發組");
 		await expect(page.getByRole("button", { name: "排序方式" })).toHaveAttribute("data-value", "due-desc");
-		await expect(page.getByRole("searchbox", { name: "搜尋卡片" })).toHaveValue("Priority");
+		await expect(page.getByRole("combobox", { name: "搜尋卡片" })).toHaveValue("Priority");
 		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeVisible();
 	});
 
@@ -393,7 +393,7 @@ test.describe("SITCON Board demo visual audit", () => {
 		test.skip(testInfo.project.name === "mobile", "slash focus is a hardware-keyboard desktop shortcut");
 		await page.setViewportSize({ width: 1440, height: 900 });
 		await page.goto("/");
-		const search = page.getByRole("searchbox", { name: "搜尋卡片" });
+		const search = page.getByRole("combobox", { name: "搜尋卡片" });
 		await expect(search).toBeVisible();
 		await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 		await page.keyboard.press("/");
@@ -405,6 +405,52 @@ test.describe("SITCON Board demo visual audit", () => {
 		await search.press("Escape");
 		await expect(search).toHaveValue("");
 		await expect(search).not.toBeFocused();
+	});
+
+	test("token search inserts and restores filter tokens", async ({ page }) => {
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await page.goto("/");
+
+		const search = page.getByRole("combobox", { name: "搜尋卡片" });
+		await search.click();
+		await page.getByRole("option", { name: /^Label/ }).click();
+		await search.fill("Backend");
+		await page.getByRole("option", { name: "Backend" }).click();
+
+		await expect(page.getByRole("button", { name: "移除 Label 篩選 Backend" })).toBeVisible();
+		await expect(page.getByRole("combobox", { name: "搜尋 Label" })).toHaveValue("Labels 1");
+		await expect(page.getByRole("region", { name: "篩選看板" }).getByRole("status")).toHaveText("1 / 7 張卡片");
+		await page.reload();
+		await expect(page.getByRole("button", { name: "移除 Label 篩選 Backend" })).toBeVisible();
+	});
+
+	test("token chips stay contained at narrow width", async ({ page }) => {
+		await page.setViewportSize({ width: 320, height: 720 });
+		await page.goto("/?team=development&member=114&label=Backend");
+
+		await expect(page.getByRole("button", { name: "移除 Label 篩選 Backend" })).toBeVisible();
+		const layout = await page.evaluate(() => {
+			const filters = document.querySelector<HTMLElement>('section[aria-label="篩選看板"]');
+			const rect = filters?.getBoundingClientRect();
+			const children = filters
+				? [...filters.querySelectorAll<HTMLElement>(":scope > label, :scope > button, :scope > div, :scope > span")].filter(
+						(item) => item.offsetWidth > 2 && item.offsetHeight > 2
+					)
+				: [];
+			return {
+				viewport: window.innerWidth,
+				documentWidth: document.documentElement.scrollWidth,
+				contained: Boolean(
+					rect &&
+					children.every((item) => {
+						const box = item.getBoundingClientRect();
+						return box.left >= rect.left - 1 && box.right <= rect.right + 1;
+					})
+				)
+			};
+		});
+		expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewport);
+		expect(layout.contained).toBe(true);
 	});
 
 	test("drag handle reorders within a lane and positions across lanes", async ({ page }, testInfo) => {

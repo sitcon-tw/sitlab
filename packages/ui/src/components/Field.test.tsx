@@ -44,6 +44,15 @@ describe("field primitives", () => {
 		expect(screen.getByRole("textbox", { name: "Title" }).closest(".md-field")).toHaveAttribute("data-floating", "true");
 	});
 
+	it("renders leading content inside the box before the input", () => {
+		render(<TextField label="Search" leading={<span data-testid="token">Team</span>} />);
+		const input = screen.getByRole("textbox", { name: "Search" });
+		const box = input.closest(".md-field__box");
+		const leading = screen.getByTestId("token").closest(".md-field__leading");
+		expect(box).toContainElement(leading as HTMLElement);
+		expect((leading as HTMLElement).compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
+
 	it("uses the shared product menu for single-choice fields", async () => {
 		const user = userEvent.setup();
 		render(

@@ -173,6 +173,25 @@
 	min-height: 0;
 }
 
+/* Token search: with tokens present the box wraps chips and grows; without
+ * them the field keeps the stock 40dp dense metrics, pixel-identical to the
+ * other filter fields. */
+.filters .filterSearch[data-tokens="true"] :global(.md-field__box) {
+	flex-wrap: wrap;
+	gap: var(--md-space-1) var(--md-space-2);
+	height: auto;
+	min-height: 2.5rem;
+	padding: 1.125rem var(--md-space-3) var(--md-space-1);
+}
+
+.filters .filterSearch[data-tokens="true"] :global(.md-field__input) {
+	flex: 1 1 8rem;
+	width: auto;
+	min-width: 8rem;
+	height: 1.5rem;
+	padding: 0;
+}
+
 .card select,
 .card input {
 	min-width: 0;
@@ -1732,6 +1751,7 @@
 }
 
 .filterSearch {
+	position: relative;
 	display: grid;
 	grid-area: search;
 	grid-template-columns: minmax(0, 1fr) auto;
@@ -1789,6 +1809,33 @@
 
 .searchableFilterList {
 	min-width: 0;
+}
+
+/* Token search suggestion popup: same geometry as the picker panels, item
+ * highlight follows the quick-action composer. */
+.tokenMenu {
+	position: absolute;
+	top: calc(100% + var(--md-space-1));
+	left: 0;
+	z-index: 5;
+	width: max(100%, 20rem);
+	max-width: min(26rem, calc(100vw - 2rem));
+	max-height: min(24rem, 60svh);
+	overflow-y: auto;
+}
+
+.tokenMenu [aria-selected="true"] {
+	color: var(--md-sys-color-on-secondary-container);
+	background: var(--md-sys-color-secondary-container);
+}
+
+.tokenMenuNote {
+	margin: 0;
+	padding: var(--md-space-2) var(--md-space-3);
+	font-size: var(--md-sys-typescale-body-small-size);
+	line-height: var(--md-sys-typescale-body-small-line-height);
+	color: var(--sb-text-subtle);
+	letter-spacing: var(--md-sys-typescale-body-small-tracking);
 }
 
 .teamFilterOption,

@@ -7,6 +7,7 @@ import { LabelManagerDialog } from "./LabelManagerDialog";
 import {
 	activeMembers,
 	filterDirectoryMembers,
+	normalizePickerQuery,
 	type BoardSortMode,
 	type BoardViewMode,
 	type Bootstrap,
@@ -15,6 +16,7 @@ import {
 	type ProjectLabel
 } from "./model";
 import { TagSwatch } from "./TagSwatch";
+import { TokenFilterInput } from "./TokenFilterInput";
 import { useProjectLabels } from "./useProjectLabels";
 
 export interface BoardFiltersProps {
@@ -150,24 +152,20 @@ export function BoardFilters({
 					onClick={() => setManagerOpen(true)}
 				/>
 
-				<div className={styles.filterSearch}>
-					<TextField
-						id="board-card-search"
-						dense
-						type="search"
-						label="搜尋卡片"
-						value={query}
-						placeholder="標題、編號、人員或 Label"
-						onChange={(event) => onQueryChange(event.target.value)}
-						onKeyDown={(event) => {
-							if (event.key !== "Escape") return;
-							event.stopPropagation();
-							onQueryChange("");
-							event.currentTarget.blur();
-						}}
-					/>
-					{query ? <IconButton size="sm" label="清除卡片搜尋" icon={<X size="1rem" aria-hidden="true" />} onClick={() => onQueryChange("")} /> : null}
-				</div>
+				<TokenFilterInput
+					className={styles.filterSearch}
+					bootstrap={bootstrap}
+					query={query}
+					teamKey={teamKey}
+					memberIds={memberIds}
+					labels={labels}
+					projectLabels={labelsQuery.data ?? []}
+					labelsLoading={labelsQuery.isLoading}
+					onQueryChange={onQueryChange}
+					onTeamChange={onTeamChange}
+					onMemberIdsChange={onMemberIdsChange}
+					onLabelsChange={onLabelsChange}
+				/>
 
 				<Button
 					className={styles.compactFilterButton}
@@ -587,8 +585,4 @@ function memberFilterLabel(members: DirectoryMember[]) {
 	if (!members.length) return "所有人";
 	if (members.length <= 2) return members.map((member) => member.displayName).join("、");
 	return `${members[0]?.displayName ?? "成員"}等 ${members.length} 人`;
-}
-
-function normalizePickerQuery(query: string) {
-	return query.normalize("NFKC").trim().toLocaleLowerCase("zh-Hant");
 }
