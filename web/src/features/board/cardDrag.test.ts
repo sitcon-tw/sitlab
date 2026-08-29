@@ -9,7 +9,7 @@ function buildCard() {
 			<a class="external" href="https://gitlab.example.com"><svg></svg></a>
 		</div>
 		<button type="button" class="title" data-card-drag-surface="true">
-			<h3><span class="iid">#127</span>修正報名系統寄信流程</h3>
+			<h3><span class="iid">#new</span>修正報名系統寄信流程</h3>
 			<p class="description">釐清失敗重送條件</p>
 		</button>
 		<div class="labels" tabindex="0"><span class="chip">Backend</span></div>
