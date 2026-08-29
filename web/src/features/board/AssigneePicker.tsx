@@ -13,10 +13,9 @@ export interface AssigneePickerProps {
 	onChange: (gitLabUserIds: number[]) => void;
 	label: string;
 	compact?: boolean;
-	fieldLabel?: string;
 }
 
-export function AssigneePicker({ bootstrap, teamKey, value, onChange, label, compact = false, fieldLabel }: AssigneePickerProps) {
+export function AssigneePicker({ bootstrap, teamKey, value, onChange, label, compact = false }: AssigneePickerProps) {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const selected = value.flatMap((id) => {
@@ -55,16 +54,7 @@ export function AssigneePicker({ bootstrap, teamKey, value, onChange, label, com
 	);
 	return (
 		<>
-			{fieldLabel ? (
-				<div className={styles.assigneeField}>
-					<span className={styles.assigneeFieldLabel} aria-hidden="true">
-						{fieldLabel}
-					</span>
-					{trigger}
-				</div>
-			) : (
-				trigger
-			)}
+			{trigger}
 			<Dialog
 				open={open}
 				onOpenChange={changeOpen}
