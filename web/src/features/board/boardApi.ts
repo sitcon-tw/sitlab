@@ -179,6 +179,21 @@ const demoComments: Record<number, CardComment[]> = {
 		},
 		{
 			id: 7002,
+			// GitLab emits title-change system notes as inline-diff HTML.
+			body: '<p>changed title from <code class="idiff">修正報名系統寄信流程</code> to <code class="idiff"><span class="idiff left right addition">[開發組] </span>修正報名系統寄信流程</code></p>',
+			author: {
+				gitLabUserId: 114,
+				username: "yorukot",
+				displayName: "Yorukot",
+				avatarUrl: null,
+				profileUrl: "https://gitlab.com/yorukot"
+			},
+			system: true,
+			createdAt: "2026-07-28T08:05:00Z",
+			updatedAt: "2026-07-28T08:05:00Z"
+		},
+		{
+			id: 7003,
 			body: "重送條件已整理完成，請協助 review。",
 			author: {
 				gitLabUserId: 115,

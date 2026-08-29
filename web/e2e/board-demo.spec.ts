@@ -553,7 +553,10 @@ test.describe("SITCON Board demo visual audit", () => {
 		await picker.getByRole("checkbox", { name: /沈明軒/ }).click();
 		await expect(picker.getByText("已選擇 2 人")).toBeVisible();
 		await picker.getByRole("button", { name: "完成" }).click();
-		await expect(details.getByText("系統活動")).toBeVisible();
+		await expect(details.getByText("系統活動").first()).toBeVisible();
+		// The demo title-change note carries GitLab's inline-diff HTML and must
+		// render as text, not markup.
+		await expect(details.getByText("[開發組]", { exact: true })).toBeVisible();
 		await details.getByRole("textbox", { name: "Comment" }).fill("測試與監控紀錄已補齊。");
 		await details.getByRole("button", { name: "送出 Comment" }).click();
 		await expect(details.getByText("測試與監控紀錄已補齊。")).toBeVisible();
