@@ -1,7 +1,7 @@
-import { Button, ConfirmDialog, Dialog, EmptyState, IconButton, TextField } from "@project-template/ui";
+import { Button, ConfirmDialog, Dialog, EmptyState, IconButton, TextField, UnsavedBar } from "@project-template/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { bootstrapQueryKey } from "./bootstrap";
 import { LabelColorPicker } from "./LabelColorPicker";
 import styles from "./LabelManagerDialog.module.css";
@@ -219,6 +219,8 @@ function LabelCreateForm({
 	);
 }
 
+const unsavedMessage = "小心，你還沒儲存";
+
 function LabelEditRow({
 	label,
 	busy,
@@ -233,28 +235,41 @@ function LabelEditRow({
 	const [name, setName] = useState(label.name);
 	const [color, setColor] = useState(label.color);
 	const [description, setDescription] = useState(label.description ?? "");
+	const nameFieldId = useId();
 	const normalizedColor = normalizeLabelColor(color);
-	const canSave = name.trim().length > 0 && normalizedColor !== null && !busy;
+	const canSave = name.trim().length > 0 && normalizedColor !== null;
+	// Both sides pass through normalizeLabelColor so retyping the saved color in
+	// lowercase or shorthand stays clean, while an invalid hex counts as dirty.
+	const dirty =
+		name.trim() !== label.name || normalizedColor !== normalizeLabelColor(label.color) || (description.trim() || null) !== (label.description || null);
+	const revert = () => {
+		setName(label.name);
+		setColor(label.color);
+		setDescription(label.description ?? "");
+		// The clicked 還原 button unmounts with the bar.
+		document.getElementById(nameFieldId)?.focus();
+	};
 	return (
 		<form
 			className={styles.edit}
 			onSubmit={(event) => {
 				event.preventDefault();
-				if (!canSave || !normalizedColor) return;
+				if (!canSave || busy || !normalizedColor) return;
 				onSave({ name: name.trim(), color: normalizedColor, description: description.trim() || null });
 			}}
 		>
-			<TextField autoFocus label="編輯名稱" value={name} maxLength={255} onChange={(event) => setName(event.target.value)} />
+			<TextField id={nameFieldId} autoFocus label="編輯名稱" value={name} maxLength={255} onChange={(event) => setName(event.target.value)} />
 			<TextField label="編輯描述" optional value={description} onChange={(event) => setDescription(event.target.value)} />
 			<LabelColorPicker value={color} onChange={setColor} label={`編輯 ${label.name} 顏色`} />
-			<div className={styles.editActions}>
-				<Button type="button" variant="text" onClick={onCancel}>
-					取消
-				</Button>
-				<Button type="submit" variant="filled" disabled={!canSave} loading={busy} loadingLabel="儲存中">
-					儲存
-				</Button>
-			</div>
+			{dirty ? (
+				<UnsavedBar message={unsavedMessage} revertLabel="還原" saveLabel="儲存" savingLabel="儲存中" onRevert={revert} saving={busy} saveDisabled={!canSave} />
+			) : (
+				<div className={styles.editActions}>
+					<Button type="button" variant="text" onClick={onCancel}>
+						取消
+					</Button>
+				</div>
+			)}
 		</form>
 	);
 }

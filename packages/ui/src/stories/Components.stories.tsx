@@ -18,7 +18,8 @@ import {
 	Spinner,
 	StaticChip,
 	TextAreaField,
-	TextField
+	TextField,
+	UnsavedBar
 } from "../index";
 
 function ComponentCatalog() {
@@ -94,6 +95,13 @@ function ComponentCatalog() {
 				<Badge dot aria-label="Unread" />
 				<Spinner />
 			</div>
+			<Panel title="Unsaved-changes bar" description="Shown only while a form's fields differ from the saved values.">
+				<form className="storybook-stack" onSubmit={(event) => event.preventDefault()}>
+					<UnsavedBar message="Careful — you haven't saved" revertLabel="Revert" saveLabel="Save" onRevert={() => {}} />
+					<UnsavedBar message="Careful — you haven't saved" revertLabel="Revert" saveLabel="Save" savingLabel="Saving" saving onRevert={() => {}} />
+					<UnsavedBar message="A title is required before saving" revertLabel="Revert" saveLabel="Save" saveDisabled onRevert={() => {}} />
+				</form>
+			</Panel>
 			<Panel>
 				<EmptyState title="No archived tasks" description="Completed work will appear here." icon={<Archive size="2rem" />} />
 			</Panel>

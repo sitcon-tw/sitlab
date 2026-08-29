@@ -25,6 +25,7 @@ import {
 	TextField,
 	ToastRegion,
 	TopAppBar,
+	UnsavedBar,
 	type SegmentedOption
 } from "@project-template/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -42,7 +43,6 @@ import {
 	Moon,
 	Plus,
 	RefreshCw,
-	Save,
 	Send,
 	Settings,
 	Sun,
@@ -51,6 +51,8 @@ import {
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { AssigneePicker } from "./AssigneePicker";
 import {
@@ -1166,6 +1168,8 @@ function CardDragPreview({ card, bootstrap }: { card: BoardCard; bootstrap: Boot
 	);
 }
 
+const unsavedMessage = "小心，你還沒儲存";
+
 function CardDetail({
 	card,
 	bootstrap,
@@ -1209,6 +1213,36 @@ function CardDetail({
 		setDescriptionAutoFocus(true);
 		setDescriptionMode("edit");
 	};
+	const formId = useId();
+	const titleFieldId = useId();
+	// Baseline is the live card prop: runCardMutation patches it optimistically
+	// before the request, so saving cleans the dirty state immediately and any
+	// remote update re-anchors 還原 to the newest saved values.
+	const detailsDirty = title.trim() !== card.title || description !== card.description;
+	// Unsaved edits hold the drawer open: close, card navigation, and opening a
+	// related card are all refused until the user saves or reverts. A blocked
+	// attempt replays the bar's motion and swaps in an explanation instead of
+	// raising a dialog. The counter keys the bar wrapper so the animation
+	// restarts on every attempt; 還原 and 儲存 reset it so the next round of
+	// edits starts from the plain warning again.
+	const [exitBlocked, setExitBlocked] = useState(0);
+	const blockedMessage = "請先儲存或還原變更，才能離開這張卡片";
+	const guardExit =
+		<Args extends unknown[]>(leave: (...args: Args) => void) =>
+		(...args: Args) => {
+			if (detailsDirty) setExitBlocked((count) => count + 1);
+			else leave(...args);
+		};
+	const revertDetails = () => {
+		setTitle(card.title);
+		setDescription(card.description);
+		setDescriptionMode(card.description.trim() ? "preview" : "edit");
+		setDescriptionAutoFocus(false);
+		setExitBlocked(0);
+		// The clicked 還原 button unmounts with the bar, which would drop focus
+		// on the dialog container.
+		document.getElementById(titleFieldId)?.focus();
+	};
 	const teams = bootstrap.teams.filter((team) => team.active).sort((a, b) => a.sortOrder - b.sortOrder);
 	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
 	const submitDetails = (event: React.FormEvent) => {
@@ -1216,6 +1250,7 @@ function CardDetail({
 		const normalized = title.trim();
 		if (!normalized) return;
 		onDetails(normalized, description);
+		setExitBlocked(0);
 	};
 	const runQuickAction = (action: QuickAction) => {
 		switch (action.kind) {
@@ -1237,24 +1272,36 @@ function CardDetail({
 	return (
 		<Drawer
 			open
-			onOpenChange={(open) => !open && onClose()}
+			onOpenChange={(open) => !open && guardExit(onClose)()}
 			title={card.issueIid > 0 ? `#${card.issueIid} 卡片詳細資料` : "新卡片詳細資料"}
 			description="細節與排程"
 		>
-			<form className={styles.cardDetail} onSubmit={submitDetails}>
+			<form id={formId} className={styles.cardDetail} onSubmit={submitDetails}>
 				<nav className={styles.detailNavigation} aria-label="切換卡片">
-					<button type="button" aria-label="上一張卡片" title="上一張卡片" disabled={!onPrevious} onClick={onPrevious}>
+					<button type="button" aria-label="上一張卡片" title="上一張卡片" disabled={!onPrevious} onClick={onPrevious && guardExit(onPrevious)}>
 						<ChevronLeft size="1rem" aria-hidden="true" />
 					</button>
 					<span>{position === null ? "直接開啟" : `${position} / ${total}`}</span>
-					<button type="button" aria-label="下一張卡片" title="下一張卡片" disabled={!onNext} onClick={onNext}>
+					<button type="button" aria-label="下一張卡片" title="下一張卡片" disabled={!onNext} onClick={onNext && guardExit(onNext)}>
 						<ChevronRight size="1rem" aria-hidden="true" />
 					</button>
 				</nav>
 				<p className={styles.srOnly} role="status" aria-live="polite">
-					{save.announcement}
+					{detailsDirty && exitBlocked > 0 ? blockedMessage : save.announcement}
 				</p>
-				<TextField className={styles.detailTitle} label="標題" value={title} maxLength={255} onChange={(event) => setTitle(event.target.value)} />
+				<section className={styles.detailTitleSection}>
+					{/* The field keeps its own label for assistive tech; this heading is
+					    the visible one, mirroring the description section. */}
+					<span aria-hidden="true">標題</span>
+					<TextField
+						id={titleFieldId}
+						className={styles.detailTitle}
+						label="標題"
+						value={title}
+						maxLength={255}
+						onChange={(event) => setTitle(event.target.value)}
+					/>
+				</section>
 				<section className={styles.detailDescription}>
 					<header className={styles.detailDescriptionHeader}>
 						<span>描述</span>
@@ -1352,7 +1399,7 @@ function CardDetail({
 					</div>
 				</div>
 				<CardTags card={card} bootstrap={bootstrap} onChange={onLabels} save={save.get(card.issueIid, "labels")} />
-				<CardRelationships card={card} bootstrap={bootstrap} onOpenBoardCard={onOpenBoardCard} />
+				<CardRelationships card={card} bootstrap={bootstrap} onOpenBoardCard={guardExit(onOpenBoardCard)} />
 				<QuickActionComposer bootstrap={bootstrap} card={card} onAction={runQuickAction} />
 				<CardComments card={card} />
 				<footer className={styles.detailActions}>
@@ -1365,12 +1412,22 @@ function CardDetail({
 					) : (
 						<span />
 					)}
-					<Button type="submit" variant="filled" disabled={!title.trim()} leadingIcon={<Save size="1rem" aria-hidden="true" />}>
-						儲存細節
-					</Button>
 					<SaveIndicator save={save.get(card.issueIid, "details")} name="標題與描述" />
 				</footer>
 			</form>
+			{detailsDirty ? (
+				<div key={exitBlocked} className={exitBlocked > 0 ? `${styles.detailUnsaved} ${styles.detailUnsavedNudge}` : styles.detailUnsaved}>
+					<UnsavedBar
+						message={exitBlocked > 0 ? blockedMessage : unsavedMessage}
+						revertLabel="還原"
+						saveLabel="儲存"
+						savingLabel="儲存中"
+						onRevert={revertDetails}
+						saveDisabled={!title.trim()}
+						form={formId}
+					/>
+				</div>
+			) : null}
 		</Drawer>
 	);
 }
@@ -1617,10 +1674,23 @@ function CardComments({ card }: { card: BoardCard }) {
 	);
 }
 
+/* GitLab system notes (title changes, for example) arrive with inline-diff
+ * HTML in the raw body, so comments parse embedded HTML and sanitize it back
+ * to the GitHub-style allowlist plus the idiff marker classes. */
+const commentSanitizeSchema = {
+	...defaultSchema,
+	attributes: {
+		...defaultSchema.attributes,
+		code: [["className", /^language-./, "idiff", "left", "right", "addition", "deletion"]],
+		span: [...(defaultSchema.attributes?.span ?? []), ["className", "idiff", "left", "right", "addition", "deletion"]]
+	}
+} satisfies typeof defaultSchema;
+
 function MarkdownBody({ value }: { value: string }) {
 	return (
 		<ReactMarkdown
 			remarkPlugins={[remarkGfm]}
+			rehypePlugins={[rehypeRaw, [rehypeSanitize, commentSanitizeSchema]]}
 			components={{
 				a: ({ href, children }) => (
 					<a href={href} target="_blank" rel="noreferrer">

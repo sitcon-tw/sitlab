@@ -82,6 +82,48 @@ describe("label manager", () => {
 		await waitFor(() => expect(updateProjectLabel).toHaveBeenCalledWith(4, { name: "Server", color: defaultLabelColor, description: null }));
 	});
 
+	it("shows the unsaved bar only for real label changes", async () => {
+		const user = userEvent.setup();
+		render(<Harness />);
+
+		await user.click(await screen.findByRole("button", { name: "編輯 Backend" }));
+		expect(screen.getByRole("button", { name: "取消" })).toBeVisible();
+		expect(screen.queryByText("小心，你還沒儲存")).not.toBeInTheDocument();
+
+		// Retyping the saved color in lowercase is not a change.
+		const hexField = screen.getByLabelText("編輯 Backend 顏色 色碼");
+		await user.clear(hexField);
+		await user.type(hexField, "#1d76db");
+		expect(screen.queryByText("小心，你還沒儲存")).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "取消" })).toBeVisible();
+
+		await user.type(screen.getByLabelText("編輯名稱"), "X");
+		expect(screen.getByText("小心，你還沒儲存")).toBeVisible();
+		expect(screen.queryByRole("button", { name: "取消" })).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "還原" }));
+		expect(screen.getByLabelText("編輯名稱")).toHaveValue("Backend");
+		expect(screen.queryByText("小心，你還沒儲存")).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "取消" })).toBeVisible();
+		expect(updateProjectLabel).not.toHaveBeenCalled();
+	});
+
+	it("keeps the unsaved bar when the rename fails", async () => {
+		const user = userEvent.setup();
+		vi.mocked(updateProjectLabel).mockRejectedValue(new Error("已經有同名的 Label。"));
+		render(<Harness />);
+
+		await user.click(await screen.findByRole("button", { name: "編輯 Backend" }));
+		const nameField = screen.getByLabelText("編輯名稱");
+		await user.clear(nameField);
+		await user.type(nameField, "Server");
+		await user.click(screen.getByRole("button", { name: "儲存" }));
+
+		expect(await screen.findByRole("alert")).toHaveTextContent("已經有同名的 Label。");
+		expect(screen.getByText("小心，你還沒儲存")).toBeVisible();
+		expect(screen.getByRole("button", { name: "儲存" })).toBeEnabled();
+	});
+
 	it("states how many cards a delete affects before confirming", async () => {
 		const user = userEvent.setup();
 		vi.mocked(deleteProjectLabel).mockResolvedValue(undefined);

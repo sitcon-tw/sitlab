@@ -999,7 +999,8 @@
 
 	.md-spinner,
 	.md-spinner__track,
-	.md-linear-progress__indicator {
+	.md-linear-progress__indicator,
+	.md-unsaved-bar {
 		animation: none;
 	}
 
@@ -1676,6 +1677,59 @@
 
 .md-toast--danger .md-toast__action .md-button {
 	color: var(--md-sys-color-error);
+}
+
+/* --- Unsaved-changes bar --------------------------------------------------
+ *
+ * Product pattern with no stock Material equivalent; deviation 11 in design.md.
+ * Consumers position it (sticky above the detail drawer's bottom edge, static
+ * inside inline row forms), so the primitive stays layout-agnostic.
+ */
+
+.md-unsaved-bar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--md-space-2) var(--md-space-3);
+	align-items: center;
+	min-height: 3rem;
+	padding: var(--md-space-2) var(--md-space-2) var(--md-space-2) var(--md-space-4);
+	color: var(--md-sys-color-on-warning-container);
+	background: var(--md-sys-color-warning-container);
+	border-radius: var(--md-sys-shape-corner-medium);
+	animation: md-unsaved-bar-in var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized-decelerate);
+}
+
+.md-unsaved-bar > svg {
+	flex: none;
+}
+
+.md-unsaved-bar__message {
+	flex: 1 1 12rem;
+	min-width: 0;
+	margin: 0;
+	overflow-wrap: anywhere;
+	font-size: var(--md-sys-typescale-body-medium-size);
+	font-weight: var(--md-sys-typescale-body-medium-weight);
+	line-height: var(--md-sys-typescale-body-medium-line-height);
+	letter-spacing: var(--md-sys-typescale-body-medium-tracking);
+}
+
+.md-unsaved-bar__actions {
+	display: flex;
+	gap: var(--md-space-2);
+	margin-inline-start: auto;
+}
+
+/* The revert label must hold contrast on the warning container. */
+.md-unsaved-bar .md-button--text {
+	color: var(--md-sys-color-on-warning-container);
+}
+
+@keyframes md-unsaved-bar-in {
+	from {
+		opacity: 0;
+		transform: translateY(0.5rem);
+	}
 }
 
 @media (max-width: 38rem) {

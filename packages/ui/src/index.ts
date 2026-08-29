@@ -32,5 +32,7 @@ export { ToastRegion } from "./components/Toast";
 export type { ToastMessage, ToastRegionProps, ToastTone } from "./components/Toast";
 export { TopAppBar } from "./components/TopAppBar";
 export type { TopAppBarProps } from "./components/TopAppBar";
+export { UnsavedBar } from "./components/UnsavedBar";
+export type { UnsavedBarProps } from "./components/UnsavedBar";
 export { useRipple } from "./lib/useRipple";
 export type { RippleBinding } from "./lib/useRipple";

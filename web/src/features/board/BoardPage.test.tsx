@@ -639,7 +639,7 @@ describe("SITCON Board interactions", () => {
 		await user.click(within(dialog).getByRole("button", { name: "預覽" }));
 		expect(within(dialog).getByRole("heading", { name: "驗收條件" })).toBeVisible();
 		expect(within(dialog).getByRole("link", { name: "規格" })).toHaveAttribute("href", "https://example.com/spec");
-		await user.click(within(dialog).getByRole("button", { name: "儲存細節" }));
+		await user.click(within(dialog).getByRole("button", { name: "儲存" }));
 
 		expect(updateDetails).toHaveBeenCalledWith(
 			expect.objectContaining({ issueIid: 127 }),
@@ -649,6 +649,32 @@ describe("SITCON Board interactions", () => {
 		);
 		expect(screen.getByRole("dialog", { name: /127 卡片詳細資料/ })).toBeVisible();
 		expect(within(dialog).getByLabelText("標題")).toHaveValue("完成寄信失敗重送");
+		// The optimistic patch already matches the fields, so the unsaved bar
+		// closes even while the request is still in flight.
+		expect(within(dialog).queryByText("小心，你還沒儲存")).not.toBeInTheDocument();
+	});
+
+	it("shows the unsaved bar for detail edits and reverts them", async () => {
+		const user = userEvent.setup();
+		render(<Harness />);
+
+		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		expect(within(dialog).queryByText("小心，你還沒儲存")).not.toBeInTheDocument();
+		expect(within(dialog).queryByRole("button", { name: "還原" })).not.toBeInTheDocument();
+
+		await user.clear(within(dialog).getByLabelText("標題"));
+		expect(within(dialog).getByText("小心，你還沒儲存")).toBeVisible();
+		expect(within(dialog).getByRole("button", { name: "儲存" })).toBeDisabled();
+
+		await user.type(within(dialog).getByLabelText("標題"), "尚未儲存的標題");
+		expect(within(dialog).getByRole("button", { name: "儲存" })).toBeEnabled();
+
+		await user.click(within(dialog).getByRole("button", { name: "還原" }));
+		expect(within(dialog).getByLabelText("標題")).toHaveValue("修正報名系統寄信流程");
+		expect(within(dialog).getByLabelText("標題")).toHaveFocus();
+		expect(within(dialog).queryByText("小心，你還沒儲存")).not.toBeInTheDocument();
+		expect(updateDetails).not.toHaveBeenCalled();
 	});
 
 	it("opens description in edit mode when empty and in preview when it has content", async () => {
@@ -704,12 +730,20 @@ describe("SITCON Board interactions", () => {
 				system: true,
 				createdAt: "2026-07-28T08:00:00Z",
 				updatedAt: "2026-07-28T08:00:00Z"
+			},
+			{
+				id: 2,
+				body: '<p>changed title from <code class="idiff">調查相見歡日期</code> to <code class="idiff"><span class="idiff left right addition">[行政組] </span>調查相見歡日期</code></p>',
+				author: { gitLabUserId: 114, username: "yorukot", displayName: "Yorukot", avatarUrl: null, profileUrl: "https://gitlab.com/yorukot" },
+				system: true,
+				createdAt: "2026-07-28T09:00:00Z",
+				updatedAt: "2026-07-28T09:00:00Z"
 			}
 		]);
 		vi.mocked(createComment)
 			.mockRejectedValueOnce(new Error("GitLab unavailable"))
 			.mockResolvedValueOnce({
-				id: 2,
+				id: 3,
 				body: "請協助 review",
 				author: { gitLabUserId: 114, username: "yorukot", displayName: "Yorukot", avatarUrl: null, profileUrl: "https://gitlab.com/yorukot" },
 				system: false,
@@ -720,10 +754,14 @@ describe("SITCON Board interactions", () => {
 
 		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
 		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
-		expect(await within(dialog).findByText("系統活動")).toBeVisible();
+		expect(await within(dialog).findAllByText("系統活動")).toHaveLength(2);
 		const comments = within(dialog).getByRole("heading", { name: "Comment" }).closest("section");
 		expect(comments).not.toBeNull();
 		expect(within(comments as HTMLElement).getByText("To Do")).toBeVisible();
+		// GitLab title-change notes ship inline-diff HTML; it must render, not
+		// print as escaped markup.
+		expect(within(comments as HTMLElement).getByText("[行政組]")).toBeVisible();
+		expect(within(comments as HTMLElement).queryByText(/<code/)).toBeNull();
 
 		const composer = within(dialog).getByRole("textbox", { name: "Comment" });
 		await user.type(composer, "請協助 review");
@@ -734,6 +772,28 @@ describe("SITCON Board interactions", () => {
 		await user.click(within(dialog).getByRole("button", { name: "送出 Comment" }));
 		await waitFor(() => expect(composer).toHaveValue(""));
 		expect(within(dialog).getByText("請協助 review")).toBeVisible();
+	});
+
+	it("strips unsafe HTML from comment bodies", async () => {
+		const user = userEvent.setup();
+		vi.mocked(listComments).mockResolvedValue([
+			{
+				id: 1,
+				body: '<p>hi <script>window.alert(1)</script><a href="javascript:alert(1)">bad link</a></p>',
+				author: { gitLabUserId: 115, username: "ming", displayName: "沈明軒", avatarUrl: null, profileUrl: "https://gitlab.com/ming" },
+				system: false,
+				createdAt: "2026-07-29T06:30:00Z",
+				updatedAt: "2026-07-29T06:30:00Z"
+			}
+		]);
+		render(<Harness />);
+
+		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		const comments = within(dialog).getByRole("heading", { name: "Comment" }).closest("section") as HTMLElement;
+		expect(await within(comments).findByText(/hi/)).toBeVisible();
+		expect(comments.querySelector("script")).toBeNull();
+		expect(within(comments).queryByRole("link", { name: "bad link" })?.getAttribute("href") ?? "").not.toContain("javascript:");
 	});
 
 	it("switches cards inside the right detail drawer", async () => {
@@ -747,9 +807,37 @@ describe("SITCON Board interactions", () => {
 		await user.type(within(first).getByLabelText("Quick action"), "/due");
 		await user.click(within(first).getByRole("button", { name: "下一張卡片" }));
 
+		// Unsaved edits hold the drawer on this card until saved or reverted.
+		expect(screen.getByRole("dialog", { name: /127 卡片詳細資料/ })).toBeVisible();
+		expect(within(first).getByLabelText("標題")).toHaveValue("尚未儲存的標題");
+		// Bar message and the drawer's live region both carry the explanation.
+		expect(within(first).getAllByText("請先儲存或還原變更，才能離開這張卡片").length).toBeGreaterThan(0);
+		await user.click(within(first).getByRole("button", { name: "還原" }));
+		await user.click(within(first).getByRole("button", { name: "下一張卡片" }));
+
 		expect(screen.getByRole("dialog", { name: /130 卡片詳細資料/ })).toBeVisible();
 		expect(screen.getByLabelText("標題")).toHaveValue("製作工作人員識別證");
 		expect(screen.getByLabelText("Quick action")).toHaveValue("");
+		expect(screen.queryByText("小心，你還沒儲存")).not.toBeInTheDocument();
+	});
+
+	it("blocks closing the drawer while edits are unsaved", async () => {
+		const user = userEvent.setup();
+		render(<Harness />);
+
+		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		await user.type(within(dialog).getByLabelText("標題"), "！");
+
+		await user.click(within(dialog).getByRole("button", { name: "Close drawer" }));
+		expect(screen.getByRole("dialog", { name: /127 卡片詳細資料/ })).toBeVisible();
+		await user.keyboard("{Escape}");
+		expect(screen.getByRole("dialog", { name: /127 卡片詳細資料/ })).toBeVisible();
+		expect(within(dialog).getAllByText("請先儲存或還原變更，才能離開這張卡片").length).toBeGreaterThan(0);
+
+		await user.click(within(dialog).getByRole("button", { name: "還原" }));
+		await user.click(within(dialog).getByRole("button", { name: "Close drawer" }));
+		expect(screen.queryByRole("dialog", { name: /127 卡片詳細資料/ })).not.toBeInTheDocument();
 	});
 
 	it("creates the same top-position card for every configured team leader", async () => {
