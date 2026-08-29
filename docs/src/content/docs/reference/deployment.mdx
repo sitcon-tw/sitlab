@@ -19,10 +19,10 @@ Compose waits for PostgreSQL to be healthy, runs the migration job to completion
 
 ```bash
 cp deployments/docker/example.env deployments/docker/.env
-docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build
+docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build --watch
 ```
 
-The app is available on `http://localhost:3000`. `/api/v1/health/ready` is the container health check and stays unavailable until directory, member, and board snapshots exist.
+The app is available on `http://localhost:3000`. Compose Watch rebuilds the app for changes to inputs copied by the Dockerfile. Migration changes instead rebuild and rerun the one-shot migration service. `/api/v1/health/ready` is the container health check and stays unavailable until directory, member, and board snapshots exist.
 
 ## Dokploy
 

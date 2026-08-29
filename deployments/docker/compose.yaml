@@ -49,6 +49,10 @@ services:
     environment: *sitcon-board-environment
     entrypoint: ["/app/migrate"]
     command: ["-command", "up", "-dir", "/app/db/migrations"]
+    develop:
+      watch:
+        - action: rebuild
+          path: ../../server/db/migrations
 
   app:
     image: ${SITCON_BOARD_IMAGE:-sitcon-board}:${SITCON_BOARD_VERSION:-local}
@@ -69,6 +73,38 @@ services:
       interval: 10s
       timeout: 3s
       retries: 12
+    develop:
+      watch:
+        - action: rebuild
+          path: ../../server
+          ignore:
+            - db/migrations/
+        - action: rebuild
+          path: ../../web
+        - action: rebuild
+          path: ../../packages/ui
+        - action: rebuild
+          path: ../../api/package.json
+        - action: rebuild
+          path: ../../docs/package.json
+        - action: rebuild
+          path: ../../package.json
+        - action: rebuild
+          path: ../../pnpm-lock.yaml
+        - action: rebuild
+          path: ../../pnpm-workspace.yaml
+        - action: rebuild
+          path: ../../scripts/install-hooks.mjs
+        - action: rebuild
+          path: ../../scripts/lib/commands.mjs
+        - action: rebuild
+          path: ../../.sitcon/board-directory.yml
+        - action: rebuild
+          path: ../../.dockerignore
+        - action: rebuild
+          path: ../../LICENSE
+        - action: rebuild
+          path: Dockerfile
 
 volumes:
   sitcon-board-postgres:

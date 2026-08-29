@@ -187,7 +187,7 @@ docker-build:
 
 # Start the local production-shaped stack.
 docker-up:
-    docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build
+    docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build --watch
 
 # Stop the local stack.
 docker-down:

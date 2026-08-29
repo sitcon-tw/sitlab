@@ -80,10 +80,10 @@ Demo fixture 只會在這個 flag 為 `true` 時動態載入，不是 production
 ```bash
 cp deployments/docker/example.env deployments/docker/.env
 # 替換所有 change-me 並填入 GitLab OAuth、project access 與 webhook signing credentials
-docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build
+docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build --watch
 ```
 
-應用程式位於 `http://localhost:3000`。Compose 依序等待 PostgreSQL、執行 migrations、啟動應用；`/api/v1/health/ready` 只會在必要 snapshots 存在後成功。
+應用程式位於 `http://localhost:3000`。Compose 依序等待 PostgreSQL、執行 migrations、啟動應用，並在 image 輸入變更時自動重建；SQL migration 變更會重建並重新執行 migration service。`/api/v1/health/ready` 只會在必要 snapshots 存在後成功。
 
 Production 必須使用 HTTPS、`SITCON_BOARD_SESSION_COOKIE_SECURE=true`、`__Host-` session cookie、至少 32 字元且互不重用的 session hash/OAuth cipher keys，以及明確的 `SITCON_BOARD_CSRF_ALLOWED_ORIGINS`。
 

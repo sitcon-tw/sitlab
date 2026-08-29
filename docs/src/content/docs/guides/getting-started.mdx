@@ -51,10 +51,10 @@ Delta sync is enabled by default. During the staged rollout, build the web app w
 ```bash
 cp deployments/docker/example.env deployments/docker/.env
 # Replace every change-me and add GitLab OAuth, project access, and webhook credentials.
-docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build
+docker compose --env-file deployments/docker/.env -f deployments/docker/compose.yaml up --build --watch
 ```
 
-Open `http://localhost:3000`. Compose waits for PostgreSQL, completes migrations, then starts the application. Readiness remains false until the first directory/member/board sync succeeds.
+Open `http://localhost:3000`. Compose waits for PostgreSQL, completes migrations, then starts the application. Watch mode rebuilds the app when an image input changes and rebuilds and reruns the migration service when SQL migrations change. Readiness remains false until the first directory/member/board sync succeeds.
 
 ## Validate
 
