@@ -27,7 +27,7 @@ type Config struct {
 	ClientSecret string
 	RedirectURI  string
 	ProjectPath  string
-	ReadToken    string
+	AccessToken  string
 }
 
 func (c *Client) ProjectMembers(ctx context.Context) ([]directory.GitLabMember, error) {
@@ -35,7 +35,7 @@ func (c *Client) ProjectMembers(ctx context.Context) ([]directory.GitLabMember, 
 	page := "1"
 	for page != "" {
 		requestURL := c.projectEndpoint("/members/all?per_page=100&page=") + url.QueryEscape(page)
-		response, err := c.do(ctx, http.MethodGet, requestURL, nil, c.config.ReadToken, "")
+		response, err := c.do(ctx, http.MethodGet, requestURL, nil, c.config.AccessToken, "")
 		if err != nil {
 			return nil, err
 		}
@@ -126,7 +126,7 @@ func (c *Client) pageWorkItems(ctx context.Context, query string, filter appsync
 	for {
 		variables["after"] = cursor
 		var data workItemsData
-		if err := c.graphQL(ctx, query, variables, c.config.ReadToken, "", &data); err != nil {
+		if err := c.graphQL(ctx, query, variables, c.config.AccessToken, "", &data); err != nil {
 			return err
 		}
 		collect(&data)
@@ -158,7 +158,7 @@ func (c *Client) requireLifecycle(ctx context.Context) error {
 
 func (c *Client) Issue(ctx context.Context, issueIID int64) (appsync.GitLabIssue, error) {
 	var data workItemsData
-	err := c.graphQL(ctx, workItemQuery, map[string]any{"fullPath": c.config.ProjectPath, "iids": []string{strconv.FormatInt(issueIID, 10)}}, c.config.ReadToken, "", &data)
+	err := c.graphQL(ctx, workItemQuery, map[string]any{"fullPath": c.config.ProjectPath, "iids": []string{strconv.FormatInt(issueIID, 10)}}, c.config.AccessToken, "", &data)
 	if err != nil {
 		return appsync.GitLabIssue{}, err
 	}
@@ -173,7 +173,7 @@ func (c *Client) ProjectLabels(ctx context.Context) ([]appactivity.ProjectLabel,
 	page := "1"
 	for page != "" {
 		requestURL := c.projectEndpoint("/labels?include_ancestor_groups=false&per_page=100&page=") + url.QueryEscape(page)
-		response, err := c.do(ctx, http.MethodGet, requestURL, nil, c.config.ReadToken, "")
+		response, err := c.do(ctx, http.MethodGet, requestURL, nil, c.config.AccessToken, "")
 		if err != nil {
 			return nil, err
 		}
@@ -312,13 +312,23 @@ func (c *Client) CreateComment(ctx context.Context, issueIID int64, commentBody,
 		return appactivity.Comment{}, fmt.Errorf("encode GitLab issue note: %w", err)
 	}
 	requestURL := c.projectEndpoint("/issues/") + strconv.FormatInt(issueIID, 10) + "/notes"
-	headers := make(http.Header)
-	headers.Set("Content-Type", "application/json")
-	response, err := c.doWithHeaders(ctx, http.MethodPost, requestURL, strings.NewReader(string(payload)), "", actorAccessToken, headers)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, strings.NewReader(string(payload)))
 	if err != nil {
-		return appactivity.Comment{}, mapActivityStatus(err)
+		return appactivity.Comment{}, fmt.Errorf("create GitLab issue note request: %w", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+actorAccessToken)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := c.http.Do(request)
+	if err != nil {
+		return appactivity.Comment{}, identity.ErrGitLabUnavailable
 	}
 	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode >= 500 {
+		return appactivity.Comment{}, identity.ErrGitLabUnavailable
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return appactivity.Comment{}, mapActivityStatus(&httpStatusError{status: response.StatusCode})
+	}
 	var row noteWire
 	if err := decodeJSON(response.Body, &row); err != nil {
 		return appactivity.Comment{}, fmt.Errorf("decode GitLab issue note mutation: %w", err)
@@ -415,15 +425,10 @@ func New(httpClient *http.Client, config Config) (*Client, error) {
 	if err != nil || base.Scheme == "" || base.Host == "" {
 		return nil, fmt.Errorf("invalid GitLab base URL")
 	}
-	if base.User != nil || base.RawQuery != "" || base.Fragment != "" || (base.Path != "" && base.Path != "/") {
-		return nil, fmt.Errorf("invalid GitLab base URL")
-	}
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	guardedClient := *httpClient
-	guardedClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &Client{http: &guardedClient, config: config, base: base, now: time.Now}, nil
+	return &Client{http: httpClient, config: config, base: base, now: time.Now}, nil
 }
 
 func (c *Client) AuthorizationURL(state, codeChallenge string) string {
@@ -446,23 +451,19 @@ func (c *Client) ExchangeIdentity(ctx context.Context, code, verifier string) (a
 	}
 	var user gitLabUser
 	if err := c.get(ctx, c.endpoint("/api/v4/user"), tokens.AccessToken, &user); err != nil {
-		return appoauth.GitLabIdentity{}, errors.Join(err, c.RevokeToken(ctx, tokens.AccessToken), c.RevokeToken(ctx, tokens.RefreshToken))
+		return appoauth.GitLabIdentity{}, err
 	}
 	var member gitLabMember
 	memberURL := c.endpoint("/api/v4/projects/") + url.PathEscape(c.config.ProjectPath) + "/members/all/" + strconv.FormatInt(user.ID, 10)
 	if err := c.get(ctx, memberURL, tokens.AccessToken, &member); err != nil {
 		var statusError *httpStatusError
 		if errors.As(err, &statusError) && statusError.status == http.StatusNotFound {
-			return appoauth.GitLabIdentity{}, errors.Join(
-				identity.ErrProjectMemberRequired, c.RevokeToken(ctx, tokens.AccessToken), c.RevokeToken(ctx, tokens.RefreshToken),
-			)
+			return appoauth.GitLabIdentity{}, identity.ErrProjectMemberRequired
 		}
-		return appoauth.GitLabIdentity{}, errors.Join(err, c.RevokeToken(ctx, tokens.AccessToken), c.RevokeToken(ctx, tokens.RefreshToken))
+		return appoauth.GitLabIdentity{}, err
 	}
-	if member.State != "active" || member.AccessLevel < identity.PlannerAccessLevel {
-		return appoauth.GitLabIdentity{}, errors.Join(
-			identity.ErrProjectMemberRequired, c.RevokeToken(ctx, tokens.AccessToken), c.RevokeToken(ctx, tokens.RefreshToken),
-		)
+	if member.State != "active" || member.AccessLevel <= 0 {
+		return appoauth.GitLabIdentity{}, identity.ErrProjectMemberRequired
 	}
 	return appoauth.GitLabIdentity{
 		GitLabUserID: user.ID, Username: user.Username, DisplayName: user.Name,
@@ -491,39 +492,6 @@ func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (appoaut
 		"grant_type":    {"refresh_token"},
 		"redirect_uri":  {c.config.RedirectURI},
 	})
-}
-
-func (c *Client) RevokeToken(ctx context.Context, token string) error {
-	if strings.TrimSpace(token) == "" {
-		return nil
-	}
-	values := url.Values{
-		"client_id":     {c.config.ClientID},
-		"client_secret": {c.config.ClientSecret},
-		"token":         {token},
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint("/oauth/revoke"), strings.NewReader(values.Encode()))
-	if err != nil {
-		return fmt.Errorf("create GitLab token revocation request: %w", err)
-	}
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	response, err := c.http.Do(request)
-	if err != nil {
-		return identity.ErrGitLabUnavailable
-	}
-	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode == http.StatusBadRequest {
-		// OAuth revocation is idempotent. GitLab uses 400 when the token is
-		// already invalid, which is the desired terminal state.
-		return nil
-	}
-	if response.StatusCode >= 500 || response.StatusCode == http.StatusTooManyRequests {
-		return identity.ErrGitLabUnavailable
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return &httpStatusError{status: response.StatusCode}
-	}
-	return nil
 }
 
 func (c *Client) requestOAuthToken(ctx context.Context, values url.Values) (appoauth.OAuthTokens, error) {
@@ -588,9 +556,6 @@ func (c *Client) do(ctx context.Context, method, requestURL string, body io.Read
 }
 
 func (c *Client) doWithHeaders(ctx context.Context, method, requestURL string, body io.Reader, privateToken, bearerToken string, headers http.Header) (*http.Response, error) {
-	if err := c.validateCredentialURL(requestURL, privateToken, bearerToken); err != nil {
-		return nil, err
-	}
 	request, err := http.NewRequestWithContext(ctx, method, requestURL, body)
 	if err != nil {
 		return nil, fmt.Errorf("create GitLab request: %w", err)
@@ -619,32 +584,6 @@ func (c *Client) doWithHeaders(ctx context.Context, method, requestURL string, b
 		return nil, &httpStatusError{status: response.StatusCode}
 	}
 	return response, nil
-}
-
-func (c *Client) validateCredentialURL(requestURL, privateToken, bearerToken string) error {
-	if privateToken == "" && bearerToken == "" {
-		return nil
-	}
-	if privateToken != "" && bearerToken != "" {
-		return errors.New("GitLab request cannot use project and user credentials together")
-	}
-	target, err := url.Parse(requestURL)
-	if err != nil || !strings.EqualFold(target.Scheme, c.base.Scheme) ||
-		!strings.EqualFold(target.Host, c.base.Host) || target.User != nil {
-		return errors.New("authenticated GitLab request must use the configured origin")
-	}
-	for _, segment := range strings.Split(target.Path, "/") {
-		if segment == "." || segment == ".." {
-			return errors.New("authenticated GitLab request path must not contain dot segments")
-		}
-	}
-	escapedPath := target.EscapedPath()
-	projectPrefix := "/api/v4/projects/" + url.PathEscape(c.config.ProjectPath)
-	projectRequest := escapedPath == projectPrefix || strings.HasPrefix(escapedPath, projectPrefix+"/")
-	if escapedPath == "/api/graphql" || projectRequest || bearerToken != "" && escapedPath == "/api/v4/user" {
-		return nil
-	}
-	return errors.New("authenticated GitLab request is outside the fixed project allowlist")
 }
 
 func (c *Client) endpoint(path string) string {
@@ -903,7 +842,7 @@ func (c *Client) lifecycleStatuses(ctx context.Context) (map[string]string, erro
 			} `json:"workItemTypes"`
 		} `json:"project"`
 	}
-	if err := c.graphQL(ctx, workItemLifecycleQuery, map[string]any{"fullPath": c.config.ProjectPath}, c.config.ReadToken, "", &data); err != nil {
+	if err := c.graphQL(ctx, workItemLifecycleQuery, map[string]any{"fullPath": c.config.ProjectPath}, c.config.AccessToken, "", &data); err != nil {
 		return nil, err
 	}
 	statuses := make(map[string]string)

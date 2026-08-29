@@ -37,7 +37,6 @@ type Application struct {
 	DB      *pgxpool.Pool
 	Tracing *observability.Tracing
 	Sync    *appsync.Service
-	Auth    *appoauth.Service
 	Events  *pgsitcon.Repository
 	Metrics *observability.Metrics
 }
@@ -64,14 +63,7 @@ func New(ctx context.Context) (*Application, error) {
 	}
 
 	tokens := security.NewTokens(cfg.Session.HashKey)
-	stateCipher, err := security.NewKeyring(cfg.Session.OAuthStateCipherKeys)
-	if err != nil {
-		pool.Close()
-		_ = tracing.Shutdown(context.Background())
-		_ = log.Sync()
-		return nil, err
-	}
-	tokenCipher, err := security.NewKeyring(cfg.GitLab.OAuthTokenCipherKeys)
+	cipher, err := security.NewCipher(cfg.Session.CipherKey)
 	if err != nil {
 		pool.Close()
 		_ = tracing.Shutdown(context.Background())
@@ -81,7 +73,7 @@ func New(ctx context.Context) (*Application, error) {
 	gitLabClient, err := gitlab.New(&http.Client{Timeout: cfg.HTTP.RequestTimeout}, gitlab.Config{
 		BaseURL: cfg.GitLab.BaseURL, ClientID: cfg.GitLab.ClientID,
 		ClientSecret: cfg.GitLab.ClientSecret, RedirectURI: cfg.GitLab.OAuthRedirectURL,
-		ProjectPath: config.ProjectPath, ReadToken: cfg.GitLab.ProjectReadToken,
+		ProjectPath: config.ProjectPath, AccessToken: cfg.GitLab.ProjectAccessToken,
 	})
 	if err != nil {
 		pool.Close()
@@ -101,7 +93,7 @@ func New(ctx context.Context) (*Application, error) {
 	tx := postgres.NewTransactor(pool)
 	oauthRepo := pgoauth.New(pool)
 	store := pgsitcon.New(pool)
-	oauthService := appoauth.NewService(oauthRepo, tx, tokens, stateCipher, tokenCipher, gitLabClient, appoauth.Config{
+	oauthService := appoauth.NewService(oauthRepo, tx, tokens, cipher, gitLabClient, appoauth.Config{
 		OAuthStateTTL: cfg.Session.OAuthStateTTL, SessionTTL: cfg.Session.TTL,
 	}, tracer)
 	directoryService := appdirectory.NewService(store, tracer)
@@ -125,7 +117,6 @@ func New(ctx context.Context) (*Application, error) {
 	}
 
 	metrics := observability.NewMetrics()
-	oauthService.SetObserver(metrics)
 	syncService.SetWebhookObserver(metrics)
 	router := httpserver.NewRouter(httpserver.Dependencies{
 		Log: log, Auth: oauthService, Bootstrap: bootstrapService,
@@ -150,7 +141,7 @@ func New(ctx context.Context) (*Application, error) {
 	return &Application{
 		Config: cfg, Log: log,
 		Server: httpserver.NewServer(httpserver.ServerConfig{Addr: cfg.HTTP.Addr}, router),
-		DB:     pool, Tracing: tracing, Sync: syncService, Auth: oauthService, Events: store, Metrics: metrics,
+		DB:     pool, Tracing: tracing, Sync: syncService, Events: store, Metrics: metrics,
 	}, nil
 }
 
@@ -167,7 +158,6 @@ func (a *Application) Run(ctx context.Context) error {
 	})
 	go a.Sync.RunOperations(workerCtx, a.Config.Sync.OperationInterval)
 	go a.Sync.RunWebhooks(workerCtx, a.Config.Sync.OperationInterval)
-	go a.Auth.RunRevocations(workerCtx, a.Config.Sync.OperationInterval)
 	go a.Events.RunRevisionListener(workerCtx)
 	go a.runMaintenance(workerCtx)
 
@@ -214,9 +204,6 @@ func (a *Application) runMaintenance(ctx context.Context) {
 		if tick%pruneEvery == 0 {
 			if pruneErr := a.Events.Prune(ctx, time.Now().UTC()); pruneErr != nil {
 				a.Log.Warn("sync_prune_failed", zap.Error(pruneErr))
-			}
-			if authErr := a.Auth.Maintain(ctx); authErr != nil {
-				a.Log.Warn("oauth_maintenance_failed", zap.Error(authErr))
 			}
 		}
 		select {

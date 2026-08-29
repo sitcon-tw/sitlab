@@ -19,15 +19,15 @@ Create a GitLab OAuth application:
 - Confidential: enabled
 - Scope: `api`
 
-The redirect URI must exactly match the public URL used in Dokploy. OAuth writes run with this token so GitLab records the real user as the actor. The controller only sends it to the fixed `sitcon-tw/2027` project (plus GitLab's own `/user` identity endpoint), rejects redirects, and requires an active `Planner` or higher project role. The OAuth grant itself is still account-wide because GitLab's standard `api` scope is not project-scoped; possession of a stolen raw token remains broader than this controller's enforced request boundary.
+The redirect URI must exactly match the public URL used in Dokploy.
 
 Create a project access token in `sitcon-tw/2027`:
 
-- Role: `Reporter`
-- Scope: `read_api`
+- Role: `Developer`
+- Scope: `api`
 - Expiration: set an operationally appropriate expiry and calendar its rotation
 
-Store the token as `SITCON_BOARD_GITLAB_PROJECT_READ_TOKEN`. The application uses it only to read project members, labels, issues, and canonical webhook state. User-originated mutations use the requesting user's encrypted OAuth token.
+Store the token as `SITCON_BOARD_GITLAB_PROJECT_ACCESS_TOKEN`. The application uses it to read project members, labels, issues, and canonical webhook state. User-originated mutations use the requesting user's encrypted OAuth token so GitLab records the real actor.
 
 Create a project webhook in `sitcon-tw/2027`:
 
@@ -58,18 +58,15 @@ The team directory lives at `.sitcon/board-directory.yml` in this repository. Th
 
 ## 3. Generate secrets
 
-Generate four independent values. Cipher keyring entries use `key-id:unpadded-base64url-encoded-32-byte-key`; the first entry is the active encryption key. Do not reuse a value, and do not reuse webhook signing tokens:
+Generate three independent URL-safe values. Do not reuse a value; webhook signing tokens come from GitLab and are not generated with these commands:
 
 ```bash
 openssl rand -hex 32 # SITCON_BOARD_DATABASE_PASSWORD
 openssl rand -hex 32 # SITCON_BOARD_SESSION_HASH_KEY
-printf 'state-2026-08:%s\n' "$(openssl rand -base64 32 | tr '/+' '_-' | tr -d '=')"
-printf 'token-2026-08:%s\n' "$(openssl rand -base64 32 | tr '/+' '_-' | tr -d '=')"
+openssl rand -hex 32 # SITCON_BOARD_OAUTH_STATE_CIPHER_KEY
 ```
 
-Use the third output for `SITCON_BOARD_OAUTH_STATE_CIPHER_KEYS` and the fourth for `SITCON_BOARD_GITLAB_OAUTH_TOKEN_CIPHER_KEYS`. They must be different. To rotate, prepend the new entry and retain older entries after a comma. Keep an old state key for at least the 10-minute OAuth-state lifetime; keep old token keys until `gitlab_oauth_revocation_queue_tokens` is zero and active credentials have been used or replaced.
-
-Copy the variables from `example.env` into Dokploy's Environment panel and replace every placeholder. Do not commit a production `.env` file.
+Copy the variables from `example.env` into Dokploy's Environment panel and replace every `change-me` value. Do not commit a production `.env` file.
 
 The PostgreSQL password initializes the persistent database volume. Changing only the environment variable after data exists does not change the password inside PostgreSQL; update the database role deliberately before rotating it.
 
@@ -117,16 +114,7 @@ https://board.example.com/
 
 `health/ready` returns success only after PostgreSQL and all required snapshots are ready. Open the root URL and complete GitLab OAuth to verify the callback, session cookie, and project membership check.
 
-### One-time OAuth security cutover
-
-The credential-envelope migration intentionally clears existing sessions, OAuth states, and locally stored user credentials because the old ciphertext has no key identifier or context binding. During the same maintenance window:
-
-1. Create a replacement OAuth application with the same callback and `api` scope.
-2. Put its client ID and secret plus both new cipher keyrings into Dokploy.
-3. Delete the old OAuth application in GitLab so all previously issued broad OAuth tokens are invalidated.
-4. Deploy and require every user to sign in again.
-
-Deleting only local rows is insufficient: an already copied old token would otherwise remain valid at GitLab. Do not skip step 3.
+After the actor-attribution migration, existing users must sign out and sign in once so SitLab can store their encrypted access and rotating refresh tokens. Operations created from an older session fail with a reauthentication message instead of being written as the project bot.
 
 ## Updating
 
@@ -138,7 +126,7 @@ Back up the `sitcon-board-postgres` volume or configure Dokploy database backups
 
 - `production session cookie must be Secure`: confirm `SITCON_BOARD_ENV=production` and use this Dokploy Compose file, which forces `SITCON_BOARD_SESSION_COOKIE_SECURE=true`.
 - `initial source sync` with a directory file error: verify the image was rebuilt from a revision containing `.sitcon/board-directory.yml`.
-- `initial source sync` with a GitLab error: verify the project read token has Reporter plus `read_api` in `sitcon-tw/2027`.
+- `initial source sync` with a GitLab error: verify the project access token and its role/scope in `sitcon-tw/2027`.
 - OAuth callback error: compare the GitLab Redirect URI and the generated `${SITCON_BOARD_PUBLIC_URL}/api/v1/auth/gitlab/callback` character for character.
 - Webhook `401`: confirm the complete generated `whsec_...` value is stored under the matching project or group environment key, and that GitLab and the app clocks are synchronized.
 - Webhook `400`: confirm the project is exactly `sitcon-tw/2027`, the group is exactly `sitcon-tw`, and no custom webhook template is configured.

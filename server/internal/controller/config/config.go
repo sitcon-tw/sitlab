@@ -18,8 +18,6 @@ const (
 	DirectoryFilePath  = ".sitcon/board-directory.yml"
 	LocalDirectoryPath = "../" + DirectoryFilePath
 	SessionTTL         = 14 * 24 * time.Hour
-	localStateKeys     = "local-state:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-	localTokenKeys     = "local-token:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE"
 )
 
 type Config struct {
@@ -45,12 +43,12 @@ type HTTP struct {
 }
 
 type Session struct {
-	CookieName           string
-	CookieSecure         bool
-	HashKey              string
-	OAuthStateCipherKeys string
-	TTL                  time.Duration
-	OAuthStateTTL        time.Duration
+	CookieName    string
+	CookieSecure  bool
+	HashKey       string
+	CipherKey     string
+	TTL           time.Duration
+	OAuthStateTTL time.Duration
 }
 
 type GitLab struct {
@@ -58,8 +56,7 @@ type GitLab struct {
 	ClientID                   string
 	ClientSecret               string
 	OAuthRedirectURL           string
-	OAuthTokenCipherKeys       string
-	ProjectReadToken           string
+	ProjectAccessToken         string
 	ProjectWebhookSigningToken string
 	GroupWebhookSigningToken   string
 }
@@ -112,16 +109,15 @@ func Load() (Config, error) {
 		},
 		Session: Session{
 			CookieName: cookieDefault, CookieSecure: secure,
-			HashKey:              value("SESSION_HASH_KEY", "local-development-session-hash-key-change-me"),
-			OAuthStateCipherKeys: value("OAUTH_STATE_CIPHER_KEYS", localStateKeys),
-			TTL:                  SessionTTL, OAuthStateTTL: 10 * time.Minute,
+			HashKey:   value("SESSION_HASH_KEY", "local-development-session-hash-key-change-me"),
+			CipherKey: value("OAUTH_STATE_CIPHER_KEY", "local-development-oauth-cipher-key-change-me"),
+			TTL:       SessionTTL, OAuthStateTTL: 10 * time.Minute,
 		},
 		GitLab: GitLab{
 			BaseURL:  value("GITLAB_BASE_URL", "https://gitlab.com"),
 			ClientID: value("GITLAB_CLIENT_ID", ""), ClientSecret: value("GITLAB_CLIENT_SECRET", ""),
 			OAuthRedirectURL:           value("GITLAB_OAUTH_REDIRECT_URL", "http://localhost:8080/api/v1/auth/gitlab/callback"),
-			OAuthTokenCipherKeys:       value("GITLAB_OAUTH_TOKEN_CIPHER_KEYS", localTokenKeys),
-			ProjectReadToken:           value("GITLAB_PROJECT_READ_TOKEN", ""),
+			ProjectAccessToken:         value("GITLAB_PROJECT_ACCESS_TOKEN", ""),
 			ProjectWebhookSigningToken: value("GITLAB_PROJECT_WEBHOOK_SIGNING_TOKEN", ""),
 			GroupWebhookSigningToken:   value("GITLAB_GROUP_WEBHOOK_SIGNING_TOKEN", ""),
 		},
@@ -161,19 +157,8 @@ func (c Config) Validate() error {
 	if _, err := url.ParseRequestURI(c.DatabaseURL); err != nil {
 		return fmt.Errorf("SITCON_BOARD_DATABASE_URL is invalid: %w", err)
 	}
-	if len(c.Session.HashKey) < 32 {
-		return errors.New("session hash key must contain at least 32 characters")
-	}
-	for name, raw := range map[string]string{
-		"SITCON_BOARD_OAUTH_STATE_CIPHER_KEYS":        c.Session.OAuthStateCipherKeys,
-		"SITCON_BOARD_GITLAB_OAUTH_TOKEN_CIPHER_KEYS": c.GitLab.OAuthTokenCipherKeys,
-	} {
-		if err := validateCipherKeyring(raw); err != nil {
-			return fmt.Errorf("%s is invalid: %w", name, err)
-		}
-	}
-	if c.Session.OAuthStateCipherKeys == c.GitLab.OAuthTokenCipherKeys {
-		return errors.New("OAuth state and GitLab token cipher keyrings must be different")
+	if len(c.Session.HashKey) < 32 || len(c.Session.CipherKey) < 32 {
+		return errors.New("session hash and OAuth cipher keys must contain at least 32 characters")
 	}
 	if c.Session.TTL != SessionTTL {
 		return errors.New("session TTL must remain 14 days")
@@ -215,12 +200,11 @@ func (c Config) Validate() error {
 		if !c.Session.CookieSecure || !strings.HasPrefix(c.Session.CookieName, "__Host-") {
 			return errors.New("production session cookie must be Secure and use the __Host- prefix")
 		}
-		if c.GitLab.ClientID == "" || c.GitLab.ClientSecret == "" || c.GitLab.ProjectReadToken == "" ||
+		if c.GitLab.ClientID == "" || c.GitLab.ClientSecret == "" || c.GitLab.ProjectAccessToken == "" ||
 			c.GitLab.ProjectWebhookSigningToken == "" || c.GitLab.GroupWebhookSigningToken == "" {
 			return errors.New("GitLab OAuth, project access, and webhook signing credentials are required in production")
 		}
-		if c.Session.HashKey == "local-development-session-hash-key-change-me" ||
-			c.Session.OAuthStateCipherKeys == localStateKeys || c.GitLab.OAuthTokenCipherKeys == localTokenKeys {
+		if c.Session.HashKey == "local-development-session-hash-key-change-me" || c.Session.CipherKey == "local-development-oauth-cipher-key-change-me" {
 			return errors.New("development security keys must be changed in production")
 		}
 		gitLabBase, _ := url.Parse(c.GitLab.BaseURL)
@@ -308,39 +292,4 @@ func csvValue(key, fallback string) []string {
 		}
 	}
 	return result
-}
-
-func validateCipherKeyring(raw string) error {
-	seen := make(map[string]struct{})
-	for _, entry := range strings.Split(raw, ",") {
-		parts := strings.Split(strings.TrimSpace(entry), ":")
-		if len(parts) != 2 || !validKeyID(parts[0]) {
-			return errors.New("entries must use kid:base64url-key format")
-		}
-		if _, duplicate := seen[parts[0]]; duplicate {
-			return fmt.Errorf("key id %q is duplicated", parts[0])
-		}
-		seen[parts[0]] = struct{}{}
-		decoded, err := base64.RawURLEncoding.DecodeString(parts[1])
-		if err != nil || len(decoded) != 32 {
-			return fmt.Errorf("key %q must be an unpadded base64url-encoded 32-byte key", parts[0])
-		}
-	}
-	if len(seen) == 0 {
-		return errors.New("at least one key is required")
-	}
-	return nil
-}
-
-func validKeyID(value string) bool {
-	if len(value) < 1 || len(value) > 32 {
-		return false
-	}
-	for _, char := range value {
-		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') &&
-			(char < '0' || char > '9') && char != '-' && char != '_' {
-			return false
-		}
-	}
-	return true
 }

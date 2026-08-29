@@ -1,54 +1,24 @@
 package security
 
-import (
-	"bytes"
-	"encoding/base64"
-	"testing"
-)
+import "testing"
 
-func testKey(seed byte) string {
-	return base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{seed}, 32))
-}
-
-func TestKeyringRoundTripRotationAndAuthentication(t *testing.T) {
+func TestCipherRoundTripAndAuthentication(t *testing.T) {
 	t.Parallel()
-	oldRing, err := NewKeyring("old:" + testKey(1))
+	cipher, err := NewCipher("test-only-key-that-is-long-enough-for-aes-gcm")
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := oldRing.Seal("gitlab-access-token", "user-1", "secret")
+	sealed, err := cipher.Seal("pkce-verifier")
 	if err != nil {
 		t.Fatal(err)
 	}
-	rotated, err := NewKeyring("current:" + testKey(2) + ",old:" + testKey(1))
-	if err != nil {
-		t.Fatal(err)
-	}
-	opened, current, err := rotated.Open("gitlab-access-token", "user-1", sealed)
-	if err != nil || opened != "secret" || current {
-		t.Fatalf("Open() = %q, %v, current = %t", opened, err, current)
-	}
-	if _, _, err := rotated.Open("gitlab-refresh-token", "user-1", sealed); err == nil {
-		t.Fatal("Open() accepted ciphertext under another purpose")
-	}
-	if _, _, err := rotated.Open("gitlab-access-token", "user-2", sealed); err == nil {
-		t.Fatal("Open() accepted ciphertext for another subject")
+	opened, err := cipher.Open(sealed)
+	if err != nil || opened != "pkce-verifier" {
+		t.Fatalf("Open() = %q, %v", opened, err)
 	}
 	sealed[len(sealed)-1] ^= 0xff
-	if _, _, err := rotated.Open("gitlab-access-token", "user-1", sealed); err == nil {
+	if _, err := cipher.Open(sealed); err == nil {
 		t.Fatal("tampered ciphertext was accepted")
-	}
-}
-
-func TestKeyringRejectsMalformedConfiguration(t *testing.T) {
-	t.Parallel()
-	tests := []string{"", "missing-colon", "bad kid:" + testKey(1), "kid:not-base64", "kid:" + testKey(1) + ",kid:" + testKey(2)}
-	for _, raw := range tests {
-		t.Run(raw, func(t *testing.T) {
-			if _, err := NewKeyring(raw); err == nil {
-				t.Fatalf("NewKeyring(%q) accepted malformed configuration", raw)
-			}
-		})
 	}
 }
 

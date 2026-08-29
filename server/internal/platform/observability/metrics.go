@@ -19,10 +19,6 @@ type Metrics struct {
 	sseEvents         prometheus.Counter
 	webhookQueue      *prometheus.GaugeVec
 	webhookOldest     prometheus.Gauge
-	oauthRefresh      *prometheus.CounterVec
-	oauthRevocations  *prometheus.CounterVec
-	oauthQueue        prometheus.Gauge
-	oauthOldest       prometheus.Gauge
 	registry          *prometheus.Registry
 }
 
@@ -35,21 +31,12 @@ func NewMetrics() *Metrics {
 	sseEvents := prometheus.NewCounter(prometheus.CounterOpts{Name: "bootstrap_sse_events_total", Help: "Bootstrap revision events written to streams."})
 	webhookQueue := prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "gitlab_webhook_queue_deliveries", Help: "Current durable GitLab webhook deliveries by state."}, []string{"state"})
 	webhookOldest := prometheus.NewGauge(prometheus.GaugeOpts{Name: "gitlab_webhook_oldest_pending_age_seconds", Help: "Age of the oldest pending or processing GitLab webhook."})
-	oauthRefresh := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gitlab_oauth_refresh_total", Help: "GitLab user OAuth refresh attempts by result."}, []string{"result"})
-	oauthRevocations := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gitlab_oauth_revocations_total", Help: "GitLab user OAuth revocations by result."}, []string{"result"})
-	oauthQueue := prometheus.NewGauge(prometheus.GaugeOpts{Name: "gitlab_oauth_revocation_queue_tokens", Help: "Current durable GitLab OAuth token revocations."})
-	oauthOldest := prometheus.NewGauge(prometheus.GaugeOpts{Name: "gitlab_oauth_revocation_oldest_age_seconds", Help: "Age of the oldest durable GitLab OAuth token revocation."})
 	registry := prometheus.NewRegistry()
-	registry.MustRegister(
-		requests, duration, webhooks, webhookProcessing, sseConnections, sseEvents,
-		webhookQueue, webhookOldest, oauthRefresh, oauthRevocations, oauthQueue, oauthOldest,
-	)
+	registry.MustRegister(requests, duration, webhooks, webhookProcessing, sseConnections, sseEvents, webhookQueue, webhookOldest)
 	return &Metrics{
 		requests: requests, duration: duration, webhooks: webhooks,
 		webhookProcessing: webhookProcessing, sseConnections: sseConnections,
-		sseEvents: sseEvents, webhookQueue: webhookQueue, webhookOldest: webhookOldest,
-		oauthRefresh: oauthRefresh, oauthRevocations: oauthRevocations,
-		oauthQueue: oauthQueue, oauthOldest: oauthOldest, registry: registry,
+		sseEvents: sseEvents, webhookQueue: webhookQueue, webhookOldest: webhookOldest, registry: registry,
 	}
 }
 
@@ -69,15 +56,6 @@ func (m *Metrics) SetWebhookQueue(pending, dead int64, oldestSeconds float64) {
 	m.webhookQueue.WithLabelValues("pending").Set(float64(pending))
 	m.webhookQueue.WithLabelValues("dead").Set(float64(dead))
 	m.webhookOldest.Set(oldestSeconds)
-}
-
-func (m *Metrics) OAuthRefresh(result string) { m.oauthRefresh.WithLabelValues(result).Inc() }
-
-func (m *Metrics) OAuthRevocation(result string) { m.oauthRevocations.WithLabelValues(result).Inc() }
-
-func (m *Metrics) SetOAuthRevocationQueue(pending int64, oldestSeconds float64) {
-	m.oauthQueue.Set(float64(pending))
-	m.oauthOldest.Set(oldestSeconds)
 }
 
 func (m *Metrics) Handler() http.Handler {
