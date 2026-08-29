@@ -8,6 +8,8 @@ interface ChipContent {
 	variant?: ChipVariant | undefined;
 	elevated?: boolean | undefined;
 	selected?: boolean | undefined;
+	/** "sm" is the read-only 24dp metadata scale; interactive chips stay default. */
+	size?: "sm" | undefined;
 	leading?: ReactNode;
 	trailing?: ReactNode;
 }
@@ -25,8 +27,15 @@ export interface StaticChipProps extends Omit<HTMLAttributes<HTMLSpanElement>, "
 	label: string;
 }
 
-function chipClass({ variant = "assist", elevated }: ChipContent, className?: string, interactive = true) {
-	return classNames("md-chip", `md-chip--${variant}`, elevated && "md-chip--elevated", interactive && "md-state-layer", className);
+function chipClass({ variant = "assist", elevated, size }: ChipContent, className?: string, interactive = true) {
+	return classNames(
+		"md-chip",
+		`md-chip--${variant}`,
+		elevated && "md-chip--elevated",
+		size === "sm" && "md-chip--sm",
+		interactive && "md-state-layer",
+		className
+	);
 }
 
 /** Interactive MD3 chip. Use StaticChip for presentation-only chips. */
@@ -35,6 +44,7 @@ export function Chip({
 	variant = "assist",
 	elevated,
 	selected,
+	size,
 	leading,
 	trailing,
 	onRemove,
@@ -49,7 +59,7 @@ export function Chip({
 	const ripple = useRipple();
 	const pressable = variant === "filter";
 	return (
-		<span className={chipClass({ variant, elevated }, className)} data-selected={selected || undefined}>
+		<span className={chipClass({ variant, elevated, size }, className)} data-selected={selected || undefined}>
 			<button
 				type={type}
 				className="md-chip__button"
@@ -75,9 +85,9 @@ export function Chip({
 }
 
 /** Presentational chip: no tab stop, no state layer. */
-export function StaticChip({ label, variant = "assist", elevated, selected, leading, trailing, className, ...props }: StaticChipProps) {
+export function StaticChip({ label, variant = "assist", elevated, selected, size, leading, trailing, className, ...props }: StaticChipProps) {
 	return (
-		<span className={chipClass({ variant, elevated, selected }, className, false)} data-selected={selected || undefined} {...props}>
+		<span className={chipClass({ variant, elevated, selected, size }, className, false)} data-selected={selected || undefined} {...props}>
 			{leading ? <span className="md-chip__leading">{leading}</span> : null}
 			<span className="md-chip__label">{label}</span>
 			{trailing ? <span className="md-chip__trailing">{trailing}</span> : null}

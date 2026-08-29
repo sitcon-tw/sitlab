@@ -37,6 +37,7 @@ export function CardLabels({
 					key={name}
 					className={styles.chip}
 					variant="input"
+					size="sm"
 					label={name}
 					title={labelMetadata.get(name)?.description ?? name}
 					leading={<TagSwatch label={labelMetadata.get(name)} />}

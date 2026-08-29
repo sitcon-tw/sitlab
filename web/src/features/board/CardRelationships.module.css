@@ -14,7 +14,7 @@
 	grid-template-columns: minmax(0, 1fr) auto;
 	gap: var(--md-space-2);
 	align-items: center;
-	min-height: 3rem;
+	min-height: 2.5rem;
 	padding: var(--md-space-1) var(--md-space-2);
 }
 
@@ -23,7 +23,7 @@
 	gap: var(--md-space-2);
 	align-items: center;
 	min-width: 0;
-	min-height: 2.5rem;
+	min-height: 2.25rem;
 	padding: 0 var(--md-space-1);
 	color: var(--md-sys-color-on-surface);
 	text-align: left;
@@ -65,8 +65,8 @@
 .item {
 	position: relative;
 	display: grid;
-	gap: var(--md-space-3);
-	padding: var(--md-space-4);
+	gap: var(--md-space-2);
+	padding: var(--md-space-2) var(--md-space-3);
 	background: var(--sb-surface);
 	border-radius: var(--md-sys-shape-corner-large);
 	isolation: isolate;
@@ -223,8 +223,8 @@
 	grid-template-columns: auto minmax(0, 1fr);
 	gap: var(--md-space-3);
 	align-items: center;
-	min-height: 3.5rem;
-	padding: var(--md-space-2) var(--md-space-3);
+	min-height: 3rem;
+	padding: var(--md-space-1) var(--md-space-3);
 	cursor: pointer;
 }
 

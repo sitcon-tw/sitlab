@@ -150,7 +150,6 @@ function Timeline({ bootstrap, groups, timeline, scale, onOpen, viewportRef, cor
 				<header className={styles.timelineHeader}>
 					<div className={styles.corner} ref={cornerRef}>
 						<span>Issue</span>
-						<small>狀態與日期</small>
 					</div>
 					<div className={styles.weekHeaders}>
 						{units.map((unit) => (
@@ -204,16 +203,15 @@ function ScheduleRow({
 			data-list={card.listKey}
 			onClick={() => onOpen(card.issueIid)}
 			aria-label={`開啟 Issue #${card.issueIid} ${card.title}，${statusName(bootstrap, card)}，${summary}`}
+			title={`${statusName(bootstrap, card)} · ${summary}`}
 		>
 			<span className={styles.issueCell}>
 				<span className={styles.issueTitle}>
 					<small>#{card.issueIid}</small>
 					<strong>{card.title}</strong>
-				</span>
-				<span className={styles.issueMeta}>
-					<span>{statusName(bootstrap, card)}</span>
-					<span aria-hidden="true">·</span>
-					<span data-error={item.kind === "invalid" || undefined}>{summary}</span>
+					<span className={styles.issueStatus} data-error={item.kind === "invalid" || undefined}>
+						{statusName(bootstrap, card)}
+					</span>
 				</span>
 			</span>
 			<span className={styles.track} aria-hidden="true">

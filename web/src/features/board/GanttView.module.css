@@ -44,12 +44,12 @@
 }
 
 .viewport {
-	--gantt-issue-column: 17.5rem;
-	--gantt-day-width: 2.5rem;
+	--gantt-issue-column: 15rem;
+	--gantt-day-width: 2.25rem;
 	--gantt-unit-width: var(--gantt-day-width);
 
 	width: 100%;
-	max-height: max(28rem, calc(100svh - 15rem));
+	max-height: max(28rem, calc(100svh - 10.5rem));
 	overflow: auto;
 	overscroll-behavior: contain;
 	background: var(--sb-lane);
@@ -112,7 +112,7 @@
 	position: sticky;
 	top: 0;
 	z-index: 6;
-	min-height: 4rem;
+	min-height: 3rem;
 	background: var(--md-sys-color-surface-container-high);
 	border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
@@ -123,7 +123,7 @@
 	z-index: 8;
 	display: grid;
 	align-content: center;
-	padding: var(--md-space-2) var(--md-space-4);
+	padding: var(--md-space-1) var(--md-space-3);
 	background: var(--md-sys-color-surface-container-high);
 	border-inline-end: 1px solid var(--md-sys-color-outline-variant);
 }
@@ -133,13 +133,6 @@
 	font-weight: var(--md-sys-typescale-label-large-weight);
 	line-height: var(--md-sys-typescale-label-large-line-height);
 	letter-spacing: var(--md-sys-typescale-label-large-tracking);
-}
-
-.corner small {
-	font-size: var(--md-sys-typescale-label-small-size);
-	line-height: var(--md-sys-typescale-label-small-line-height);
-	color: var(--sb-text-subtle);
-	letter-spacing: var(--md-sys-typescale-label-small-tracking);
 }
 
 .weekHeaders {
@@ -190,7 +183,7 @@
 }
 
 .groupHeader {
-	min-height: 2.75rem;
+	min-height: 2.25rem;
 	background: color-mix(in srgb, var(--md-sys-color-secondary-container) 46%, var(--sb-lane));
 	border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
@@ -203,7 +196,7 @@
 	gap: var(--md-space-2);
 	align-items: center;
 	justify-content: space-between;
-	padding: var(--md-space-2) var(--md-space-4);
+	padding: var(--md-space-1) var(--md-space-3);
 	background: color-mix(in srgb, var(--md-sys-color-secondary-container) 72%, var(--sb-lane));
 	border-inline-end: 1px solid var(--md-sys-color-outline-variant);
 }
@@ -219,7 +212,7 @@
 .issueRow {
 	--gantt-accent: var(--md-sys-color-outline);
 
-	min-height: 4.5rem;
+	min-height: 2.5rem;
 	padding: 0;
 	overflow: visible;
 	color: var(--md-sys-color-on-surface);
@@ -264,7 +257,7 @@
 	align-content: center;
 	align-self: stretch;
 	min-width: 0;
-	padding: var(--md-space-2) var(--md-space-4);
+	padding: var(--md-space-1) var(--md-space-3);
 	overflow: hidden;
 	background: var(--sb-surface);
 	border-inline-start: 0.25rem solid var(--gantt-accent);
@@ -284,6 +277,7 @@
 }
 
 .issueTitle strong {
+	flex: 1 1 auto;
 	min-width: 0;
 	overflow: hidden;
 	font-size: var(--md-sys-typescale-body-medium-size);
@@ -294,24 +288,18 @@
 	white-space: nowrap;
 }
 
-.issueMeta {
-	display: flex;
-	gap: var(--md-space-1);
-	align-items: center;
-	min-width: 0;
+/* Status stays a text token: the accent border alone would be a color-only
+ * signal. Dates live on the track and in the row's aria-label and tooltip. */
+.issueStatus {
+	flex: 0 0 auto;
 	font-size: var(--md-sys-typescale-label-small-size);
 	line-height: var(--md-sys-typescale-label-small-line-height);
 	color: var(--sb-text-subtle);
 	letter-spacing: var(--md-sys-typescale-label-small-tracking);
-}
-
-.issueMeta span {
-	overflow: hidden;
-	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.issueMeta [data-error="true"] {
+.issueStatus[data-error="true"] {
 	color: var(--md-sys-color-error);
 }
 
@@ -329,7 +317,7 @@
 	display: flex;
 	align-items: center;
 	width: max(1.5rem, calc(var(--gantt-span-days) * var(--gantt-day-width) - var(--md-space-2)));
-	height: 1.75rem;
+	height: 1.5rem;
 	padding: 0 var(--md-space-2);
 	overflow: hidden;
 	font-size: var(--md-sys-typescale-label-small-size);
@@ -371,11 +359,12 @@
 	transform: translate(-50%, -50%);
 }
 
+/* Labels sit beside their marker instead of under it so a row stays one line tall. */
 .markerLabel,
 .invalidLabel {
 	position: absolute;
-	top: calc(50% + 0.75rem);
-	left: calc((var(--gantt-offset-days) + 0.5) * var(--gantt-day-width));
+	top: 50%;
+	left: calc((var(--gantt-offset-days) + 0.5) * var(--gantt-day-width) + 0.6875rem);
 	max-width: 14rem;
 	overflow: hidden;
 	font-size: var(--md-sys-typescale-label-small-size);
@@ -384,7 +373,7 @@
 	text-overflow: ellipsis;
 	letter-spacing: var(--md-sys-typescale-label-small-tracking);
 	white-space: nowrap;
-	transform: translateX(-50%);
+	transform: translateY(-50%);
 }
 
 .invalidMarker {
@@ -421,8 +410,8 @@
 
 .unscheduled {
 	display: grid;
-	gap: var(--md-space-4);
-	padding: var(--md-space-4);
+	gap: var(--md-space-3);
+	padding: var(--md-space-3);
 	background: var(--sb-lane);
 	border-radius: var(--md-sys-shape-corner-large);
 }
@@ -473,7 +462,7 @@
 		--gantt-day-width: 2.25rem;
 		--gantt-unit-width: var(--gantt-day-width);
 
-		max-height: max(24rem, calc(100svh - 12rem));
+		max-height: max(24rem, calc(100svh - 9rem));
 	}
 
 	.viewport[data-scale="week"] {
@@ -521,8 +510,10 @@
 		padding-inline: var(--md-space-2);
 	}
 
+	/* The 10rem issue column cannot hold iid, title, and status on one line;
+	 * wrapping keeps the status text visible instead of dropping it. */
 	.issueTitle {
-		display: grid;
-		gap: 0;
+		flex-wrap: wrap;
+		row-gap: 0;
 	}
 }

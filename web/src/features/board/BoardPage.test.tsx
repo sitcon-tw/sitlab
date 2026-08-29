@@ -434,10 +434,12 @@ describe("SITCON Board interactions", () => {
 		render(<Harness />);
 		const doingLane = screen.getByRole("heading", { name: "Doing" }).closest("section");
 		if (!doingLane) throw new Error("Doing lane is missing");
+		// The heading text carries an aria-hidden #iid prefix; strip it so the
+		// assertions keep comparing titles alone.
 		const titles = () =>
 			within(doingLane)
 				.getAllByRole("heading", { level: 3 })
-				.map((heading) => heading.textContent);
+				.map((heading) => heading.textContent?.replace(/^#\w+/, ""));
 
 		expect(titles()).toEqual(["[設計組] 製作工作人員識別證", "[場務組] 盤點會場網路設備"]);
 		await chooseSort(user, "Due date：遠到近");

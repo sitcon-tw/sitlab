@@ -573,7 +573,6 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 			/>
 			<DirectoryConflict bootstrap={bootstrap} updateBootstrap={updateBootstrap} />
 			<main className={styles.main}>
-				<QuickCreate bootstrap={bootstrap} onCreate={handleCreate} />
 				{undo ? (
 					<ToastRegion
 						messages={[
@@ -592,28 +591,31 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 						]}
 					/>
 				) : null}
-				<BoardFilters
-					bootstrap={bootstrap}
-					query={filterQuery}
-					teamKey={filterTeamKey}
-					memberIds={filterMemberIds}
-					labels={filterLabels}
-					sortMode={sortMode}
-					viewMode={viewMode}
-					visibleCount={viewMode === "gantt" ? ganttCards.length : filteredCards.length}
-					totalCount={viewMode === "gantt" ? openCards.length : cards.length}
-					onQueryChange={changeFilterQuery}
-					onTeamChange={setFilterTeamKey}
-					onMemberIdsChange={setFilterMemberIds}
-					onLabelsChange={setFilterLabels}
-					onSortModeChange={setSortMode}
-					onClear={() => {
-						changeFilterQuery("");
-						setFilterTeamKey("");
-						setFilterMemberIds([]);
-						setFilterLabels([]);
-					}}
-				/>
+				<div className={styles.toolbar}>
+					<QuickCreate bootstrap={bootstrap} onCreate={handleCreate} />
+					<BoardFilters
+						bootstrap={bootstrap}
+						query={filterQuery}
+						teamKey={filterTeamKey}
+						memberIds={filterMemberIds}
+						labels={filterLabels}
+						sortMode={sortMode}
+						viewMode={viewMode}
+						visibleCount={viewMode === "gantt" ? ganttCards.length : filteredCards.length}
+						totalCount={viewMode === "gantt" ? openCards.length : cards.length}
+						onQueryChange={changeFilterQuery}
+						onTeamChange={setFilterTeamKey}
+						onMemberIdsChange={setFilterMemberIds}
+						onLabelsChange={setFilterLabels}
+						onSortModeChange={setSortMode}
+						onClear={() => {
+							changeFilterQuery("");
+							setFilterTeamKey("");
+							setFilterMemberIds([]);
+							setFilterLabels([]);
+						}}
+					/>
+				</div>
 				{viewMode === "board" ? (
 					<DragDropProvider
 						sensors={(defaults) => [...defaults.filter((sensor) => sensor !== PointerSensor), boardPointerSensor]}
@@ -1092,7 +1094,7 @@ function CardItem({
 	const overdue = Boolean(card.dueDate && card.dueDate < taipeiDateAfter(0) && !lists.find((list) => list.key === card.listKey)?.closed);
 	return (
 		<article ref={ref} className={styles.card} data-sync={card.syncState === "failed" ? "failed" : undefined} data-dragging={isDragSource || undefined}>
-			<div className={styles.cardTopline}>
+			<div className={styles.cardActions}>
 				<IconButton
 					ref={handleRef}
 					size="sm"
@@ -1101,22 +1103,21 @@ function CardItem({
 					title={manualSorting ? "拖曳調整卡片位置" : "拖曳變更卡片狀態"}
 					icon={<GripVertical size="1.125rem" aria-hidden="true" />}
 				/>
-				<span>#{card.issueIid > 0 ? card.issueIid : "new"}</span>
 				{card.webUrl ? (
-					<IconButton
-						asChild
-						size="sm"
-						className={styles.cardExternalLink}
-						label={`在 GitLab 開啟 ${title}`}
-						title="在 GitLab 開啟"
-						icon={<ExternalLink size="1.125rem" aria-hidden="true" />}
-					>
+					<IconButton asChild size="sm" label={`在 GitLab 開啟 ${title}`} title="在 GitLab 開啟" icon={<ExternalLink size="1.125rem" aria-hidden="true" />}>
 						<a href={card.webUrl} target="_blank" rel="noreferrer" />
 					</IconButton>
 				) : null}
 			</div>
 			<button type="button" className={styles.cardTitle} onClick={onOpen}>
-				<h3>{title}</h3>
+				<h3>
+					{/* Visual metadata only: keeping the iid out of the accessible name
+					 * leaves the heading and every derived control label as the title. */}
+					<span className={styles.cardIid} aria-hidden="true">
+						#{card.issueIid > 0 ? card.issueIid : "new"}
+					</span>
+					{title}
+				</h3>
 				{card.description ? <p>{card.description}</p> : null}
 			</button>
 			<CardLabels card={card} bootstrap={bootstrap} labelMetadata={labelMetadata} title={title} />
@@ -1125,6 +1126,9 @@ function CardItem({
 					<span className={styles.srOnly}>期限</span>
 					<input type="date" aria-label={`${title}的期限`} value={card.dueDate ?? ""} onChange={(event) => onDueDate(event.target.value || null)} />
 				</label>
+				<span className={styles.cardUpdated} title={`更新於 ${formatDateTime(card.updatedAt)}`}>
+					{ageLabel(card.updatedAt)}
+				</span>
 				<AssigneePicker
 					bootstrap={bootstrap}
 					teamKey={card.teamKey}
@@ -1151,12 +1155,11 @@ function CardDragPreview({ card, bootstrap }: { card: BoardCard; bootstrap: Boot
 	const title = team && !card.title.startsWith(team.titlePrefix) ? `${team.titlePrefix} ${card.title}` : card.title;
 	return (
 		<article className={`${styles.card} ${styles.dragPreview}`} aria-hidden="true">
-			<div className={styles.cardTopline}>
-				<GripVertical size="0.9375rem" aria-hidden="true" />
-				<span>#{card.issueIid > 0 ? card.issueIid : "new"}</span>
-			</div>
 			<div className={styles.cardTitle}>
-				<h3>{title}</h3>
+				<h3>
+					<span className={styles.cardIid}>#{card.issueIid > 0 ? card.issueIid : "new"}</span>
+					{title}
+				</h3>
 				{card.description ? <p>{card.description}</p> : null}
 			</div>
 		</article>
@@ -1272,7 +1275,7 @@ function CardDetail({
 							value={description}
 							autoFocus={descriptionAutoFocus}
 							onChange={(event) => setDescription(event.target.value)}
-							rows={8}
+							rows={5}
 						/>
 					) : (
 						<div
@@ -1304,13 +1307,25 @@ function CardDetail({
 				</section>
 				<div className={styles.detailGrid}>
 					<div className={styles.detailField}>
-						<SelectField label="組別" value={card.teamKey} onValueChange={onTeam} options={teams.map((team) => ({ value: team.key, label: team.name }))} />
+						<SelectField
+							label="組別"
+							value={card.teamKey}
+							dense
+							onValueChange={onTeam}
+							options={teams.map((team) => ({ value: team.key, label: team.name }))}
+						/>
 						<span className={styles.fieldSave}>
 							<SaveIndicator save={save.get(card.issueIid, "team")} name="組別" />
 						</span>
 					</div>
 					<div className={styles.detailField}>
-						<SelectField label="狀態" value={card.listKey} onValueChange={onMove} options={lists.map((list) => ({ value: list.key, label: list.name }))} />
+						<SelectField
+							label="狀態"
+							value={card.listKey}
+							dense
+							onValueChange={onMove}
+							options={lists.map((list) => ({ value: list.key, label: list.name }))}
+						/>
 						<span className={styles.fieldSave}>
 							<SaveIndicator save={save.get(card.issueIid, "status")} name="狀態" />
 						</span>
@@ -1323,13 +1338,13 @@ function CardDetail({
 					</div>
 					<div className={styles.detailDates}>
 						<div className={styles.detailField}>
-							<TextField type="date" label="Start" value={card.startDate ?? ""} onChange={(event) => onStartDate(event.target.value || null)} />
+							<TextField type="date" label="Start" value={card.startDate ?? ""} dense onChange={(event) => onStartDate(event.target.value || null)} />
 							<span className={styles.fieldSave}>
 								<SaveIndicator save={save.get(card.issueIid, "startDate")} name="Start" />
 							</span>
 						</div>
 						<div className={styles.detailField}>
-							<TextField type="date" label="Due" value={card.dueDate ?? ""} onChange={(event) => onDueDate(event.target.value || null)} />
+							<TextField type="date" label="Due" value={card.dueDate ?? ""} dense onChange={(event) => onDueDate(event.target.value || null)} />
 							<span className={styles.fieldSave}>
 								<SaveIndicator save={save.get(card.issueIid, "dueDate")} name="Due" />
 							</span>
@@ -1554,7 +1569,7 @@ function CardComments({ card }: { card: BoardCard }) {
 			<div className={styles.commentList}>
 				{commentsQuery.data?.map((comment) => (
 					<article className={styles.comment} data-system={comment.system || undefined} key={comment.id}>
-						<Avatar name={comment.author.displayName} src={comment.author.avatarUrl} />
+						<Avatar name={comment.author.displayName} src={comment.author.avatarUrl} size="sm" />
 						<div>
 							<header>
 								<a href={comment.author.profileUrl} target="_blank" rel="noreferrer">
@@ -1573,7 +1588,7 @@ function CardComments({ card }: { card: BoardCard }) {
 			<div className={styles.commentComposer}>
 				<TextAreaField
 					label="Comment"
-					rows={4}
+					rows={3}
 					value={body}
 					{...(commentMutation.isError ? { error: errorMessage(commentMutation.error, "Comment 送出失敗，請重試。") } : {})}
 					onChange={(event) => {
@@ -1662,6 +1677,7 @@ function QuickActionComposer({ bootstrap, card, onAction }: { bootstrap: Bootstr
 					value={value}
 					autoComplete="off"
 					placeholder="/"
+					dense
 					error={error ?? undefined}
 					onChange={(event) => {
 						setValue(event.target.value);
@@ -1758,12 +1774,16 @@ function DirectoryConflict({ bootstrap, updateBootstrap }: Pick<BoardPageProps, 
 	);
 }
 
-function relativeAge(value: string) {
+function ageLabel(value: string) {
 	const minutes = Math.max(1, Math.round((Date.now() - new Date(value).getTime()) / 60_000));
-	if (minutes < 60) return `使用 ${minutes} 分鐘前資料`;
+	if (minutes < 60) return `${minutes} 分鐘前`;
 	const hours = Math.round(minutes / 60);
-	if (hours < 24) return `使用 ${hours} 小時前資料`;
-	return `使用 ${Math.round(hours / 24)} 天前資料`;
+	if (hours < 24) return `${hours} 小時前`;
+	return `${Math.round(hours / 24)} 天前`;
+}
+
+function relativeAge(value: string) {
+	return `使用 ${ageLabel(value)}資料`;
 }
 
 function formatDateTime(value: string) {
