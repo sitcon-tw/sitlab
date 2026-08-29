@@ -2,13 +2,14 @@ package httpserver
 
 import (
 	"context"
-	appsync "example.com/project-template/internal/controller/application/sync"
-	"example.com/project-template/internal/domain/board"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	appsync "example.com/project-template/internal/controller/application/sync"
+	"example.com/project-template/internal/domain/board"
 )
 
 type revisionEventsFake struct {
