@@ -577,7 +577,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 	};
 
 	return (
-		<div className={styles.app}>
+		<div className={styles.app} data-view={viewMode}>
 			<BoardHeader
 				bootstrap={bootstrap}
 				backgroundOffline={backgroundOffline}
