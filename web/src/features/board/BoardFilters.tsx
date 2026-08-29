@@ -319,19 +319,25 @@ interface TeamOptionsProps {
 }
 
 function TeamOption({ label, teamKey, checked, onChange, close }: TeamOptionProps) {
+	const inputId = useId();
+	const inputRef = useRef<HTMLInputElement>(null);
+	const select = () => {
+		onChange(teamKey);
+		close?.();
+	};
 	return (
-		<label className={`md-list-item ${styles.teamFilterOption}`}>
+		<label
+			htmlFor={inputId}
+			className={`md-list-item md-state-layer ${styles.teamFilterOption}`}
+			onClick={(event) => {
+				if (event.target === inputRef.current) return;
+				event.preventDefault();
+				inputRef.current?.focus();
+				select();
+			}}
+		>
 			<span className="md-list-item__leading">
-				<input
-					type="radio"
-					className="md-radio"
-					name="board-team-filter"
-					checked={checked}
-					onChange={() => {
-						onChange(teamKey);
-						close?.();
-					}}
-				/>
+				<input ref={inputRef} id={inputId} type="radio" className="md-radio" name="board-team-filter" checked={checked} onChange={select} />
 			</span>
 			<span className="md-list-item__text">
 				<span className="md-list-item__headline">{label}</span>

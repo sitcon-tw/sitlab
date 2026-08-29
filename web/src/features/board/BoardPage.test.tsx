@@ -92,7 +92,7 @@ async function openSearchableFilter(user: ReturnType<typeof userEvent.setup>, la
 async function chooseTeamFilter(user: ReturnType<typeof userEvent.setup>, name: string) {
 	const { input, picker } = await openSearchableFilter(user, "搜尋組別");
 	await user.type(input, name);
-	await user.click(picker.getByRole("radio", { name }));
+	await user.click(picker.getByText(name, { exact: true }));
 }
 
 async function chooseSort(user: ReturnType<typeof userEvent.setup>, name: string) {

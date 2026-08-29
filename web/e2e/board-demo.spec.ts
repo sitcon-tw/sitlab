@@ -340,7 +340,7 @@ test.describe("SITCON Board demo visual audit", () => {
 		const picker = page.getByRole("dialog", { name: "篩選與排序" });
 		const team = picker.getByRole("region", { name: "組別" });
 		await team.getByRole("searchbox", { name: "搜尋組別" }).fill("設計");
-		await team.getByRole("radio", { name: "設計組" }).click();
+		await team.getByText("設計組", { exact: true }).click();
 		await picker.getByRole("button", { name: "完成" }).click();
 		await expect(page.getByRole("heading", { name: "[設計組] 製作工作人員識別證" })).toBeVisible();
 		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeHidden();
