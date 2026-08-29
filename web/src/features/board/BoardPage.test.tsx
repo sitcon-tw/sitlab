@@ -165,7 +165,7 @@ describe("SITCON Board interactions", () => {
 		vi.mocked(detachChildItem).mockResolvedValue();
 	});
 
-	it("defaults quick create to the primary team and keeps Inbox in more options", async () => {
+	it("defaults quick create to the primary team and shows every field inline", async () => {
 		const user = userEvent.setup();
 		render(<Harness />);
 
@@ -176,49 +176,10 @@ describe("SITCON Board interactions", () => {
 		expect(screen.getByRole("button", { name: "新卡片組別" })).toHaveTextContent("開發組");
 		expect(screen.getByRole("button", { name: "選擇新卡片 Assignee" })).toHaveTextContent("Yorukot");
 		expect((screen.getByLabelText("新卡片期限") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-		expect(screen.queryByLabelText("新卡片 Status")).not.toBeInTheDocument();
-		await user.click(screen.getByRole("button", { name: "更多建卡選項" }));
-		const dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
+		const dialog = screen.getByRole("dialog", { name: "新增卡片" });
 		expect(within(dialog).getByRole("button", { name: "新卡片 Status" })).toHaveTextContent("Inbox");
 		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
-	});
-
-	it("discards unapplied more options and restores focus", async () => {
-		const user = userEvent.setup();
-		render(<Harness />);
-		await openQuickCreate(user);
-		const moreButton = screen.getByRole("button", { name: "更多建卡選項" });
-
-		await user.click(moreButton);
-		let dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
-		await chooseSelectField(user, "新卡片 Status", "Review", dialog);
-		await user.type(within(dialog).getByLabelText("新卡片 Description"), "尚未套用");
-		await user.keyboard("{Escape}");
-
-		expect(dialog).not.toBeInTheDocument();
-		expect(moreButton).toHaveFocus();
-		await user.click(moreButton);
-		dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
-		expect(within(dialog).getByRole("button", { name: "新卡片 Status" })).toHaveTextContent("Inbox");
-		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
-		await chooseSelectField(user, "新卡片 Status", "Doing", dialog);
-		await user.type(within(dialog).getByLabelText("新卡片 Description"), "按取消");
-		await user.click(within(dialog).getByRole("button", { name: "取消" }));
-		expect(moreButton).toHaveFocus();
-
-		await user.click(moreButton);
-		dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
-		expect(within(dialog).getByRole("button", { name: "新卡片 Status" })).toHaveTextContent("Inbox");
-		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
-		await chooseSelectField(user, "新卡片 Status", "Done", dialog);
-		await user.type(within(dialog).getByLabelText("新卡片 Description"), "按關閉");
-		await user.click(within(dialog).getByRole("button", { name: "Close dialog" }));
-		expect(moreButton).toHaveFocus();
-
-		await user.click(moreButton);
-		dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
-		expect(within(dialog).getByRole("button", { name: "新卡片 Status" })).toHaveTextContent("Inbox");
-		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
+		expect(within(dialog).queryByRole("button", { name: "更多建卡選項" })).not.toBeInTheDocument();
 	});
 
 	it("clears the default assignee when quick create switches to another team", async () => {
@@ -238,24 +199,19 @@ describe("SITCON Board interactions", () => {
 		render(<Harness />);
 		await openQuickCreate(user);
 
-		await user.click(screen.getByRole("button", { name: "更多建卡選項" }));
-		let dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
+		const dialog = screen.getByRole("dialog", { name: "新增卡片" });
 		await chooseSelectField(user, "新卡片 Status", "Doing", dialog);
 		await user.type(within(dialog).getByLabelText("新卡片 Description"), "確認交接與值班時段");
 		await user.type(within(dialog).getByLabelText("搜尋新卡片 Label"), "Backend");
 		await user.click(await within(dialog).findByRole("checkbox", { name: "Backend" }));
-		await user.click(within(dialog).getByRole("button", { name: "套用" }));
 		await user.type(screen.getByLabelText("卡片標題"), "新增值班表");
 		await user.click(screen.getByRole("button", { name: "建立卡片" }));
 
-		// The dialog stays open for the next card of this entry session: the
-		// chosen Status sticks while description and labels reset.
-		await user.click(screen.getByRole("button", { name: "更多建卡選項" }));
-		dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
+		// The create dialog stays open for the next card: the chosen Status
+		// sticks while description and labels reset.
 		expect(within(dialog).getByRole("button", { name: "新卡片 Status" })).toHaveTextContent("Doing");
 		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
 		expect(within(dialog).getByRole("checkbox", { name: "Backend" })).not.toBeChecked();
-		await user.click(within(dialog).getByRole("button", { name: "取消" }));
 		// The modal create dialog hides the board from the accessibility tree.
 		await user.keyboard("{Escape}");
 
@@ -954,11 +910,9 @@ describe("SITCON Board interactions", () => {
 		await openQuickCreate(user);
 
 		await user.click(screen.getByRole("button", { name: "所有組長" }));
-		await user.click(screen.getByRole("button", { name: "更多建卡選項" }));
-		const dialog = screen.getByRole("dialog", { name: "更多建卡選項" });
+		const dialog = screen.getByRole("dialog", { name: "新增卡片" });
 		await chooseSelectField(user, "新卡片 Status", "Review", dialog);
 		await user.type(within(dialog).getByLabelText("新卡片 Description"), "每週例行回報");
-		await user.click(within(dialog).getByRole("button", { name: "套用" }));
 		await user.type(screen.getByLabelText("卡片標題"), "回報本週進度");
 		await user.click(screen.getByRole("button", { name: "為所有組長建立卡片" }));
 

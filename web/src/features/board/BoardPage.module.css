@@ -94,7 +94,9 @@
 		"mode mode mode mode mode mode"
 		"title title title title title title"
 		"team team assignee assignee assignee assignee"
-		"date date date date more create";
+		"status status date date date create"
+		"description description description description description description"
+		"labels labels labels labels labels labels";
 	gap: var(--md-space-2);
 }
 
@@ -136,8 +138,12 @@
 	grid-area: date;
 }
 
-.quickMoreButton {
-	grid-area: more;
+.quickStatus {
+	grid-area: status;
+}
+
+.quickDescription {
+	grid-area: description;
 }
 
 .createButton {
@@ -256,30 +262,25 @@
 	color: var(--sb-text-subtle);
 }
 
-.quickMoreButton:hover,
-.quickMoreButton[data-active="true"] {
-	color: var(--md-sys-color-on-surface);
-	background: var(--sb-surface-subtle);
-}
-
-.quickMoreButton,
 .createButton {
 	width: 2.5rem;
 	height: 2.5rem;
 }
 
-.quickMoreFields {
-	display: grid;
-	gap: 1rem;
+.quickDescription > :global(.md-field__box) {
+	height: auto;
+	min-height: 8rem;
 }
 
-.quickMoreFields textarea {
+.quickDescription textarea {
+	height: 8rem;
 	min-height: 8rem;
 	resize: vertical;
 }
 
 .quickLabels {
 	display: grid;
+	grid-area: labels;
 	gap: 0.5rem;
 }
 
@@ -314,7 +315,7 @@
 	overflow-y: auto;
 }
 
-.quickMoreFields .quickLabelOptions label {
+.quickLabels .quickLabelOptions label {
 	display: grid;
 	grid-template-columns: 1rem 0.625rem minmax(0, 1fr);
 	gap: 0.5rem;
@@ -325,7 +326,7 @@
 	cursor: pointer;
 }
 
-.quickMoreFields .quickLabelOptions label:hover {
+.quickLabels .quickLabelOptions label:hover {
 	background: var(--sb-surface-subtle);
 }
 
@@ -354,12 +355,6 @@
 	color: var(--md-sys-color-primary);
 	background: transparent;
 	border: 0;
-}
-
-.quickMoreCancel,
-.quickMoreApply {
-	color: var(--md-sys-color-on-primary);
-	background: var(--md-sys-color-primary);
 }
 
 .quickNotice {

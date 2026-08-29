@@ -579,20 +579,18 @@ test.describe("SITCON Board demo visual audit", () => {
 		await page.mouse.up();
 	});
 
-	test("quick create more options set status, description, and Labels", async ({ page }) => {
+	test("quick create exposes status, description, and Labels inline", async ({ page }) => {
 		await page.setViewportSize({ width: 390, height: 844 });
 		await page.goto("/");
 
 		await page.getByRole("button", { name: "新增卡片" }).click();
-		await page.getByRole("button", { name: "更多建卡選項" }).click();
-		const dialog = page.getByRole("dialog", { name: "更多建卡選項" });
+		const dialog = page.getByRole("dialog", { name: "新增卡片" });
 		await expect(dialog.getByRole("button", { name: "新卡片 Status" })).toHaveText("Inbox");
 		await chooseSelectField(page, dialog, "新卡片 Status", "Doing");
 		await dialog.getByLabel("新卡片 Description").fill("確認交接與值班時段");
 		await dialog.getByLabel("搜尋新卡片 Label").fill("Backend");
 		await dialog.getByRole("checkbox", { name: "Backend" }).check();
 		await page.screenshot({ path: "../docs/assets/sitcon-board-quick-create-more-mobile.png", fullPage: true });
-		await dialog.getByRole("button", { name: "套用" }).click();
 		await page.getByLabel("卡片標題").fill("新增值班表");
 		await page.getByRole("button", { name: "建立卡片" }).click();
 		// Close the create dialog so the board is visible and accessible again.

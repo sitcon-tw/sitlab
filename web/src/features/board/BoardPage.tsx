@@ -36,7 +36,6 @@ import {
 	ChevronRight,
 	CloudOff,
 	Columns3,
-	Ellipsis,
 	ExternalLink,
 	GripVertical,
 	LogOut,
@@ -851,38 +850,18 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 	const [listKey, setListKey] = useState(defaultList);
 	const [description, setDescription] = useState("");
 	const [labels, setLabels] = useState<string[]>([]);
-	const [moreOpen, setMoreOpen] = useState(false);
-	const [draftListKey, setDraftListKey] = useState(defaultList);
-	const [draftDescription, setDraftDescription] = useState("");
-	const [draftLabels, setDraftLabels] = useState<string[]>([]);
 	const [assignees, setAssignees] = useState<number[]>(preferredAssignees(bootstrap, defaultTeam));
 	const [dueDate, setDueDate] = useState(taipeiDateAfter(7));
 	const [clearedAssignees, setClearedAssignees] = useState<number[]>([]);
 	const teams = bootstrap.teams.filter((team) => team.active).sort((a, b) => a.sortOrder - b.sortOrder);
 	const leaderTargets = teams.map((team) => ({ team, leaders: teamLeaders(bootstrap, team.key) })).filter((target) => target.leaders.length > 0);
 	const leaderCount = leaderTargets.reduce((count, target) => count + target.leaders.length, 0);
-	const selectedListName = lists.find((list) => list.key === listKey)?.name ?? "Inbox";
-	const moreActive = listKey !== defaultList || Boolean(description.trim()) || labels.length > 0;
 
 	const changeTeam = (nextTeam: string) => {
 		const compatible = assignees.filter((id) => memberById(bootstrap, id)?.teamKeys.includes(nextTeam));
 		setClearedAssignees(assignees.filter((id) => !compatible.includes(id)));
 		setAssignees(compatible);
 		setTeamKey(nextTeam);
-	};
-	const changeMoreOpen = (next: boolean) => {
-		if (next) {
-			setDraftListKey(listKey);
-			setDraftDescription(description);
-			setDraftLabels(labels);
-		}
-		setMoreOpen(next);
-	};
-	const applyMoreOptions = () => {
-		setListKey(draftListKey);
-		setDescription(draftDescription);
-		setLabels(draftLabels);
-		setMoreOpen(false);
 	};
 
 	const submit = (event: React.FormEvent) => {
@@ -909,9 +888,6 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 		setTitle("");
 		setDescription("");
 		setLabels([]);
-		setDraftDescription("");
-		setDraftLabels([]);
-		setMoreOpen(false);
 	};
 
 	return (
@@ -955,6 +931,14 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 			) : (
 				<StaticChip className={styles.bulkAssignees} label={leaderCount ? `${leaderCount} 人` : "等待名單"} />
 			)}
+			<SelectField
+				dense
+				className={styles.quickStatus}
+				label="新卡片 Status"
+				value={listKey}
+				onValueChange={setListKey}
+				options={lists.map((list) => ({ value: list.key, label: list.name }))}
+			/>
 			<TextField
 				dense
 				alwaysFloatLabel
@@ -964,47 +948,6 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 				value={dueDate}
 				onChange={(event) => setDueDate(event.target.value)}
 			/>
-			<Dialog
-				open={moreOpen}
-				onOpenChange={changeMoreOpen}
-				title="更多建卡選項"
-				trigger={
-					<IconButton
-						className={styles.quickMoreButton}
-						variant="standard"
-						label="更多建卡選項"
-						title={`更多建卡選項：${selectedListName}${description.trim() ? "，已填寫 Description" : ""}${labels.length ? `，${labels.length} 個 Labels` : ""}`}
-						icon={
-							<>
-								<Ellipsis size="1.5rem" aria-hidden="true" />
-								{/* MD3 anchors a badge inside the icon button, not beside it. */}
-								{moreActive ? <Badge dot aria-hidden="true" /> : null}
-							</>
-						}
-					/>
-				}
-				footer={
-					<>
-						<Button variant="text" onClick={() => setMoreOpen(false)}>
-							取消
-						</Button>
-						<Button variant="filled" onClick={applyMoreOptions}>
-							套用
-						</Button>
-					</>
-				}
-			>
-				<div className={styles.quickMoreFields}>
-					<SelectField
-						label="新卡片 Status"
-						value={draftListKey}
-						onValueChange={setDraftListKey}
-						options={lists.map((list) => ({ value: list.key, label: list.name }))}
-					/>
-					<TextAreaField label="新卡片 Description" rows={5} value={draftDescription} onChange={(event) => setDraftDescription(event.target.value)} />
-					<QuickCreateLabels bootstrap={bootstrap} value={draftLabels} onChange={setDraftLabels} />
-				</div>
-			</Dialog>
 			<IconButton
 				type="submit"
 				variant="filled"
@@ -1014,6 +957,14 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 				title={mode === "leaders" ? "為所有組長建立卡片" : "建立卡片"}
 				icon={<Plus size="1.5rem" aria-hidden="true" />}
 			/>
+			<TextAreaField
+				className={styles.quickDescription}
+				label="新卡片 Description"
+				rows={5}
+				value={description}
+				onChange={(event) => setDescription(event.target.value)}
+			/>
+			<QuickCreateLabels bootstrap={bootstrap} value={labels} onChange={setLabels} />
 			{mode === "single" && clearedAssignees.length ? (
 				<p className={styles.quickNotice} role="status">
 					已清除不屬於此組別的 Assignee
