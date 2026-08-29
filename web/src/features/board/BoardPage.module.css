@@ -128,44 +128,10 @@
 	min-width: 0;
 }
 
-.assigneeField {
-	position: relative;
-	grid-area: assignee;
-	min-width: 0;
-	height: 3rem;
-}
-
-.assigneeField .assigneeControl {
-	grid-area: auto;
-	align-items: flex-end;
-	width: 100%;
-	height: 100%;
-	min-height: 3rem;
-	padding-top: var(--md-space-4);
-	padding-bottom: var(--md-space-1);
+/* Match the filled look of the neighbouring quick-create fields. */
+.quickCreate .assigneeControl {
 	background: var(--sb-control);
 	border-radius: var(--md-sys-shape-corner-medium);
-}
-
-.assigneeFieldLabel {
-	position: absolute;
-	top: var(--md-space-1);
-	left: var(--md-space-3);
-	z-index: 1;
-	max-width: calc(100% - var(--md-space-6));
-	overflow: hidden;
-	font-family: var(--md-sys-typescale-body-small-font);
-	font-size: var(--md-sys-typescale-body-small-size);
-	line-height: var(--md-sys-typescale-body-small-line-height);
-	color: var(--md-sys-color-on-surface-variant);
-	text-overflow: ellipsis;
-	letter-spacing: var(--md-sys-typescale-body-small-tracking);
-	white-space: nowrap;
-	pointer-events: none;
-}
-
-.assigneeField:focus-within .assigneeFieldLabel {
-	color: var(--md-sys-color-primary);
 }
 
 .assigneeCompact {
@@ -320,24 +286,26 @@
 	flex: 1;
 }
 
-.viewToolbar {
-	display: flex;
-	gap: var(--md-space-4);
-	align-items: center;
-	justify-content: space-between;
-	margin-bottom: var(--md-space-2);
-}
-
-.viewToolbar p {
-	margin: 0;
-	font-size: var(--md-sys-typescale-body-small-size);
-	line-height: var(--md-sys-typescale-body-small-line-height);
-	color: var(--sb-text-subtle);
-	letter-spacing: var(--md-sys-typescale-body-small-tracking);
-}
-
+/* The switcher lives on the fixed-ink topbar, so it takes header-text mixes
+ * like the topbar chip instead of the surface roles it wears elsewhere. */
 .viewSwitcher {
 	flex: 0 0 auto;
+	background: transparent;
+	border-color: color-mix(in srgb, var(--sb-header-text) 28%, transparent);
+}
+
+.viewSwitcher :global(.md-segmented-button__segment) {
+	min-height: 2.5rem;
+	color: var(--sb-header-text);
+}
+
+.viewSwitcher :global(.md-segmented-button__segment + .md-segmented-button__segment) {
+	border-inline-start-color: color-mix(in srgb, var(--sb-header-text) 28%, transparent);
+}
+
+.viewSwitcher :global(.md-segmented-button__segment[aria-pressed="true"]) {
+	color: var(--sb-header-text);
+	background-color: color-mix(in srgb, var(--sb-header-text) 18%, transparent);
 }
 
 .ganttLoading {
@@ -919,6 +887,7 @@
 	min-height: 10rem;
 	padding: var(--md-space-4);
 	overflow-x: auto;
+	cursor: text;
 	color: var(--md-sys-color-on-surface);
 	background: var(--sb-control);
 	border: 0;
@@ -1436,22 +1405,21 @@
 		padding: 0.5rem;
 	}
 
-	.viewToolbar {
-		align-items: stretch;
-		flex-direction: column;
-		gap: var(--md-space-2);
+	/* The topbar now carries five widgets; everything trims to icons so the
+	 * wordmark keeps a slot even at 320px. Same font-size trick as .sync. */
+	.logo {
+		width: 4rem;
 	}
 
-	.viewToolbar p {
-		text-align: center;
+	.viewSwitcher :global(.md-segmented-button__segment) {
+		gap: 0;
+		padding: 0 var(--md-space-2);
+		font-size: 0;
 	}
 
-	.viewSwitcher {
-		width: 100%;
-	}
-
-	.viewSwitcher > button {
-		flex: 1;
+	.membersButton {
+		gap: 0;
+		font-size: 0;
 	}
 
 	.quickCreate > select {

@@ -564,7 +564,13 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 
 	return (
 		<div className={styles.app}>
-			<BoardHeader bootstrap={bootstrap} backgroundOffline={backgroundOffline} onMembers={() => setMembersOpen(true)} />
+			<BoardHeader
+				bootstrap={bootstrap}
+				backgroundOffline={backgroundOffline}
+				viewMode={viewMode}
+				onViewModeChange={setViewMode}
+				onMembers={() => setMembersOpen(true)}
+			/>
 			<DirectoryConflict bootstrap={bootstrap} updateBootstrap={updateBootstrap} />
 			<main className={styles.main}>
 				<QuickCreate bootstrap={bootstrap} onCreate={handleCreate} />
@@ -586,10 +592,6 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 						]}
 					/>
 				) : null}
-				<div className={styles.viewToolbar}>
-					<SegmentedButton label="工作檢視" options={BOARD_VIEW_OPTIONS} value={viewMode} onChange={setViewMode} className={styles.viewSwitcher} />
-					<p>{viewMode === "gantt" ? "查看開啟 Issue 的排程" : "依工作狀態推進 Issue"}</p>
-				</div>
 				<BoardFilters
 					bootstrap={bootstrap}
 					query={filterQuery}
@@ -714,7 +716,19 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 	);
 }
 
-function BoardHeader({ bootstrap, backgroundOffline, onMembers }: { bootstrap: Bootstrap; backgroundOffline: boolean; onMembers: () => void }) {
+function BoardHeader({
+	bootstrap,
+	backgroundOffline,
+	viewMode,
+	onViewModeChange,
+	onMembers
+}: {
+	bootstrap: Bootstrap;
+	backgroundOffline: boolean;
+	viewMode: BoardViewMode;
+	onViewModeChange: (viewMode: BoardViewMode) => void;
+	onMembers: () => void;
+}) {
 	const offline = backgroundOffline || bootstrap.sync.state === "offline";
 	const { theme, toggleTheme } = useTheme();
 	const [scrolled, setScrolled] = useState(false);
@@ -746,6 +760,7 @@ function BoardHeader({ bootstrap, backgroundOffline, onMembers }: { bootstrap: B
 			}
 			trailing={
 				<>
+					<SegmentedButton label="工作檢視" options={BOARD_VIEW_OPTIONS} value={viewMode} onChange={onViewModeChange} className={styles.viewSwitcher} />
 					<IconButton
 						label={theme === "dark" ? "切換為亮色主題" : "切換為深色主題"}
 						variant="standard"
@@ -753,7 +768,13 @@ function BoardHeader({ bootstrap, backgroundOffline, onMembers }: { bootstrap: B
 						icon={theme === "dark" ? <Sun size="1.125rem" aria-hidden="true" /> : <Moon size="1.125rem" aria-hidden="true" />}
 						onClick={toggleTheme}
 					/>
-					<Button variant="text" leadingIcon={<Users size="1.125rem" aria-hidden="true" />} title="查看籌備團隊" onClick={onMembers}>
+					<Button
+						variant="text"
+						className={styles.membersButton}
+						leadingIcon={<Users size="1.125rem" aria-hidden="true" />}
+						title="查看籌備團隊"
+						onClick={onMembers}
+					>
 						成員
 					</Button>
 					{offline ? (
@@ -899,14 +920,7 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 				autoComplete="off"
 			/>
 			{mode === "single" ? (
-				<AssigneePicker
-					bootstrap={bootstrap}
-					teamKey={teamKey}
-					value={assignees}
-					onChange={setAssignees}
-					label="選擇新卡片 Assignee"
-					fieldLabel="新卡片負責人"
-				/>
+				<AssigneePicker bootstrap={bootstrap} teamKey={teamKey} value={assignees} onChange={setAssignees} label="選擇新卡片 Assignee" />
 			) : (
 				<StaticChip className={styles.bulkAssignees} label={leaderCount ? `${leaderCount} 人` : "等待名單"} />
 			)}
@@ -1186,7 +1200,12 @@ function CardDetail({
 }) {
 	const [title, setTitle] = useState(card.title);
 	const [description, setDescription] = useState(card.description);
-	const [descriptionMode, setDescriptionMode] = useState<"edit" | "preview">("edit");
+	const [descriptionMode, setDescriptionMode] = useState<"edit" | "preview">(card.description.trim() ? "preview" : "edit");
+	const [descriptionAutoFocus, setDescriptionAutoFocus] = useState(false);
+	const enterDescriptionEdit = () => {
+		setDescriptionAutoFocus(true);
+		setDescriptionMode("edit");
+	};
 	const teams = bootstrap.teams.filter((team) => team.active).sort((a, b) => a.sortOrder - b.sortOrder);
 	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
 	const submitDetails = (event: React.FormEvent) => {
@@ -1240,7 +1259,7 @@ function CardDetail({
 							className={styles.descriptionModes}
 							label="描述顯示模式"
 							value={descriptionMode}
-							onChange={setDescriptionMode}
+							onChange={(mode) => (mode === "edit" ? enterDescriptionEdit() : setDescriptionMode(mode))}
 							options={[
 								{ value: "edit", label: "編輯" },
 								{ value: "preview", label: "預覽" }
@@ -1248,9 +1267,22 @@ function CardDetail({
 						/>
 					</header>
 					{descriptionMode === "edit" ? (
-						<TextAreaField label="描述" value={description} onChange={(event) => setDescription(event.target.value)} rows={8} />
+						<TextAreaField
+							label="描述"
+							value={description}
+							autoFocus={descriptionAutoFocus}
+							onChange={(event) => setDescription(event.target.value)}
+							rows={8}
+						/>
 					) : (
-						<div className={styles.markdownPreview} aria-label="描述預覽">
+						<div
+							className={styles.markdownPreview}
+							aria-label="描述預覽"
+							onClick={(event) => {
+								if ((event.target as HTMLElement).closest("a")) return;
+								enterDescriptionEdit();
+							}}
+						>
 							{description.trim() ? (
 								<ReactMarkdown
 									remarkPlugins={[remarkGfm]}
