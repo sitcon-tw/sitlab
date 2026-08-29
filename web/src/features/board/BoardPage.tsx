@@ -26,7 +26,8 @@ import {
 	ToastRegion,
 	TopAppBar,
 	UnsavedBar,
-	type SegmentedOption
+	type SegmentedOption,
+	type ToastMessage
 } from "@project-template/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -44,6 +45,7 @@ import {
 	RefreshCw,
 	Send,
 	Settings,
+	Share2,
 	Sun,
 	Users,
 	X
@@ -97,6 +99,9 @@ import {
 } from "./model";
 import { parseQuickAction, quickActionCommands, type QuickAction } from "./quickActions";
 import { SaveIndicator } from "./SaveIndicator";
+import { buildShareCardData, shareCardFilename } from "./shareCard";
+import { deliverSharePng } from "./shareCardClipboard";
+import { renderShareCardImage } from "./shareCardImage";
 import { shouldApplyIncomingCard } from "./syncActions";
 import { TagSwatch } from "./TagSwatch";
 import { useBoardDrag } from "./useBoardDrag";
@@ -1230,6 +1235,27 @@ function CardDetail({
 		onDetails(normalized, description);
 		setExitBlocked(0);
 	};
+	const labelMetadata = useProjectLabelMap();
+	const [sharing, setSharing] = useState(false);
+	const [shareToast, setShareToast] = useState<ToastMessage | null>(null);
+	useEffect(() => {
+		if (!shareToast) return;
+		const timer = window.setTimeout(() => setShareToast(null), shareToast.tone === "danger" ? 6000 : 4000);
+		return () => window.clearTimeout(timer);
+	}, [shareToast]);
+	// Shares the saved card, not in-progress edits. Synchronous up to
+	// deliverSharePng so Safari still sees the click gesture when the
+	// ClipboardItem is constructed. Re-entry is guarded here instead of
+	// disabling the button: disabling would drop focus mid-generation and the
+	// drawer's focus trap would yank scroll back to its container.
+	const handleShare = () => {
+		if (sharing) return;
+		setSharing(true);
+		deliverSharePng(() => renderShareCardImage(buildShareCardData(bootstrap, card, labelMetadata)), shareCardFilename(card.issueIid))
+			.then((delivery) => setShareToast({ id: `share-${Date.now()}`, title: delivery === "copied" ? "已複製卡片圖片" : "無法複製圖片，已改為下載" }))
+			.catch(() => setShareToast({ id: `share-${Date.now()}`, title: "無法產生卡片圖片，請再試一次", tone: "danger" }))
+			.finally(() => setSharing(false));
+	};
 	const runQuickAction = (action: QuickAction) => {
 		switch (action.kind) {
 			case "assign":
@@ -1381,18 +1407,24 @@ function CardDetail({
 				<QuickActionComposer bootstrap={bootstrap} card={card} onAction={runQuickAction} />
 				<CardComments card={card} />
 				<footer className={styles.detailActions}>
-					{card.webUrl ? (
-						<Button asChild variant="text" leadingIcon={<ExternalLink size="1rem" aria-hidden="true" />}>
-							<a href={card.webUrl} target="_blank" rel="noreferrer">
-								GitLab Issue
-							</a>
+					<div className={styles.detailActionsGroup}>
+						{card.webUrl ? (
+							<Button asChild variant="text" leadingIcon={<ExternalLink size="1rem" aria-hidden="true" />}>
+								<a href={card.webUrl} target="_blank" rel="noreferrer">
+									GitLab Issue
+								</a>
+							</Button>
+						) : null}
+						<Button variant="text" leadingIcon={<Share2 size="1rem" aria-hidden="true" />} aria-busy={sharing || undefined} onClick={handleShare}>
+							分享圖片
 						</Button>
-					) : (
-						<span />
-					)}
+					</div>
 					<SaveIndicator save={save.get(card.issueIid, "details")} name="標題與描述" />
 				</footer>
 			</form>
+			{/* Inside the drawer because Radix marks outside content inert; the
+			    fixed-position region still pins to the viewport corner. */}
+			{shareToast ? <ToastRegion messages={[shareToast]} /> : null}
 			{detailsDirty ? (
 				<div key={exitBlocked} className={exitBlocked > 0 ? `${styles.detailUnsaved} ${styles.detailUnsavedNudge}` : styles.detailUnsaved}>
 					<UnsavedBar

@@ -1413,6 +1413,13 @@
 	padding-top: 0.5rem;
 }
 
+.detailActionsGroup {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--md-space-1);
+}
+
 /* Sits after the detail form because the drawer itself is the scrollport and a
  * sticky child of the form's grid could not move within its own row. */
 .detailUnsaved {
@@ -1727,6 +1734,11 @@
 	.detailActions {
 		align-items: stretch;
 		flex-direction: column-reverse;
+	}
+
+	.detailActionsGroup {
+		flex-direction: column;
+		align-items: stretch;
 	}
 
 	.detailActions a,

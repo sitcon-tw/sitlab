@@ -28,6 +28,7 @@ Use the 7-step Material Web shape scale documented in `tokens.css`; the Android-
 - `--sb-text-subtle` remains a deliberate third text tier. Material has no equivalent, and `outline` alone is below AA contrast on the product surface. Use it only for supporting metadata, never primary content.
 - SITCON accent, coral, and blue remain product colors with no Material semantic equivalent.
 - The dark product bar uses the official white SITCON logo from the `sitcon-tw/2027` source. Product code does not redraw or recolor the mark.
+- `--sb-share-*` roles paint the card detail drawer's PNG export. They alias existing system and product roles so the image follows the active theme, keeping the card surface lighter than its frame in both schemes like the board's own tonal layering.
 
 ## Deliberate Material deviations
 

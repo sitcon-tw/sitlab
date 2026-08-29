@@ -245,6 +245,18 @@
 	--md-space-10: 2.5rem;
 	--md-space-12: 3rem;
 
+	/* Share-card image roles. The exported PNG follows the active theme, and
+	 * both schemes keep the card surface lighter than its frame, mirroring the
+	 * board's tonal layering. Aliases resolve per theme at computed-value time. */
+	--sb-share-frame: var(--md-sys-color-surface-container);
+	--sb-share-surface: var(--sb-surface);
+	--sb-share-on-surface: var(--md-sys-color-on-surface);
+	--sb-share-on-surface-variant: var(--md-sys-color-on-surface-variant);
+	--sb-share-chip: var(--md-sys-color-surface-container);
+	--sb-share-avatar: var(--md-sys-color-primary-container);
+	--sb-share-on-avatar: var(--md-sys-color-on-primary-container);
+	--sb-share-overdue: var(--md-sys-color-error);
+
 	/* Typeface. Inter is self-hosted; Chinese text falls through to the user's
 	 * native CJK sans face to avoid shipping a second multi-megabyte font. */
 	--md-ref-typeface-plain: "Inter Variable", Inter, "Noto Sans TC", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;

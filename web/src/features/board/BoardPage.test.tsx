@@ -1,9 +1,9 @@
 import { demoBootstrap } from "@/test/demoBootstrap";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createCard,
 	createComment,
@@ -30,6 +30,7 @@ import {
 	listLinkedItems,
 	searchRelationshipCandidates
 } from "./relationApi";
+import { renderShareCardImage } from "./shareCardImage";
 
 vi.mock("./labelsApi", () => ({
 	listProjectLabels: vi.fn(),
@@ -68,6 +69,12 @@ vi.mock("./relationApi", () => ({
 	listChildItems: vi.fn(),
 	listLinkedItems: vi.fn(),
 	searchRelationshipCandidates: vi.fn()
+}));
+
+// The canvas renderer needs a real 2D context, which jsdom stubs to null; its
+// layout logic is covered by shareCard.test.ts against pure helpers.
+vi.mock("./shareCardImage", () => ({
+	renderShareCardImage: vi.fn()
 }));
 
 function Harness({ initial = demoBootstrap }: { initial?: Bootstrap }) {
@@ -1035,5 +1042,113 @@ describe("SITCON Board interactions", () => {
 		await user.click(screen.getByRole("button", { name: "Gantt" }));
 		const unscheduled = await screen.findByRole("region", { name: "未排程" });
 		expect(within(unscheduled).getByRole("button", { name: /確認議程講者資料/ })).toBeVisible();
+	});
+
+	describe("share image", () => {
+		class FakeClipboardItem {
+			constructor(readonly items: Record<string, Blob | Promise<Blob>>) {}
+		}
+
+		// Awaits the wrapped blob like real browsers, so a failed render rejects
+		// the write instead of silently "copying" nothing.
+		function stubImageClipboard(write: (items: FakeClipboardItem[]) => Promise<void>) {
+			vi.stubGlobal("ClipboardItem", FakeClipboardItem);
+			Object.defineProperty(navigator, "clipboard", { configurable: true, value: { write } });
+		}
+
+		const consumingWrite = () => vi.fn(async (items: FakeClipboardItem[]) => void (await items[0]!.items["image/png"]));
+		const pngBlob = new Blob(["png"], { type: "image/png" });
+
+		async function openShareableCard(user: ReturnType<typeof userEvent.setup>) {
+			render(<Harness />);
+			await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+			return screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		}
+
+		beforeEach(() => {
+			vi.mocked(renderShareCardImage).mockReset();
+		});
+
+		afterEach(() => {
+			vi.unstubAllGlobals();
+			Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+		});
+
+		it("copies the card image and hands the renderer resolved card data", async () => {
+			const user = userEvent.setup();
+			const write = consumingWrite();
+			stubImageClipboard(write);
+			vi.mocked(renderShareCardImage).mockResolvedValue(pngBlob);
+			const dialog = await openShareableCard(user);
+
+			await user.click(within(dialog).getByRole("button", { name: "分享圖片" }));
+
+			expect(await screen.findByText("已複製卡片圖片")).toBeVisible();
+			expect(write).toHaveBeenCalledOnce();
+			const data = vi.mocked(renderShareCardImage).mock.calls[0]![0];
+			expect(data.title).toBe("[開發組] 修正報名系統寄信流程");
+			expect(data.listName).toBe("To do");
+			expect(data.teamName).toBe("開發組");
+			expect(data.assignees.map((assignee) => assignee.name)).toEqual(["Yorukot"]);
+			expect(data.labels.map((label) => label.name)).toEqual(["Priority::High", "Backend"]);
+		});
+
+		it("auto-dismisses the share toast", async () => {
+			stubImageClipboard(consumingWrite());
+			vi.mocked(renderShareCardImage).mockResolvedValue(pngBlob);
+			render(<Harness />);
+			fireEvent.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+			const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+
+			vi.useFakeTimers();
+			try {
+				fireEvent.click(within(dialog).getByRole("button", { name: "分享圖片" }));
+				await act(async () => {
+					await vi.advanceTimersByTimeAsync(0);
+				});
+				expect(screen.getByText("已複製卡片圖片")).toBeVisible();
+				await act(async () => {
+					await vi.advanceTimersByTimeAsync(4000);
+				});
+				expect(screen.queryByText("已複製卡片圖片")).not.toBeInTheDocument();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("falls back to a download when the clipboard write is refused", async () => {
+			const user = userEvent.setup();
+			stubImageClipboard(
+				vi.fn(async () => {
+					throw new DOMException("denied", "NotAllowedError");
+				})
+			);
+			vi.mocked(renderShareCardImage).mockResolvedValue(pngBlob);
+			URL.createObjectURL = vi.fn(() => "blob:fake");
+			URL.revokeObjectURL = vi.fn();
+			const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+			try {
+				const dialog = await openShareableCard(user);
+
+				await user.click(within(dialog).getByRole("button", { name: "分享圖片" }));
+
+				expect(await screen.findByText("無法複製圖片，已改為下載")).toBeVisible();
+				expect(click).toHaveBeenCalledOnce();
+			} finally {
+				click.mockRestore();
+			}
+		});
+
+		it("reports a failed image render as an alert", async () => {
+			const user = userEvent.setup();
+			stubImageClipboard(consumingWrite());
+			vi.mocked(renderShareCardImage).mockRejectedValue(new Error("no canvas"));
+			const dialog = await openShareableCard(user);
+
+			await user.click(within(dialog).getByRole("button", { name: "分享圖片" }));
+
+			expect(await screen.findByText("無法產生卡片圖片，請再試一次")).toBeVisible();
+			expect(screen.getByRole("alert")).toHaveTextContent("無法產生卡片圖片，請再試一次");
+		});
 	});
 });
