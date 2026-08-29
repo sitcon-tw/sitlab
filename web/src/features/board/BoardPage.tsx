@@ -21,6 +21,7 @@ import {
 	SelectField,
 	Spinner,
 	StaticChip,
+	TextAreaField,
 	TextField,
 	ToastRegion,
 	TopAppBar,
