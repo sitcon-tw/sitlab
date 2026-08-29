@@ -329,6 +329,10 @@ function TeamOption({ label, teamKey, checked, onChange, close }: TeamOptionProp
 		<label
 			htmlFor={inputId}
 			className={`md-list-item md-state-layer ${styles.teamFilterOption}`}
+			onPointerDown={(event) => {
+				if (event.target === inputRef.current) return;
+				event.preventDefault();
+			}}
 			onClick={(event) => {
 				if (event.target === inputRef.current) return;
 				event.preventDefault();

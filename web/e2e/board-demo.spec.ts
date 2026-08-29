@@ -332,6 +332,19 @@ test.describe("SITCON Board demo visual audit", () => {
 		await expect(page.getByRole("dialog", { name: "新增卡片" }).locator(".md-dialog__title")).toBeInViewport();
 	});
 
+	test("desktop team filter selects an option by its text", async ({ page }) => {
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await page.goto("/");
+
+		const { input, picker } = await openDesktopFilter(page, "搜尋組別");
+		await picker.getByText("行政組", { exact: true }).click();
+
+		await expect(input).toHaveValue("行政組");
+		await expect(picker).toHaveCount(0);
+		await expect(page.getByRole("heading", { name: "[行政組] 整理志工行前通知" })).toBeVisible();
+		await expect(page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).toBeHidden();
+	});
+
 	test("team and people filters combine on the board", async ({ page }) => {
 		await page.setViewportSize({ width: 608, height: 800 });
 		await page.goto("/");
