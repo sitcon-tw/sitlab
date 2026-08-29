@@ -16,4 +16,8 @@
 .chip {
 	flex: 0 0 auto;
 	white-space: nowrap;
+	/* The chip's stock surface-container-high matches the dark card surface
+	 * exactly, which made the label pills vanish there. Mixing from on-surface
+	 * keeps them one visible step off the card in both themes. */
+	background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
 }
