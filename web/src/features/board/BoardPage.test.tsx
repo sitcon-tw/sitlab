@@ -629,6 +629,10 @@ describe("SITCON Board interactions", () => {
 
 		await user.clear(within(dialog).getByLabelText("標題"));
 		await user.type(within(dialog).getByLabelText("標題"), "完成寄信失敗重送");
+		expect(within(dialog).queryByLabelText("描述")).not.toBeInTheDocument();
+		expect(within(dialog).getByText("釐清失敗重送條件，補上整合測試與觀測紀錄。")).toBeVisible();
+		await user.click(within(dialog).getByLabelText("描述預覽"));
+		expect(within(dialog).getByLabelText("描述")).toHaveFocus();
 		fireEvent.change(within(dialog).getByLabelText("描述"), { target: { value: "## 驗收條件\n\n- [ ] 補齊測試\n\n[規格](https://example.com/spec)" } });
 		await user.click(within(dialog).getByRole("button", { name: "預覽" }));
 		expect(within(dialog).getByRole("heading", { name: "驗收條件" })).toBeVisible();
@@ -643,6 +647,21 @@ describe("SITCON Board interactions", () => {
 		);
 		expect(screen.getByRole("dialog", { name: /127 卡片詳細資料/ })).toBeVisible();
 		expect(within(dialog).getByLabelText("標題")).toHaveValue("完成寄信失敗重送");
+	});
+
+	it("opens description in edit mode when empty and in preview when it has content", async () => {
+		const user = userEvent.setup();
+		render(<Harness />);
+
+		await user.click(screen.getByRole("heading", { name: "[議程組] 確認議程講者資料" }));
+		const emptyDialog = screen.getByRole("dialog", { name: /129 卡片詳細資料/ });
+		expect(within(emptyDialog).getByLabelText("描述")).toBeVisible();
+		await user.click(within(emptyDialog).getByRole("button", { name: "Close drawer" }));
+
+		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		expect(within(dialog).queryByLabelText("描述")).not.toBeInTheDocument();
+		expect(within(dialog).getByText("釐清失敗重送條件，補上整合測試與觀測紀錄。")).toBeVisible();
 	});
 
 	it("keeps status out of Labels and normalizes Team Label changes", async () => {
