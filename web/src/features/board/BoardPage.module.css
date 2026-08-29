@@ -109,6 +109,8 @@
 .toolbarFilters {
 	flex: 1 1 58rem;
 	min-width: 0;
+	container-name: board-filters;
+	container-type: inline-size;
 }
 
 .createModes {
@@ -1877,12 +1879,10 @@
 	align-items: center;
 }
 
-@media (max-width: 60rem) {
+@container board-filters (max-width: 72rem) {
 	.filters {
-		grid-template-columns: minmax(0, 1fr) auto;
-		grid-template-areas:
-			"search search"
-			"compact result";
+		grid-template-columns: minmax(14rem, 1fr) auto auto;
+		grid-template-areas: "search compact result";
 	}
 
 	.desktopFilterControl,
@@ -1898,6 +1898,28 @@
 	.filterResult {
 		justify-self: end;
 		margin-left: 0;
+	}
+}
+
+@container board-filters (max-width: 36rem) {
+	.filters {
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas:
+			"search search"
+			"compact result";
+	}
+}
+
+@container board-filters (max-width: 24rem) {
+	.filters {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas:
+			"search"
+			"compact";
+	}
+
+	.filterResult {
+		display: none;
 	}
 }
 
