@@ -7,6 +7,9 @@ var (
 	ErrSessionNotFound         = errors.New("session not found")
 	ErrOAuthStateNotFound      = errors.New("oauth state not found")
 	ErrOAuthCredentialNotFound = errors.New("oauth credential not found")
+	ErrOAuthRevocationNotFound = errors.New("oauth token revocation not found")
 	ErrGitLabUnavailable       = errors.New("GitLab is unavailable")
 	ErrProjectMemberRequired   = errors.New("active project membership is required")
 )
+
+const PlannerAccessLevel int32 = 15

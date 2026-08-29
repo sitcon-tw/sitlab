@@ -58,7 +58,7 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	}
 	defer pool.Close()
 	if _, err := pool.Exec(ctx, `
-		TRUNCATE gitlab_webhook_deliveries, durable_operations, issue_cache, board_lists, user_preferences,
+		TRUNCATE gitlab_oauth_token_revocations, gitlab_webhook_deliveries, durable_operations, issue_cache, board_lists, user_preferences,
 		         directory_team_memberships, directory_members, directory_teams, directory_milestones,
 		         sync_snapshots, oauth_states, auth_sessions, users
 		RESTART IDENTITY CASCADE
@@ -330,6 +330,12 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	}
 	if _, err := oauthRepo.OAuthCredential(ctx, user.ID); !errors.Is(err, identity.ErrOAuthCredentialNotFound) {
 		t.Fatalf("revoked member OAuth credential error = %v", err)
+	}
+	var revocations int
+	if err := pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM gitlab_oauth_token_revocations WHERE user_id = $1
+	`, uuid.MustParse(user.ID)).Scan(&revocations); err != nil || revocations != 1 {
+		t.Fatalf("revoked member token queue = %d, error = %v", revocations, err)
 	}
 
 	storedDirectory, err := store.Snapshot(ctx)

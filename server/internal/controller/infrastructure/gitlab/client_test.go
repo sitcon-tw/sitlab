@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -67,7 +68,7 @@ func TestSnapshotEndpointsParseMembersAndIssues(t *testing.T) {
 	})
 	client, err := New(&http.Client{Transport: transport}, Config{
 		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027",
-		AccessToken: "project-token",
+		ReadToken: "project-token",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +100,7 @@ func TestMissingIssueMapsToCardNotFound(t *testing.T) {
 		return response(http.StatusOK, `{"data":{"project":{"workItems":{"nodes":[]}}}}`), nil
 	})
 	client, _ := New(&http.Client{Transport: transport}, Config{
-		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", AccessToken: "project-token",
+		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", ReadToken: "project-token",
 	})
 	_, err := client.Issue(context.Background(), 404)
 	if !errors.Is(err, board.ErrCardNotFound) {
@@ -126,7 +127,7 @@ func TestInvisibleProjectIsAnErrorRatherThanAnEmptyBoard(t *testing.T) {
 		return response(http.StatusOK, `{"data":{"project":null}}`), nil
 	})
 	client, _ := New(&http.Client{Transport: transport}, Config{
-		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", AccessToken: "project-token",
+		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", ReadToken: "project-token",
 	})
 
 	issues, err := client.Issues(context.Background(), sync.IssueFilter{})
@@ -165,7 +166,7 @@ func TestLifecycleStatusesAreCachedAndDroppedOnAFailedValidation(t *testing.T) {
 		return response(http.StatusOK, emptyBoard), nil
 	})
 	client, _ := New(&http.Client{Transport: transport}, Config{
-		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", AccessToken: "project-token",
+		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", ReadToken: "project-token",
 	})
 	clock := time.Unix(1_750_000_000, 0).UTC()
 	client.now = func() time.Time { return clock }
@@ -227,7 +228,7 @@ func TestIssueReadsSendTheFilterGitLabExpects(t *testing.T) {
 		return response(http.StatusOK, `{"data":{"project":{"workItems":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}`), nil
 	})
 	client, _ := New(&http.Client{Transport: transport}, Config{
-		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", AccessToken: "project-token",
+		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", ReadToken: "project-token",
 	})
 
 	since := time.Date(2026, time.August, 18, 8, 30, 0, 0, time.UTC)
@@ -327,7 +328,7 @@ func TestProjectLabelsAndCommentsUseExpectedCredentialsAndPagination(t *testing.
 		}
 	})
 	client, _ := New(&http.Client{Transport: transport}, Config{
-		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", AccessToken: "project-token",
+		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", ReadToken: "project-token",
 	})
 	labels, err := client.ProjectLabels(context.Background())
 	if err != nil || len(labels) != 1 || labels[0].ID != 7 || labels[0].Name != "Backend" || labels[0].TextColor != "#FFFFFF" {
@@ -423,6 +424,116 @@ func TestMissingProjectMemberIsForbidden(t *testing.T) {
 	}
 }
 
+func TestPlannerIsMinimumBoardRoleAndRejectedTokensAreRevoked(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		name        string
+		accessLevel int32
+		wantAllowed bool
+	}{
+		{name: "guest", accessLevel: identity.PlannerAccessLevel - 1},
+		{name: "planner", accessLevel: identity.PlannerAccessLevel, wantAllowed: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			var revoked []string
+			transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				switch {
+				case request.URL.Path == "/oauth/token":
+					return response(http.StatusOK, `{"access_token":"token","refresh_token":"refresh","expires_in":7200}`), nil
+				case request.URL.Path == "/api/v4/user":
+					return response(http.StatusOK, `{"id":123,"username":"member","name":"Member"}`), nil
+				case strings.Contains(request.URL.Path, "/members/all/"):
+					return response(http.StatusOK, fmt.Sprintf(`{"access_level":%d,"state":"active"}`, testCase.accessLevel)), nil
+				case request.URL.Path == "/oauth/revoke":
+					if err := request.ParseForm(); err != nil {
+						t.Fatal(err)
+					}
+					revoked = append(revoked, request.FormValue("token"))
+					return response(http.StatusOK, `{}`), nil
+				default:
+					return response(http.StatusNotFound, `{}`), nil
+				}
+			})
+			client, err := New(&http.Client{Transport: transport}, Config{
+				BaseURL: "https://gitlab.example", ClientID: "client", ClientSecret: "secret", ProjectPath: "sitcon-tw/2027",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, exchangeErr := client.ExchangeIdentity(context.Background(), "code", "verifier")
+			if testCase.wantAllowed {
+				if exchangeErr != nil || len(revoked) != 0 {
+					t.Fatalf("planner exchange error = %v, revoked = %v", exchangeErr, revoked)
+				}
+				return
+			}
+			if !errors.Is(exchangeErr, identity.ErrProjectMemberRequired) || !slices.Equal(revoked, []string{"token", "refresh"}) {
+				t.Fatalf("guest exchange error = %v, revoked = %v", exchangeErr, revoked)
+			}
+		})
+	}
+}
+
+func TestCredentialRequestsAreRestrictedToConfiguredOriginAndProject(t *testing.T) {
+	t.Parallel()
+	client, err := New(http.DefaultClient, Config{BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := []struct {
+		url, private, bearer string
+	}{
+		{"https://gitlab.example/api/graphql", "read", ""},
+		{"https://gitlab.example/api/v4/projects/sitcon-tw%2F2027/issues/1", "", "actor"},
+		{"https://gitlab.example/api/v4/user", "", "actor"},
+	}
+	for _, request := range allowed {
+		if err := client.validateCredentialURL(request.url, request.private, request.bearer); err != nil {
+			t.Errorf("allowed URL %q rejected: %v", request.url, err)
+		}
+	}
+	rejected := []struct {
+		url, private, bearer string
+	}{
+		{"https://gitlab.example/api/v4/projects/another%2Fproject/issues/1", "", "actor"},
+		{"https://evil.example/api/v4/projects/sitcon-tw%2F2027/issues/1", "", "actor"},
+		{"https://gitlab.example/api/v4/groups/sitcon-tw", "read", ""},
+		{"https://gitlab.example/api/graphql", "read", "actor"},
+		{"https://gitlab.example/api/v4/projects/sitcon-tw%2F2027/../another", "", "actor"},
+	}
+	for _, request := range rejected {
+		if err := client.validateCredentialURL(request.url, request.private, request.bearer); err == nil {
+			t.Errorf("restricted URL %q was accepted", request.url)
+		}
+	}
+	if err := client.http.CheckRedirect(&http.Request{}, nil); !errors.Is(err, http.ErrUseLastResponse) {
+		t.Fatalf("redirect policy error = %v", err)
+	}
+}
+
+func TestRevokeTokenSendsClientAuthenticatedRequest(t *testing.T) {
+	t.Parallel()
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Path != "/oauth/revoke" {
+			t.Fatalf("revocation path = %s", request.URL.Path)
+		}
+		if err := request.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if request.FormValue("client_id") != "client" || request.FormValue("client_secret") != "secret" || request.FormValue("token") != "token" {
+			t.Fatalf("revocation form = %#v", request.Form)
+		}
+		return response(http.StatusOK, `{}`), nil
+	})
+	client, _ := New(&http.Client{Transport: transport}, Config{
+		BaseURL: "https://gitlab.example", ClientID: "client", ClientSecret: "secret", ProjectPath: "sitcon-tw/2027",
+	})
+	if err := client.RevokeToken(context.Background(), "token"); err != nil {
+		t.Fatalf("RevokeToken() error = %v", err)
+	}
+}
+
 func TestRefreshTokenRotatesOAuthCredential(t *testing.T) {
 	t.Parallel()
 	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
@@ -509,7 +620,7 @@ func TestProjectLabelWritesUseRESTAndTheActorToken(t *testing.T) {
 		return response(http.StatusOK, `{"id":10,"name":"feature","color":"#5843AD","text_color":"#FFFFFF","description":null}`), nil
 	})
 	client, _ := New(&http.Client{Transport: transport}, Config{
-		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", AccessToken: "project-token",
+		BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027", ReadToken: "project-token",
 	})
 
 	created, err := client.CreateProjectLabel(context.Background(), cardactivity.ProjectLabelWrite{Name: "feature", Color: "#5843AD"}, "actor-token")

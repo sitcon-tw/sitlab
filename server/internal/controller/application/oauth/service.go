@@ -22,20 +22,33 @@ type Config struct {
 	SessionTTL    time.Duration
 }
 
+const (
+	accessTokenPurpose  = "gitlab-access-token"
+	refreshTokenPurpose = "gitlab-refresh-token"
+	revocationLease     = 30 * time.Second
+)
+
 type Service struct {
-	repo   Repository
-	tx     Transactor
-	tokens Tokens
-	cipher Cipher
-	gitlab GitLab
-	config Config
-	now    func() time.Time
-	tracer trace.Tracer
+	repo        Repository
+	tx          Transactor
+	tokens      Tokens
+	stateCipher Cipher
+	tokenCipher Cipher
+	gitlab      GitLab
+	config      Config
+	now         func() time.Time
+	tracer      trace.Tracer
+	observer    Observer
 }
 
-func NewService(repo Repository, tx Transactor, tokens Tokens, cipher Cipher, gitlab GitLab, cfg Config, tracer trace.Tracer) *Service {
-	return &Service{repo: repo, tx: tx, tokens: tokens, cipher: cipher, gitlab: gitlab, config: cfg, now: time.Now, tracer: tracer}
+func NewService(repo Repository, tx Transactor, tokens Tokens, stateCipher, tokenCipher Cipher, gitlab GitLab, cfg Config, tracer trace.Tracer) *Service {
+	return &Service{
+		repo: repo, tx: tx, tokens: tokens, stateCipher: stateCipher, tokenCipher: tokenCipher,
+		gitlab: gitlab, config: cfg, now: time.Now, tracer: tracer,
+	}
 }
+
+func (s *Service) SetObserver(observer Observer) { s.observer = observer }
 
 func (s *Service) Start(ctx context.Context) (StartResult, error) {
 	ctx, span := s.tracer.Start(ctx, "auth.gitlab.start")
@@ -48,7 +61,7 @@ func (s *Service) Start(ctx context.Context) (StartResult, error) {
 	if err != nil {
 		return StartResult{}, technical(span, "create PKCE verifier", err)
 	}
-	ciphertext, err := s.cipher.Seal(verifier)
+	ciphertext, err := s.stateCipher.Seal("oauth-pkce-verifier", base64.RawURLEncoding.EncodeToString(stateHash), verifier)
 	if err != nil {
 		return StartResult{}, technical(span, "seal PKCE verifier", err)
 	}
@@ -82,7 +95,9 @@ func (s *Service) Complete(ctx context.Context, input CompleteInput) (Authentica
 	if !s.now().UTC().Before(state.ExpiresAt) {
 		return Authenticated{}, apperror.Unauthorized("AUTH_OAUTH_FAILED", "OAuth state has expired")
 	}
-	verifier, err := s.cipher.Open(state.VerifierCiphertext)
+	verifier, _, err := s.stateCipher.Open(
+		"oauth-pkce-verifier", base64.RawURLEncoding.EncodeToString(state.StateHash), state.VerifierCiphertext,
+	)
 	if err != nil {
 		return Authenticated{}, technical(span, "open PKCE verifier", err)
 	}
@@ -96,10 +111,13 @@ func (s *Service) Complete(ctx context.Context, input CompleteInput) (Authentica
 	if err != nil {
 		return Authenticated{}, apperror.Unauthorized("AUTH_OAUTH_FAILED", "GitLab authorization failed")
 	}
-	if gitLabIdentity.GitLabUserID <= 0 || strings.TrimSpace(gitLabIdentity.Username) == "" || gitLabIdentity.State != "active" || gitLabIdentity.AccessLevel <= 0 {
+	if gitLabIdentity.GitLabUserID <= 0 || strings.TrimSpace(gitLabIdentity.Username) == "" ||
+		gitLabIdentity.State != "active" || gitLabIdentity.AccessLevel < identity.PlannerAccessLevel {
+		s.revokeIssuedTokens(ctx, gitLabIdentity.Tokens)
 		return Authenticated{}, apperror.Forbidden("FORBIDDEN", "an active SITCON 2027 project membership is required")
 	}
 	if gitLabIdentity.Tokens.AccessToken == "" || gitLabIdentity.Tokens.RefreshToken == "" || gitLabIdentity.Tokens.ExpiresAt.IsZero() {
+		s.revokeIssuedTokens(ctx, gitLabIdentity.Tokens)
 		return Authenticated{}, technical(span, "validate GitLab OAuth credential", errors.New("GitLab token response is incomplete"))
 	}
 
@@ -118,18 +136,17 @@ func (s *Service) Complete(ctx context.Context, input CompleteInput) (Authentica
 		ID: uuid.NewString(), TokenHash: sessionHash,
 		ExpiresAt: now.Add(s.config.SessionTTL), CreatedAt: now, LastUsedAt: now,
 	}
-	credential, err := s.sealCredential(user.ID, gitLabIdentity.Tokens, now)
-	if err != nil {
-		return Authenticated{}, technical(span, "seal GitLab OAuth credential", err)
-	}
 	err = s.tx.WithinTx(ctx, func(txCtx context.Context) error {
 		var upsertErr error
 		user, upsertErr = s.repo.UpsertUser(txCtx, user)
 		if upsertErr != nil {
 			return upsertErr
 		}
-		credential.UserID = user.ID
-		if upsertErr = s.repo.UpsertOAuthCredential(txCtx, credential); upsertErr != nil {
+		credential, sealErr := s.sealCredential(user.ID, gitLabIdentity.Tokens, now)
+		if sealErr != nil {
+			return sealErr
+		}
+		if upsertErr = s.repo.ReplaceOAuthCredential(txCtx, credential, now); upsertErr != nil {
 			return upsertErr
 		}
 		session.UserID = user.ID
@@ -137,48 +154,83 @@ func (s *Service) Complete(ctx context.Context, input CompleteInput) (Authentica
 		return upsertErr
 	})
 	if err != nil {
-		return Authenticated{}, technical(span, "create GitLab session", err)
+		revokeErr := s.revokeTokenPair(ctx, gitLabIdentity.Tokens.AccessToken, gitLabIdentity.Tokens.RefreshToken)
+		return Authenticated{}, technical(span, "create GitLab session", errors.Join(err, revokeErr))
 	}
 	return Authenticated{User: user, SessionToken: rawSession, RedirectPath: state.ReturnPath}, nil
 }
 
 func (s *Service) AccessToken(ctx context.Context, userID string) (string, error) {
-	credential, err := s.repo.OAuthCredential(ctx, userID)
-	if err != nil {
-		return "", fmt.Errorf("load actor GitLab credential: %w", err)
-	}
-	if s.now().UTC().Add(time.Minute).Before(credential.ExpiresAt) {
-		accessToken, openErr := s.cipher.Open(credential.AccessTokenCiphertext)
-		if openErr != nil {
-			return "", fmt.Errorf("open actor GitLab access token: %w", openErr)
+	var accessToken string
+	refreshAttempted := false
+	refreshed := false
+	err := s.tx.WithinTx(ctx, func(txCtx context.Context) error {
+		credential, loadErr := s.repo.OAuthCredentialForUpdate(txCtx, userID)
+		if loadErr != nil {
+			return fmt.Errorf("load actor GitLab credential: %w", loadErr)
 		}
-		return accessToken, nil
-	}
-	refreshToken, err := s.cipher.Open(credential.RefreshTokenCiphertext)
+		now := s.now().UTC()
+		if now.Add(time.Minute).Before(credential.ExpiresAt) {
+			var current bool
+			accessToken, current, loadErr = s.tokenCipher.Open(accessTokenPurpose, userID, credential.AccessTokenCiphertext)
+			if loadErr != nil {
+				return fmt.Errorf("open actor GitLab access token: %w", loadErr)
+			}
+			if current {
+				return nil
+			}
+			refreshToken, _, openErr := s.tokenCipher.Open(refreshTokenPurpose, userID, credential.RefreshTokenCiphertext)
+			if openErr != nil {
+				return fmt.Errorf("open actor GitLab refresh token for key rotation: %w", openErr)
+			}
+			rotated, sealErr := s.sealCredential(userID, OAuthTokens{
+				AccessToken: accessToken, RefreshToken: refreshToken, ExpiresAt: credential.ExpiresAt,
+			}, now)
+			if sealErr != nil {
+				return fmt.Errorf("rotate actor GitLab credential encryption: %w", sealErr)
+			}
+			return s.repo.UpsertOAuthCredential(txCtx, rotated)
+		}
+		refreshToken, _, openErr := s.tokenCipher.Open(refreshTokenPurpose, userID, credential.RefreshTokenCiphertext)
+		if openErr != nil {
+			return fmt.Errorf("open actor GitLab refresh token: %w", openErr)
+		}
+		refreshAttempted = true
+		tokens, refreshErr := s.gitlab.RefreshToken(txCtx, refreshToken)
+		if refreshErr != nil {
+			return fmt.Errorf("refresh actor GitLab access token: %w", refreshErr)
+		}
+		rotated, sealErr := s.sealCredential(userID, tokens, now)
+		if sealErr != nil {
+			revokeErr := s.revokeTokenPair(txCtx, tokens.AccessToken, tokens.RefreshToken)
+			return errors.Join(fmt.Errorf("seal refreshed actor GitLab credential: %w", sealErr), revokeErr)
+		}
+		if storeErr := s.repo.UpsertOAuthCredential(txCtx, rotated); storeErr != nil {
+			revokeErr := s.revokeTokenPair(txCtx, tokens.AccessToken, tokens.RefreshToken)
+			return errors.Join(fmt.Errorf("store refreshed actor GitLab credential: %w", storeErr), revokeErr)
+		}
+		accessToken = tokens.AccessToken
+		refreshed = true
+		return nil
+	})
 	if err != nil {
-		return "", fmt.Errorf("open actor GitLab refresh token: %w", err)
+		if refreshAttempted {
+			s.observeRefresh("failed")
+		}
+		return "", err
 	}
-	tokens, err := s.gitlab.RefreshToken(ctx, refreshToken)
-	if err != nil {
-		return "", fmt.Errorf("refresh actor GitLab access token: %w", err)
+	if refreshed {
+		s.observeRefresh("succeeded")
 	}
-	now := s.now().UTC()
-	refreshed, err := s.sealCredential(userID, tokens, now)
-	if err != nil {
-		return "", fmt.Errorf("seal refreshed actor GitLab credential: %w", err)
-	}
-	if err := s.repo.UpsertOAuthCredential(ctx, refreshed); err != nil {
-		return "", fmt.Errorf("store refreshed actor GitLab credential: %w", err)
-	}
-	return tokens.AccessToken, nil
+	return accessToken, nil
 }
 
 func (s *Service) sealCredential(userID string, tokens OAuthTokens, now time.Time) (identity.OAuthCredential, error) {
-	accessCiphertext, err := s.cipher.Seal(tokens.AccessToken)
+	accessCiphertext, err := s.tokenCipher.Seal(accessTokenPurpose, userID, tokens.AccessToken)
 	if err != nil {
 		return identity.OAuthCredential{}, err
 	}
-	refreshCiphertext, err := s.cipher.Seal(tokens.RefreshToken)
+	refreshCiphertext, err := s.tokenCipher.Seal(refreshTokenPurpose, userID, tokens.RefreshToken)
 	if err != nil {
 		return identity.OAuthCredential{}, err
 	}
@@ -237,10 +289,138 @@ func (s *Service) Logout(ctx context.Context, rawSession string) error {
 	if rawSession == "" {
 		return nil
 	}
-	if err := s.repo.DeleteSessionByTokenHash(ctx, s.tokens.Digest(rawSession)); err != nil {
-		return fmt.Errorf("delete session: %w", err)
+	now := s.now().UTC()
+	return s.tx.WithinTx(ctx, func(txCtx context.Context) error {
+		userID, deleted, err := s.repo.DeleteSessionByTokenHash(txCtx, s.tokens.Digest(rawSession))
+		if err != nil || !deleted {
+			return err
+		}
+		active, err := s.repo.HasActiveSessions(txCtx, userID, now)
+		if err != nil {
+			return fmt.Errorf("check remaining auth sessions: %w", err)
+		}
+		if active {
+			return nil
+		}
+		return s.repo.QueueAndDeleteOAuthCredential(txCtx, userID, now)
+	})
+}
+
+func (s *Service) Maintain(ctx context.Context) error {
+	now := s.now().UTC()
+	if err := s.tx.WithinTx(ctx, func(txCtx context.Context) error {
+		return s.repo.QueueOrphanedOAuthCredentials(txCtx, now)
+	}); err != nil {
+		return fmt.Errorf("queue orphaned GitLab OAuth credentials: %w", err)
+	}
+	pending, oldest, err := s.repo.OAuthRevocationQueueStats(ctx, now)
+	if err != nil {
+		return fmt.Errorf("load GitLab OAuth revocation queue stats: %w", err)
+	}
+	if s.observer != nil {
+		s.observer.SetOAuthRevocationQueue(pending, oldest)
 	}
 	return nil
+}
+
+func (s *Service) RunRevocations(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		for range 20 {
+			processed, err := s.processOAuthRevocation(ctx)
+			if err != nil {
+				s.observeRevocation("worker_failed")
+				break
+			}
+			if !processed {
+				break
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (s *Service) processOAuthRevocation(ctx context.Context) (bool, error) {
+	now := s.now().UTC()
+	item, err := s.repo.ClaimOAuthRevocation(ctx, now, now.Add(revocationLease))
+	if errors.Is(err, identity.ErrOAuthRevocationNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	accessToken, _, accessErr := s.tokenCipher.Open(accessTokenPurpose, item.UserID, item.AccessTokenCiphertext)
+	refreshToken, _, refreshErr := s.tokenCipher.Open(refreshTokenPurpose, item.UserID, item.RefreshTokenCiphertext)
+	var revokeErr error
+	if accessErr == nil {
+		revokeErr = errors.Join(revokeErr, s.gitlab.RevokeToken(ctx, accessToken))
+	}
+	if refreshErr == nil {
+		revokeErr = errors.Join(revokeErr, s.gitlab.RevokeToken(ctx, refreshToken))
+	}
+	if errors.Join(accessErr, refreshErr) != nil {
+		s.observeRevocation("decrypt_failed")
+		return true, s.retryOAuthRevocation(ctx, item, "decrypt_failed", now)
+	}
+	if revokeErr != nil {
+		s.observeRevocation("retry")
+		return true, s.retryOAuthRevocation(ctx, item, "gitlab_unavailable", now)
+	}
+	if err := s.repo.CompleteOAuthRevocation(ctx, item.ID); err != nil {
+		return true, fmt.Errorf("complete GitLab OAuth token revocation: %w", err)
+	}
+	s.observeRevocation("succeeded")
+	return true, nil
+}
+
+func (s *Service) retryOAuthRevocation(ctx context.Context, item identity.OAuthTokenRevocation, code string, now time.Time) error {
+	shift := item.Attempts - 1
+	if shift < 0 {
+		shift = 0
+	}
+	if shift > 12 {
+		shift = 12
+	}
+	delay := time.Second * time.Duration(1<<shift)
+	if delay > time.Hour {
+		delay = time.Hour
+	}
+	if err := s.repo.RetryOAuthRevocation(ctx, item.ID, code, now.Add(delay), now); err != nil {
+		return fmt.Errorf("retry GitLab OAuth token revocation: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) revokeTokenPair(ctx context.Context, accessToken, refreshToken string) error {
+	return errors.Join(s.gitlab.RevokeToken(ctx, accessToken), s.gitlab.RevokeToken(ctx, refreshToken))
+}
+
+func (s *Service) revokeIssuedTokens(ctx context.Context, tokens OAuthTokens) {
+	if err := s.revokeTokenPair(ctx, tokens.AccessToken, tokens.RefreshToken); err != nil {
+		s.observeRevocation("immediate_failed")
+		return
+	}
+	s.observeRevocation("immediate_succeeded")
+}
+
+func (s *Service) observeRefresh(result string) {
+	if s.observer != nil {
+		s.observer.OAuthRefresh(result)
+	}
+}
+
+func (s *Service) observeRevocation(result string) {
+	if s.observer != nil {
+		s.observer.OAuthRevocation(result)
+	}
 }
 
 func (s *Service) Me(ctx context.Context, userID string) (identity.User, error) {

@@ -18,6 +18,7 @@ import (
 	"example.com/project-template/internal/controller/infrastructure/postgres"
 	domainboard "example.com/project-template/internal/domain/board"
 	domaindirectory "example.com/project-template/internal/domain/directory"
+	"example.com/project-template/internal/domain/identity"
 )
 
 type Repository struct {
@@ -146,6 +147,53 @@ func (r *Repository) ReplaceDirectory(ctx context.Context, snapshot domaindirect
 		`, memberIDs); err != nil {
 			return err
 		}
+		credentialRows, err := tx.Query(ctx, `
+			SELECT credential.user_id, credential.access_token_ciphertext,
+			       credential.refresh_token_ciphertext
+			FROM gitlab_oauth_credentials AS credential
+			JOIN users AS account ON account.id = credential.user_id
+			WHERE NOT EXISTS (
+			    SELECT 1
+			    FROM directory_members AS member
+			    WHERE member.gitlab_user_id = account.gitlab_user_id
+			      AND member.state = 'active'
+			      AND member.access_level >= $1
+			)
+			FOR UPDATE OF credential
+		`, identity.PlannerAccessLevel)
+		if err != nil {
+			return err
+		}
+		type revokedCredential struct {
+			userID  uuid.UUID
+			access  []byte
+			refresh []byte
+		}
+		credentials := make([]revokedCredential, 0)
+		for credentialRows.Next() {
+			var userID uuid.UUID
+			var access, refresh []byte
+			if err := credentialRows.Scan(&userID, &access, &refresh); err != nil {
+				credentialRows.Close()
+				return err
+			}
+			credentials = append(credentials, revokedCredential{userID: userID, access: access, refresh: refresh})
+		}
+		rowsErr := credentialRows.Err()
+		credentialRows.Close()
+		if rowsErr != nil {
+			return rowsErr
+		}
+		for _, credential := range credentials {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO gitlab_oauth_token_revocations
+				    (id, user_id, access_token_ciphertext, refresh_token_ciphertext,
+				     attempts, available_at, created_at, updated_at)
+				VALUES ($1, $2, $3, $4, 0, $5, $5, $5)
+			`, uuid.New(), credential.userID, credential.access, credential.refresh, snapshot.SyncedAt); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.Exec(ctx, `
 			DELETE FROM auth_sessions AS session
 			USING users AS account
@@ -155,9 +203,9 @@ func (r *Repository) ReplaceDirectory(ctx context.Context, snapshot domaindirect
 			      FROM directory_members AS member
 			      WHERE member.gitlab_user_id = account.gitlab_user_id
 			        AND member.state = 'active'
-			        AND member.access_level > 0
+			        AND member.access_level >= $1
 			  )
-		`); err != nil {
+		`, identity.PlannerAccessLevel); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `
@@ -169,9 +217,9 @@ func (r *Repository) ReplaceDirectory(ctx context.Context, snapshot domaindirect
 			      FROM directory_members AS member
 			      WHERE member.gitlab_user_id = account.gitlab_user_id
 			        AND member.state = 'active'
-			        AND member.access_level > 0
+			        AND member.access_level >= $1
 			  )
-		`); err != nil {
+		`, identity.PlannerAccessLevel); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM directory_team_memberships WHERE source = 'gitlab_directory'`); err != nil {
@@ -222,7 +270,7 @@ func (r *Repository) ReplaceDirectory(ctx context.Context, snapshot domaindirect
 		if err := emitDirectoryChanges(ctx, tx, batch, before, snapshot); err != nil {
 			return err
 		}
-		_, err := batch.flush(ctx, tx)
+		_, err = batch.flush(ctx, tx)
 		return err
 	})
 }

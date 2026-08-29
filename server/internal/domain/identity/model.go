@@ -30,6 +30,17 @@ type OAuthCredential struct {
 	UpdatedAt              time.Time
 }
 
+type OAuthTokenRevocation struct {
+	ID                     string
+	UserID                 string
+	AccessTokenCiphertext  []byte
+	RefreshTokenCiphertext []byte
+	Attempts               int32
+	AvailableAt            time.Time
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
 type Session struct {
 	ID            string
 	UserID        string
