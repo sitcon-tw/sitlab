@@ -122,6 +122,8 @@ func NewRouter(dep Dependencies) http.Handler {
 			protected.Put("/cards/{issueIid}/labels", h.updateCardLabels)
 			protected.Get("/cards/{issueIid}/comments", h.listCardComments)
 			protected.Post("/cards/{issueIid}/comments", h.createCardComment)
+			protected.Get("/quick-actions", h.listQuickActions)
+			protected.Get("/quick-actions/suggestions", h.listQuickActionSuggestions)
 			protected.Get("/cards/{issueIid}/child-items", h.listChildItems)
 			protected.Post("/cards/{issueIid}/child-items", h.createChildItem)
 			protected.Put("/cards/{issueIid}/child-items/{workItemId}", h.attachChildItem)

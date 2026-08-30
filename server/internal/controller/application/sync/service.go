@@ -316,13 +316,21 @@ func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
 		s.failOperation(ctx, pending, now, "SNAPSHOT_NOT_READY", err)
 		return true, technical(span, "load operation board", err)
 	}
-	team, ok := directorySnapshot.Team(pending.Card.TeamKey)
+	teamKey := pending.Card.TeamKey
+	listKey := pending.Card.ListKey
+	if pending.Operation.Kind == board.OperationCreateCard || pending.Operation.Kind == board.OperationUpdateTeam || pending.Operation.Kind == board.OperationUpdateLabels {
+		teamKey = operationString(pending.Payload, "teamKey", teamKey)
+	}
+	if pending.Operation.Kind == board.OperationCreateCard || pending.Operation.Kind == board.OperationMoveCard {
+		listKey = operationString(pending.Payload, "listKey", listKey)
+	}
+	team, ok := directorySnapshot.Team(teamKey)
 	if !ok {
 		err := board.ErrTeamNotFound
 		s.failOperation(ctx, pending, now, "TEAM_NOT_FOUND", err)
 		return true, err
 	}
-	list, ok := boardList(boardSnapshot.Lists, pending.Card.ListKey)
+	list, ok := boardList(boardSnapshot.Lists, listKey)
 	if !ok {
 		err := board.ErrListNotFound
 		s.failOperation(ctx, pending, now, "LIST_NOT_FOUND", err)
@@ -331,11 +339,29 @@ func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
 	mutation := IssueMutation{
 		Create:                pending.Operation.Kind == board.OperationCreateCard,
 		IssueIID:              pending.Card.IssueIID,
-		Title:                 board.ComposeGitLabTitle(team.TitlePrefix, pending.Card.Title),
-		Description:           pending.Card.Description,
-		Labels:                canonicalLabels(pending.Card.Labels, team, list, directorySnapshot.Teams, boardSnapshot.Lists),
-		AssigneeGitLabUserIDs: append([]int64(nil), pending.Card.AssigneeGitLabUserIDs...),
-		StartDate:             pending.Card.StartDate, DueDate: pending.Card.DueDate, GitLabStatusName: list.GitLabStatusName,
+		Title:                 board.ComposeGitLabTitle(team.TitlePrefix, operationString(pending.Payload, "title", pending.Card.Title)),
+		Description:           operationString(pending.Payload, "description", pending.Card.Description),
+		Labels:                canonicalLabels(operationStrings(pending.Payload, "labels", pending.Card.Labels), team, list, directorySnapshot.Teams, boardSnapshot.Lists),
+		AssigneeGitLabUserIDs: operationInt64s(pending.Payload, "assigneeGitLabUserIds", pending.Card.AssigneeGitLabUserIDs),
+		StartDate:             operationString(pending.Payload, "startDate", pending.Card.StartDate),
+		DueDate:               operationString(pending.Payload, "dueDate", pending.Card.DueDate),
+		GitLabStatusName:      list.GitLabStatusName,
+	}
+	if !mutation.Create {
+		switch pending.Operation.Kind {
+		case board.OperationUpdateDetails:
+			mutation.Fields.Title, mutation.Fields.Description = true, true
+		case board.OperationUpdateTeam, board.OperationUpdateLabels:
+			mutation.Fields.Title, mutation.Fields.Labels, mutation.Fields.Assignees = true, true, true
+		case board.OperationUpdateAssignee:
+			mutation.Fields.Assignees = true
+		case board.OperationUpdateStartDate:
+			mutation.Fields.StartDate = true
+		case board.OperationUpdateDueDate:
+			mutation.Fields.DueDate = true
+		case board.OperationMoveCard:
+			mutation.Fields.Labels, mutation.Fields.Status = true, true
+		}
 	}
 	if s.actors == nil {
 		err := errors.New("GitLab authorization is unavailable; sign out and sign in again")
@@ -353,10 +379,73 @@ func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
 		s.failOperation(ctx, pending, now, "GITLAB_SYNC_FAILED", err)
 		return true, technical(span, "apply GitLab issue mutation", err)
 	}
-	if err := s.repo.CompleteOperation(ctx, pending, issue, now); err != nil {
+	canonical, included, err := mapIssue(issue, directorySnapshot, boardSnapshot.Lists, make(map[string]int32))
+	if err != nil {
+		s.failOperation(ctx, pending, now, "GITLAB_RESULT_UNMAPPED", err)
+		return true, technical(span, "map GitLab issue mutation result", err)
+	}
+	var canonicalCard *board.Card
+	if included {
+		canonicalCard = &canonical
+	}
+	if err := s.repo.CompleteOperation(ctx, pending, issue, canonicalCard, now); err != nil {
 		return true, technical(span, "complete durable operation", err)
 	}
 	return true, nil
+}
+
+func operationString(payload map[string]any, key, fallback string) string {
+	value, exists := payload[key]
+	if !exists || value == nil {
+		if exists {
+			return ""
+		}
+		return fallback
+	}
+	text, ok := value.(string)
+	if !ok {
+		return fallback
+	}
+	return text
+}
+
+func operationStrings(payload map[string]any, key string, fallback []string) []string {
+	values, exists := payload[key]
+	if !exists {
+		return append([]string(nil), fallback...)
+	}
+	items, ok := values.([]any)
+	if !ok {
+		if typed, typedOK := values.([]string); typedOK {
+			return append([]string(nil), typed...)
+		}
+		return append([]string(nil), fallback...)
+	}
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		if text, ok := item.(string); ok {
+			result = append(result, text)
+		}
+	}
+	return result
+}
+
+func operationInt64s(payload map[string]any, key string, fallback []int64) []int64 {
+	values, exists := payload[key]
+	if !exists {
+		return append([]int64(nil), fallback...)
+	}
+	items, ok := values.([]any)
+	if !ok {
+		return append([]int64(nil), fallback...)
+	}
+	result := make([]int64, 0, len(items))
+	for _, item := range items {
+		if number, ok := item.(float64); ok {
+			result = append(result, int64(number))
+		}
+	}
+	return result
 }
 
 func (s *Service) RunOperations(ctx context.Context, pollInterval time.Duration) {

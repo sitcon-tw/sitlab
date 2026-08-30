@@ -25,7 +25,8 @@ func (f repositoryFake) Card(context.Context, int64) (board.Card, error) {
 type gitLabFake struct {
 	labels   []ProjectLabel
 	comments []Comment
-	created  Comment
+	created  CommentResult
+	commands []QuickActionCommand
 	issueIID int64
 	body     string
 	token    string
@@ -41,9 +42,17 @@ func (f *gitLabFake) Comments(_ context.Context, issueIID int64, token string) (
 	f.issueIID, f.token = issueIID, token
 	return f.comments, f.err
 }
-func (f *gitLabFake) CreateComment(_ context.Context, issueIID int64, body, token string) (Comment, error) {
+func (f *gitLabFake) CreateComment(_ context.Context, issueIID int64, body, token string) (CommentResult, error) {
 	f.issueIID, f.body, f.token = issueIID, body, token
 	return f.created, f.err
+}
+func (f *gitLabFake) QuickActions(_ context.Context, issueIID int64, token string) ([]QuickActionCommand, error) {
+	f.issueIID, f.token = issueIID, token
+	return f.commands, f.err
+}
+func (f *gitLabFake) QuickActionSuggestions(_ context.Context, kind, query string, issueIID int64, token string) ([]QuickActionSuggestion, error) {
+	f.issueIID, f.token = issueIID, token
+	return []QuickActionSuggestion{{ID: query, Kind: kind, Value: "@alice", Label: "@alice"}}, f.err
 }
 
 type actorFake struct{ err error }
@@ -65,11 +74,11 @@ func TestCommentsUseActorTokenAndSortOldestFirst(t *testing.T) {
 
 func TestCreateCommentValidatesAndKeepsBody(t *testing.T) {
 	t.Parallel()
-	gitlab := &gitLabFake{created: Comment{ID: 9, Body: "  review\n"}}
+	gitlab := &gitLabFake{created: CommentResult{Comment: &Comment{ID: 9, Body: "  review\n"}}}
 	service := NewService(repositoryFake{}, directoryFake{}, gitlab, actorFake{}, noop.NewTracerProvider().Tracer("test"))
-	comment, err := service.CreateComment(context.Background(), CreateCommentInput{ActorUserID: "actor", IssueIID: 42, Body: "  review\n"})
-	if err != nil || comment.ID != 9 || gitlab.body != "  review\n" {
-		t.Fatalf("CreateComment() = %#v, %v, body=%q", comment, err, gitlab.body)
+	result, err := service.CreateComment(context.Background(), CreateCommentInput{ActorUserID: "actor", IssueIID: 42, Body: "  review\n"})
+	if err != nil || result.Comment == nil || result.Comment.ID != 9 || gitlab.body != "  review\n" {
+		t.Fatalf("CreateComment() = %#v, %v, body=%q", result, err, gitlab.body)
 	}
 	_, err = service.CreateComment(context.Background(), CreateCommentInput{ActorUserID: "actor", IssueIID: 42, Body: " \n "})
 	assertKind(t, err, apperror.KindInvalid)

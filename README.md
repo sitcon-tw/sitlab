@@ -16,7 +16,7 @@ SITCON 2027 籌備工作的 GitLab-backed 看板。登入、選擇主要組別�
 - Go 回傳 SPA HTML 時注入完整 bootstrap，React 第一次 render 不等待額外 API。
 - Board 固定依序顯示 `Waiting`、`Inbox`、`To do`、`Doing`、`Review`、`Done` 六欄。
 - 六欄直接對應 GitLab Work Item lifecycle status；status 不再以 Label 表示，也不會出現在 Label picker。
-- 卡片右側 drawer 可切換前後卡片並編輯 title、Markdown description、組別、狀態、多人 Assignee 與 Start/Due dates，也提供 typed `/` Quick Actions。
+- 卡片右側 drawer 可切換前後卡片並編輯 title、Markdown description、組別、狀態、多人 Assignee 與 Start/Due dates。GitLab Quick Actions 直接寫在 description 或 Comment；編輯器會依目前使用者權限補全指令、成員、Label、Work Item、Milestone 等參數。
 - 單組與所有組長開卡、詳細規劃、移動、多人指派、期限與組別調整先寫 PostgreSQL optimistic cache 與 durable operation，再由 worker 以實際 actor 身分同步 GitLab；新卡預設在最上方。
 - GitLab signed project/group webhooks 觸發 targeted catch-up；PostgreSQL revision 與 SSE 讓已開啟的看板立即 refetch，既有 polling 負責漏訊恢復。
 - GitLab 暫時離線時仍顯示最後一次成功的 Board，失敗操作可重試。

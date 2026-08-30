@@ -29,7 +29,9 @@ type GitLab interface {
 	UpdateProjectLabel(context.Context, int64, ProjectLabelWrite, string) (ProjectLabel, error)
 	DeleteProjectLabel(context.Context, int64, string) error
 	Comments(context.Context, int64, string) ([]Comment, error)
-	CreateComment(context.Context, int64, string, string) (Comment, error)
+	CreateComment(context.Context, int64, string, string) (CommentResult, error)
+	QuickActions(context.Context, int64, string) ([]QuickActionCommand, error)
+	QuickActionSuggestions(context.Context, string, string, int64, string) ([]QuickActionSuggestion, error)
 }
 
 // Directory supplies the configured team labels the reserved-label rule needs.

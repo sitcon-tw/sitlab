@@ -1464,47 +1464,6 @@
 	}
 }
 
-.quickActions {
-	padding: var(--md-space-3);
-	background: var(--sb-surface-subtle);
-	border-radius: var(--md-sys-shape-corner-large);
-}
-
-.commandInput {
-	position: relative;
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto;
-	gap: var(--md-space-2);
-	align-items: center;
-}
-
-.commandMenu {
-	position: absolute;
-	right: 0;
-	bottom: calc(100% + var(--md-space-1));
-	left: 0;
-	z-index: 2;
-	max-height: 16rem;
-	overflow-y: auto;
-}
-
-.commandMenu [aria-selected="true"] {
-	color: var(--md-sys-color-on-secondary-container);
-	background: var(--md-sys-color-secondary-container);
-}
-
-.commandMenu code {
-	overflow: hidden;
-	font-family: var(--md-ref-typeface-mono);
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.commandMenu span {
-	flex: 0 0 auto;
-	color: var(--sb-text-subtle);
-}
-
 .noResults {
 	margin: var(--md-space-4) 0;
 	font-size: var(--md-sys-typescale-body-medium-size);

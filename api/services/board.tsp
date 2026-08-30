@@ -69,6 +69,35 @@ interface LabelService {
 
 @tag("Cards")
 @useAuth(SessionCookieAuth)
+@route("/quick-actions")
+interface QuickActionService {
+	@operationId("listQuickActions")
+	@summary("List GitLab quick actions available to the current user")
+	@get
+	listQuickActions(@query issueIid?: int64):
+		| OkJson<QuickActionCommandsResponse>
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
+
+	@operationId("listQuickActionSuggestions")
+	@summary("Search GitLab values accepted by Quick Action parameters")
+	@get
+	@route("/suggestions")
+	listQuickActionSuggestions(@query kind: QuickActionSuggestionKind, @query query?: string, @query issueIid?: int64):
+		| OkJson<QuickActionSuggestionsResponse>
+		| BadRequestProblem
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
+}
+
+@tag("Cards")
+@useAuth(SessionCookieAuth)
 @route("/cards")
 interface CardService {
 	@operationId("createCard")
@@ -180,7 +209,8 @@ interface CardService {
 	@post
 	@route("/{issueIid}/comments")
 	createCardComment(...IssueIidPath, ...CSRFHeader, @body body: CreateCardCommentRequest):
-		| CreatedJson<CardComment>
+		| CreatedJson<CreateCardCommentResult>
+		| AcceptedJson<CreateCardCommentResult>
 		| UnauthorizedProblem
 		| ForbiddenProblem
 		| NotFoundProblem

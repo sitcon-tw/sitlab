@@ -520,6 +520,40 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/quick-actions": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List GitLab quick actions available to the current user */
+		get: operations["listQuickActions"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/quick-actions/suggestions": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Search GitLab values accepted by Quick Action parameters */
+		get: operations["listQuickActionSuggestions"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/sync": {
 		parameters: {
 			query?: never;
@@ -743,6 +777,11 @@ export interface components {
 		};
 		CreateCardCommentRequest: {
 			body: string;
+		};
+		CreateCardCommentResult: {
+			comment: components["schemas"]["CardComment"] | null;
+			quickActionsApplied: boolean;
+			summary: string[];
 		};
 		CreateCardRequest: {
 			operationId: components["schemas"]["uuid"];
@@ -1055,6 +1094,30 @@ export interface components {
 		};
 		ProjectLabelsResponse: {
 			labels: components["schemas"]["ProjectLabel"][];
+		};
+		QuickActionCommand: {
+			name: string;
+			aliases: string[];
+			params: string[];
+			description: string | null;
+			warning: string | null;
+			icon: string | null;
+		};
+		QuickActionCommandsResponse: {
+			commands: components["schemas"]["QuickActionCommand"][];
+		};
+		QuickActionSuggestion: {
+			id: string;
+			/** @enum {string} */
+			kind: "member" | "label" | "work_item" | "merge_request" | "epic" | "milestone" | "iteration" | "snippet" | "branch" | "project";
+			value: string;
+			label: string;
+			detail: string | null;
+			avatarUrl: string | null;
+			color: string | null;
+		};
+		QuickActionSuggestionsResponse: {
+			suggestions: components["schemas"]["QuickActionSuggestion"][];
 		};
 		RefreshSyncResponse: {
 			/** Format: date-time */
@@ -2171,7 +2234,16 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					"application/json": components["schemas"]["CardComment"];
+					"application/json": components["schemas"]["CreateCardCommentResult"];
+				};
+			};
+			/** @description The request has been accepted for processing, but processing has not yet completed. */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CreateCardCommentResult"];
 				};
 			};
 			/** @description Access is unauthorized. */
@@ -3699,6 +3771,151 @@ export interface operations {
 			};
 			/** @description Server error */
 			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	listQuickActions: {
+		parameters: {
+			query?: {
+				issueIid?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description The request has succeeded. */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["QuickActionCommandsResponse"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	listQuickActionSuggestions: {
+		parameters: {
+			query: {
+				kind: "member" | "label" | "work_item" | "merge_request" | "epic" | "milestone" | "iteration" | "snippet" | "branch" | "project";
+				query?: string;
+				issueIid?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description The request has succeeded. */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["QuickActionSuggestionsResponse"];
+				};
+			};
+			/** @description The server could not understand the request due to invalid syntax. */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
 				headers: {
 					[name: string]: unknown;
 				};

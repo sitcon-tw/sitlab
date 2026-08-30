@@ -121,6 +121,41 @@ model CardComment {
 	updatedAt: utcDateTime;
 }
 
+model QuickActionCommand {
+	name: string;
+	aliases: string[];
+	params: string[];
+	description: string | null;
+	warning: string | null;
+	icon: string | null;
+}
+
+model QuickActionCommandsResponse {
+	commands: QuickActionCommand[];
+}
+
+alias QuickActionSuggestionKind = "member" | "label" | "work_item" | "merge_request" | "epic" | "milestone" | "iteration" | "snippet" | "branch" | "project";
+
+model QuickActionSuggestion {
+	id: string;
+	kind: QuickActionSuggestionKind;
+	value: string;
+	label: string;
+	detail: string | null;
+	avatarUrl: string | null;
+	color: string | null;
+}
+
+model QuickActionSuggestionsResponse {
+	suggestions: QuickActionSuggestion[];
+}
+
+model CreateCardCommentResult {
+	comment: CardComment | null;
+	quickActionsApplied: boolean;
+	summary: string[];
+}
+
 model ProjectLabelsResponse {
 	labels: ProjectLabel[];
 }

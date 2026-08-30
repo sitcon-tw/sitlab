@@ -515,10 +515,11 @@ func (r *Repository) ClaimOperation(ctx context.Context, now time.Time) (domainb
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		var issueIID *int64
 		var lastError *string
+		var payload []byte
 		err := tx.QueryRow(ctx, `
 			SELECT operation.id, operation.kind, operation.issue_iid, operation.state,
 			       operation.attempts, operation.last_error_detail, operation.requested_by_user_id,
-			       operation.created_at, operation.updated_at
+			       operation.payload, operation.created_at, operation.updated_at
 			FROM durable_operations operation
 			WHERE (
 			        (operation.state = 'pending' AND operation.available_at <= $1)
@@ -542,6 +543,7 @@ func (r *Repository) ClaimOperation(ctx context.Context, now time.Time) (domainb
 			&pending.Operation.ID, &pending.Operation.Kind, &issueIID,
 			&pending.Operation.State, &pending.Operation.Attempts, &lastError,
 			&pending.RequestedByUserID,
+			&payload,
 			&pending.Operation.CreatedAt, &pending.Operation.UpdatedAt,
 		)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -553,6 +555,9 @@ func (r *Repository) ClaimOperation(ctx context.Context, now time.Time) (domainb
 		pending.Operation.IssueIID = issueIID
 		if lastError != nil {
 			pending.Operation.LastError = *lastError
+		}
+		if err := json.Unmarshal(payload, &pending.Payload); err != nil {
+			return fmt.Errorf("decode durable operation payload: %w", err)
 		}
 		if issueIID == nil {
 			return fmt.Errorf("durable operation %s has no issue", pending.Operation.ID)
@@ -577,9 +582,17 @@ func (r *Repository) ClaimOperation(ctx context.Context, now time.Time) (domainb
 	return pending, nil
 }
 
-func (r *Repository) CompleteOperation(ctx context.Context, pending domainboard.PendingOperation, issue domainboard.CanonicalIssue, completedAt time.Time) error {
+func (r *Repository) CompleteOperation(ctx context.Context, pending domainboard.PendingOperation, issue domainboard.CanonicalIssue, canonical *domainboard.Card, completedAt time.Time) error {
 	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		operationID := uuid.MustParse(pending.Operation.ID)
+		var currentOperation bool
+		if err := tx.QueryRow(ctx, `
+			SELECT COALESCE(pending_operation_id = $2, false)
+			FROM issue_cache
+			WHERE issue_iid = $1
+		`, pending.Card.IssueIID, operationID).Scan(&currentOperation); err != nil {
+			return err
+		}
 		// A create swaps the locally assigned negative IID for GitLab's real one, so
 		// the card changes identity rather than merely changing content.
 		renamed := pending.Operation.Kind == domainboard.OperationCreateCard && pending.Card.IssueIID != issue.IssueIID
@@ -595,20 +608,16 @@ func (r *Repository) CompleteOperation(ctx context.Context, pending domainboard.
 				SET issue_iid = $2,
 				    gitlab_issue_id = $3,
 				    web_url = $4,
-				    description = $5,
-				    labels = COALESCE($6::text[], '{}'),
-				    gitlab_status_name = $7,
-				    gitlab_updated_at = $8,
-				    gitlab_observed_at = $11,
-				    created_at = $9,
-				    sync_state = CASE WHEN pending_operation_id = $10 THEN 'synced' ELSE sync_state END,
-				    sync_error = CASE WHEN pending_operation_id = $10 THEN NULL ELSE sync_error END,
-				    pending_operation_id = CASE WHEN pending_operation_id = $10 THEN NULL ELSE pending_operation_id END,
-				    updated_at = $11
+				    gitlab_updated_at = $5,
+				    gitlab_observed_at = $8,
+				    created_at = $6,
+				    sync_state = CASE WHEN pending_operation_id = $7 THEN 'synced' ELSE sync_state END,
+				    sync_error = CASE WHEN pending_operation_id = $7 THEN NULL ELSE sync_error END,
+				    pending_operation_id = CASE WHEN pending_operation_id = $7 THEN NULL ELSE pending_operation_id END,
+				    updated_at = $8
 				WHERE issue_iid = $1
 			`, pending.Card.IssueIID, issue.IssueIID, issue.GitLabIssueID,
-				nullableString(issue.WebURL), issue.Description, issue.Labels, issue.GitLabStatusName, issue.UpdatedAt,
-				issue.CreatedAt, operationID, completedAt)
+				nullableString(issue.WebURL), issue.UpdatedAt, issue.CreatedAt, operationID, completedAt)
 			if err != nil {
 				return err
 			}
@@ -620,18 +629,15 @@ func (r *Repository) CompleteOperation(ctx context.Context, pending domainboard.
 				UPDATE issue_cache
 				SET gitlab_issue_id = $2,
 				    web_url = $3,
-				    description = CASE WHEN pending_operation_id = $4 THEN $5 ELSE description END,
-				    labels = CASE WHEN pending_operation_id = $4 THEN COALESCE($6::text[], '{}') ELSE labels END,
-				    gitlab_status_name = CASE WHEN pending_operation_id = $4 THEN $7 ELSE gitlab_status_name END,
-				    gitlab_updated_at = $8,
-				    gitlab_observed_at = $9,
+				    gitlab_updated_at = $5,
+				    gitlab_observed_at = $6,
 				    sync_state = CASE WHEN pending_operation_id = $4 THEN 'synced' ELSE sync_state END,
 				    sync_error = CASE WHEN pending_operation_id = $4 THEN NULL ELSE sync_error END,
 				    pending_operation_id = CASE WHEN pending_operation_id = $4 THEN NULL ELSE pending_operation_id END,
-				    updated_at = $9
+				    updated_at = $6
 				WHERE issue_iid = $1
 			`, pending.Card.IssueIID, issue.GitLabIssueID, nullableString(issue.WebURL),
-				operationID, issue.Description, issue.Labels, issue.GitLabStatusName, issue.UpdatedAt, completedAt)
+				operationID, issue.UpdatedAt, completedAt)
 			if err != nil {
 				return err
 			}
@@ -653,10 +659,30 @@ func (r *Repository) CompleteOperation(ctx context.Context, pending domainboard.
 			// keeps a client from briefly holding the card under both identities.
 			batch.deleteCard(pending.Card.IssueIID)
 		}
-		if err := emitCard(ctx, tx, batch, issue.IssueIID); err != nil {
+		merge, err := applyCardObservations(ctx, tx, batch, observationBatch{
+			Observations: []cardObservation{{IssueIID: issue.IssueIID, Card: canonical}},
+			ObservedAt:   completedAt,
+		})
+		if err != nil {
 			return err
 		}
-		if renamed {
+		if currentOperation && canonical != nil {
+			// Assignees live in a separate table and are intentionally absent from
+			// upsertCardSQL's scalar DISTINCT comparison. Always accept GitLab's
+			// canonical assignees when this is still the newest local operation.
+			if err := replaceCardAssignees(ctx, tx, issue.IssueIID, canonical.AssigneeGitLabUserIDs); err != nil {
+				return err
+			}
+		}
+		// A later optimistic operation deliberately makes the canonical merge skip
+		// this row. The identity rename and current pending state still need to be
+		// broadcast. Likewise, a no-op canonical result must clear the sync chip.
+		if !merge.touched() {
+			if err := emitCard(ctx, tx, batch, issue.IssueIID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+		}
+		if renamed && !merge.touched() {
 			if err := emitLaneOrder(ctx, tx, batch, pending.Card.ListKey); err != nil {
 				return err
 			}

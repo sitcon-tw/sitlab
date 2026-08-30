@@ -199,26 +199,76 @@ func (s *Service) Comments(ctx context.Context, actorUserID string, issueIID int
 	return comments, nil
 }
 
-func (s *Service) CreateComment(ctx context.Context, input CreateCommentInput) (Comment, error) {
+func (s *Service) CreateComment(ctx context.Context, input CreateCommentInput) (CommentResult, error) {
 	ctx, span := s.tracer.Start(ctx, "card_activity.create_comment")
 	defer span.End()
 	if strings.TrimSpace(input.Body) == "" {
-		return Comment{}, apperror.Invalid("VALIDATION_FAILED", "comment body is required", apperror.Field{
+		return CommentResult{}, apperror.Invalid("VALIDATION_FAILED", "comment body is required", apperror.Field{
 			Name: "body", Code: "REQUIRED", Message: "must not be empty",
 		})
 	}
 	if err := s.requireCard(ctx, input.IssueIID); err != nil {
-		return Comment{}, err
+		return CommentResult{}, err
 	}
 	token, err := s.actorToken(ctx, input.ActorUserID)
 	if err != nil {
-		return Comment{}, err
+		return CommentResult{}, err
 	}
-	comment, err := s.gitlab.CreateComment(ctx, input.IssueIID, input.Body, token)
+	result, err := s.gitlab.CreateComment(ctx, input.IssueIID, input.Body, token)
 	if err != nil {
-		return Comment{}, s.mapGitLabError(span, "create GitLab card comment", err)
+		return CommentResult{}, s.mapGitLabError(span, "create GitLab card comment", err)
 	}
-	return comment, nil
+	return result, nil
+}
+
+func (s *Service) QuickActions(ctx context.Context, actorUserID string, issueIID int64) ([]QuickActionCommand, error) {
+	ctx, span := s.tracer.Start(ctx, "card_activity.quick_actions")
+	defer span.End()
+	if issueIID > 0 {
+		if err := s.requireCard(ctx, issueIID); err != nil {
+			return nil, err
+		}
+	}
+	token, err := s.actorToken(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+	commands, err := s.gitlab.QuickActions(ctx, issueIID, token)
+	if err != nil {
+		return nil, s.mapGitLabError(span, "list GitLab quick actions", err)
+	}
+	return commands, nil
+}
+
+func (s *Service) QuickActionSuggestions(ctx context.Context, actorUserID, kind, query string, issueIID int64) ([]QuickActionSuggestion, error) {
+	ctx, span := s.tracer.Start(ctx, "card_activity.quick_action_suggestions")
+	defer span.End()
+	if issueIID > 0 {
+		if err := s.requireCard(ctx, issueIID); err != nil {
+			return nil, err
+		}
+	}
+	if !validSuggestionKind(kind) {
+		return nil, apperror.Invalid("VALIDATION_FAILED", "kind is not a supported GitLab autocomplete source")
+	}
+	token, err := s.actorToken(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+	items, err := s.gitlab.QuickActionSuggestions(ctx, kind, strings.TrimSpace(query), issueIID, token)
+	if err != nil {
+		return nil, s.mapGitLabError(span, "search GitLab quick action suggestions", err)
+	}
+	return items, nil
+}
+
+func validSuggestionKind(kind string) bool {
+	switch kind {
+	case "member", "label", "work_item", "merge_request", "epic", "milestone", "iteration", "snippet", "branch", "project":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Service) requireCard(ctx context.Context, issueIID int64) error {

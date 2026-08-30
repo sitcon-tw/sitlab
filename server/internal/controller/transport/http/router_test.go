@@ -166,12 +166,22 @@ func (cardActivityFake) Comments(context.Context, string, int64) ([]appactivity.
 		CreatedAt: time.Date(2026, 7, 29, 8, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2026, 7, 29, 8, 0, 0, 0, time.UTC),
 	}}, nil
 }
-func (cardActivityFake) CreateComment(_ context.Context, input appactivity.CreateCommentInput) (appactivity.Comment, error) {
-	return appactivity.Comment{
+func (cardActivityFake) CreateComment(_ context.Context, input appactivity.CreateCommentInput) (appactivity.CommentResult, error) {
+	if input.Body == "/close" {
+		return appactivity.CommentResult{QuickActionsApplied: true, Summary: []string{"Closed."}}, nil
+	}
+	comment := appactivity.Comment{
 		ID: 8, Body: input.Body,
 		Author:    appactivity.CommentAuthor{GitLabUserID: 101, Username: "alice", DisplayName: "Alice", ProfileURL: "https://gitlab.example/alice"},
 		CreatedAt: time.Date(2026, 7, 29, 9, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2026, 7, 29, 9, 0, 0, 0, time.UTC),
-	}, nil
+	}
+	return appactivity.CommentResult{Comment: &comment}, nil
+}
+func (cardActivityFake) QuickActions(context.Context, string, int64) ([]appactivity.QuickActionCommand, error) {
+	return []appactivity.QuickActionCommand{{Name: "assign", Params: []string{"@user"}}}, nil
+}
+func (cardActivityFake) QuickActionSuggestions(context.Context, string, string, string, int64) ([]appactivity.QuickActionSuggestion, error) {
+	return []appactivity.QuickActionSuggestion{{ID: "101", Kind: "member", Value: "@alice", Label: "@alice", Detail: "Alice"}}, nil
 }
 
 type cardRelationFake struct{}
@@ -306,6 +316,14 @@ func TestCardLabelsAndCommentsMatchContract(t *testing.T) {
 	created := perform(testRouter(nil, ""), http.MethodPost, "/api/v1/cards/127/comments", `{"body":"please review"}`, true)
 	if created.Code != http.StatusCreated || !strings.Contains(created.Body.String(), `"body":"please review"`) {
 		t.Fatalf("create comment = %d %s", created.Code, created.Body.String())
+	}
+	command := perform(testRouter(nil, ""), http.MethodPost, "/api/v1/cards/127/comments", `{"body":"/close"}`, true)
+	if command.Code != http.StatusAccepted || !strings.Contains(command.Body.String(), `"comment":null`) || !strings.Contains(command.Body.String(), `"quickActionsApplied":true`) {
+		t.Fatalf("command-only comment = %d %s", command.Code, command.Body.String())
+	}
+	suggestions := perform(testRouter(nil, ""), http.MethodGet, "/api/v1/quick-actions/suggestions?kind=member&query=ali&issueIid=127", "", true)
+	if suggestions.Code != http.StatusOK || !strings.Contains(suggestions.Body.String(), `"value":"@alice"`) {
+		t.Fatalf("quick action suggestions = %d %s", suggestions.Code, suggestions.Body.String())
 	}
 }
 

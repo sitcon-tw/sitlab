@@ -39,7 +39,7 @@ Project labels are loaded from GitLab on demand. Comments and system notes use t
 
 ## Frontend ownership
 
-TanStack Query owns the bootstrap server snapshot and per-card Comment state. `features/onboarding` owns primary-team confirmation. `features/board` owns transient drafts, the navigable right-side detail drawer, Label selection, Comment composition, typed Quick Actions, optimistic mutation, leader bulk-create, multiple-assignee reconciliation, drag/drop and keyboard controls. The Board uses the ordered `Waiting`, `Inbox`, `To do`, `Doing`, `Review`, and `Done` lists. Team names, leaders, prefixes, labels, members, lists, and cards always come from bootstrap; the project label catalog and Comments are fetched separately.
+TanStack Query owns the bootstrap server snapshot and per-card Comment state. `features/onboarding` owns primary-team confirmation. `features/board` owns transient drafts, the navigable right-side detail drawer, Label selection, Comment composition, the shared GitLab Markdown autocomplete, optimistic mutation, leader bulk-create, multiple-assignee reconciliation, drag/drop and keyboard controls. Quick Actions execute in GitLab through the normal description and Comment writes; the client only discovers commands and inserts valid reference syntax. The Board uses the ordered `Waiting`, `Inbox`, `To do`, `Doing`, `Review`, and `Done` lists. Team names, leaders, prefixes, labels, members, lists, and cards always come from bootstrap; the project label catalog, permission-aware Quick Action catalog, autocomplete references, and Comments are fetched separately.
 
 ## Security
 

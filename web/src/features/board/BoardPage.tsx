@@ -79,6 +79,7 @@ import { allowsCardDragActivation } from "./cardDrag";
 import { CardLabels } from "./CardLabels";
 import { CardRelationships } from "./CardRelationships";
 import { createGanttViewModel, openBoardCards } from "./ganttModel";
+import { GitLabAutocompleteTextarea } from "./GitLabAutocompleteTextarea";
 import { LabelManagerDialog } from "./LabelManagerDialog";
 import { canonicalClientLabels, isDeprecatedLabel } from "./labels";
 import { MembersDrawer } from "./MembersDrawer";
@@ -97,7 +98,6 @@ import {
 	type GanttScale,
 	type ProjectLabel
 } from "./model";
-import { parseQuickAction, quickActionCommands, type QuickAction } from "./quickActions";
 import { SaveIndicator } from "./SaveIndicator";
 import { buildShareCardData, shareCardFilename } from "./shareCard";
 import { deliverSharePng } from "./shareCardClipboard";
@@ -1256,23 +1256,6 @@ function CardDetail({
 			.catch(() => setShareToast({ id: `share-${Date.now()}`, title: "無法產生卡片圖片，請再試一次", tone: "danger" }))
 			.finally(() => setSharing(false));
 	};
-	const runQuickAction = (action: QuickAction) => {
-		switch (action.kind) {
-			case "assign":
-				onAssignee(action.memberIds);
-				break;
-			case "due":
-				onDueDate(action.value);
-				break;
-			case "start":
-				onStartDate(action.value);
-				break;
-			case "move":
-				onMove(action.listKey);
-				break;
-		}
-	};
-
 	return (
 		<Drawer
 			open
@@ -1321,11 +1304,13 @@ function CardDetail({
 						/>
 					</header>
 					{descriptionMode === "edit" ? (
-						<TextAreaField
+						<GitLabAutocompleteTextarea
+							bootstrap={bootstrap}
+							issueIid={card.issueIid}
 							label="描述"
 							value={description}
 							autoFocus={descriptionAutoFocus}
-							onChange={(event) => setDescription(event.target.value)}
+							onValueChange={setDescription}
 							rows={5}
 						/>
 					) : (
@@ -1404,8 +1389,7 @@ function CardDetail({
 				</div>
 				<CardTags card={card} bootstrap={bootstrap} onChange={onLabels} save={save.get(card.issueIid, "labels")} />
 				<CardRelationships card={card} bootstrap={bootstrap} onOpenBoardCard={guardExit(onOpenBoardCard)} />
-				<QuickActionComposer bootstrap={bootstrap} card={card} onAction={runQuickAction} />
-				<CardComments card={card} />
+				<CardComments card={card} bootstrap={bootstrap} />
 				<footer className={styles.detailActions}>
 					<div className={styles.detailActionsGroup}>
 						{card.webUrl ? (
@@ -1596,9 +1580,10 @@ function CardTags({
 	);
 }
 
-function CardComments({ card }: { card: BoardCard }) {
+function CardComments({ card, bootstrap }: { card: BoardCard; bootstrap: Bootstrap }) {
 	const client = useQueryClient();
 	const [body, setBody] = useState("");
+	const [submissionSummary, setSubmissionSummary] = useState<string | null>(null);
 	const queryKey = ["sitcon", "card-comments", card.issueIid] as const;
 	const commentsQuery = useQuery({
 		queryKey,
@@ -1607,8 +1592,10 @@ function CardComments({ card }: { card: BoardCard }) {
 	});
 	const commentMutation = useMutation({
 		mutationFn: () => createComment(card, body),
-		onSuccess: (comment) => {
-			client.setQueryData<CardComment[]>(queryKey, (current) => [...(current ?? []), comment]);
+		onSuccess: (result) => {
+			if (result.comment) client.setQueryData<CardComment[]>(queryKey, (current) => [...(current ?? []), result.comment!]);
+			else void client.invalidateQueries({ queryKey });
+			setSubmissionSummary(result.summary.join(" ") || (result.quickActionsApplied ? "GitLab Quick Actions 已執行" : null));
 			setBody("");
 		}
 	});
@@ -1653,13 +1640,16 @@ function CardComments({ card }: { card: BoardCard }) {
 				))}
 			</div>
 			<div className={styles.commentComposer}>
-				<TextAreaField
+				<GitLabAutocompleteTextarea
+					bootstrap={bootstrap}
+					issueIid={card.issueIid}
 					label="Comment"
 					rows={3}
 					value={body}
 					{...(commentMutation.isError ? { error: errorMessage(commentMutation.error, "Comment 送出失敗，請重試。") } : {})}
-					onChange={(event) => {
-						setBody(event.target.value);
+					onValueChange={(value) => {
+						setBody(value);
+						setSubmissionSummary(null);
 						if (commentMutation.isError) commentMutation.reset();
 					}}
 					onKeyDown={(event) => {
@@ -1669,6 +1659,11 @@ function CardComments({ card }: { card: BoardCard }) {
 						}
 					}}
 				/>
+				{submissionSummary ? (
+					<p className={styles.commentState} role="status">
+						{submissionSummary}
+					</p>
+				) : null}
 				<Button
 					variant="filled"
 					disabled={!body.trim() || card.issueIid <= 0}
@@ -1711,100 +1706,6 @@ function MarkdownBody({ value }: { value: string }) {
 		>
 			{value}
 		</ReactMarkdown>
-	);
-}
-
-function QuickActionComposer({ bootstrap, card, onAction }: { bootstrap: Bootstrap; card: BoardCard; onAction: (action: QuickAction) => void }) {
-	const [value, setValue] = useState("");
-	const [error, setError] = useState<string | null>(null);
-	const [activeIndex, setActiveIndex] = useState(0);
-	const inputId = useId();
-	const menuId = useId();
-	const commandToken = value.trimStart().split(/\s/, 1)[0]?.toLowerCase() ?? "";
-	const suggestions =
-		value.trimStart().startsWith("/") && !value.trimStart().includes(" ") ? quickActionCommands.filter((item) => item.command.startsWith(commandToken)) : [];
-
-	const choose = (index: number) => {
-		const suggestion = suggestions[index];
-		if (!suggestion) return;
-		const needsArgument = suggestion.usage !== suggestion.command;
-		setValue(suggestion.command + (needsArgument ? " " : ""));
-		setError(null);
-		setActiveIndex(0);
-	};
-	const execute = () => {
-		const result = parseQuickAction(value, bootstrap, card);
-		if ("error" in result) {
-			setError(result.error);
-			return;
-		}
-		onAction(result.action);
-		setValue("");
-		setError(null);
-	};
-
-	return (
-		<section className={styles.quickActions}>
-			<div className={styles.commandInput}>
-				<TextField
-					id={inputId}
-					label="Quick action"
-					role="combobox"
-					aria-autocomplete="list"
-					aria-expanded={suggestions.length > 0}
-					aria-controls={suggestions.length ? menuId : undefined}
-					aria-activedescendant={suggestions.length ? `${menuId}-${activeIndex}` : undefined}
-					value={value}
-					autoComplete="off"
-					placeholder="/"
-					dense
-					error={error ?? undefined}
-					onChange={(event) => {
-						setValue(event.target.value);
-						setError(null);
-						setActiveIndex(0);
-					}}
-					onKeyDown={(event) => {
-						if (event.key === "ArrowDown" && suggestions.length) {
-							event.preventDefault();
-							setActiveIndex((index) => (index + 1) % suggestions.length);
-						} else if (event.key === "ArrowUp" && suggestions.length) {
-							event.preventDefault();
-							setActiveIndex((index) => (index - 1 + suggestions.length) % suggestions.length);
-						} else if (event.key === "Enter") {
-							event.preventDefault();
-							if (suggestions.length && value.trim() !== suggestions[activeIndex]?.command) choose(activeIndex);
-							else execute();
-						} else if (event.key === "Escape" && suggestions.length) {
-							event.stopPropagation();
-							setValue("");
-						}
-					}}
-				/>
-				<Button variant="filled" disabled={!value.trim()} onClick={execute}>
-					執行
-				</Button>
-				{suggestions.length ? (
-					<div id={menuId} className={`md-menu ${styles.commandMenu}`} role="listbox" aria-label="Quick Actions">
-						{suggestions.map((suggestion, index) => (
-							<button
-								type="button"
-								role="option"
-								id={`${menuId}-${index}`}
-								aria-selected={index === activeIndex}
-								className="md-menu-item md-state-layer"
-								key={suggestion.command}
-								onMouseDown={(event) => event.preventDefault()}
-								onClick={() => choose(index)}
-							>
-								<code className="md-menu-item__label">{suggestion.usage}</code>
-								<span className="md-typescale-body-small">{suggestion.label}</span>
-							</button>
-						))}
-					</div>
-				) : null}
-			</div>
-		</section>
 	);
 }
 
