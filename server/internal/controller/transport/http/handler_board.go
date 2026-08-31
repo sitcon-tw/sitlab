@@ -79,6 +79,29 @@ func (h handler) createCard(w http.ResponseWriter, r *http.Request) {
 	h.writeMutation(w, r, result, err)
 }
 
+func (h handler) deleteCard(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		OperationID string `json:"operationId"`
+	}
+	if err := decodeJSON(w, r, &body); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	issueIID, err := issueIID(r)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	operation, err := h.board.Delete(r.Context(), appboard.DeleteInput{
+		OperationID: body.OperationID, ActorUserID: actorID(r), IssueIID: issueIID,
+	})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"operation": mapOperation(operation)})
+}
+
 func (h handler) updateCardDetails(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		OperationID string `json:"operationId"`

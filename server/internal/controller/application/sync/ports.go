@@ -48,6 +48,7 @@ type GitLab interface {
 	IssueDigests(context.Context) ([]board.IssueDigest, error)
 	Issue(context.Context, int64) (board.CanonicalIssue, error)
 	ApplyIssue(context.Context, board.IssueMutation, string) (board.CanonicalIssue, error)
+	DeleteIssue(context.Context, int64, string) error
 }
 
 type ActorTokens interface {
@@ -70,6 +71,7 @@ type Repository interface {
 	RecordSyncFailure(context.Context, string, time.Time, string) error
 	ClaimOperation(context.Context, time.Time) (board.PendingOperation, error)
 	CompleteOperation(context.Context, board.PendingOperation, board.CanonicalIssue, *board.Card, time.Time) error
+	CompleteDeleteOperation(context.Context, board.PendingOperation, time.Time) error
 	FailOperation(context.Context, board.PendingOperation, time.Time, string, string) error
 	EnqueueWebhook(context.Context, board.WebhookDelivery) (bool, error)
 	ClaimWebhook(context.Context, time.Time) (board.WebhookDelivery, error)

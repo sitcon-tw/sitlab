@@ -692,6 +692,39 @@ func (r *Repository) CompleteOperation(ctx context.Context, pending domainboard.
 	})
 }
 
+func (r *Repository) CompleteDeleteOperation(ctx context.Context, pending domainboard.PendingOperation, completedAt time.Time) error {
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		operationID := uuid.MustParse(pending.Operation.ID)
+		if _, err := tx.Exec(ctx, `
+			UPDATE durable_operations
+			SET state = 'synced', last_error_code = NULL, last_error_detail = NULL, updated_at = $2
+			WHERE id = $1
+		`, operationID, completedAt); err != nil {
+			return err
+		}
+		command, err := tx.Exec(ctx, `
+			DELETE FROM issue_cache
+			WHERE issue_iid = $1 AND pending_operation_id = $2
+		`, pending.Card.IssueIID, operationID)
+		if err != nil {
+			return err
+		}
+		if command.RowsAffected() == 0 {
+			return domainboard.ErrCardNotFound
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM board_sync_rejects WHERE issue_iid = $1`, pending.Card.IssueIID); err != nil {
+			return err
+		}
+		batch := newActionBatch(pending.RequestedByUserID, completedAt)
+		batch.deleteCard(pending.Card.IssueIID)
+		if err := emitLaneOrder(ctx, tx, batch, pending.Card.ListKey); err != nil {
+			return err
+		}
+		_, err = batch.flush(ctx, tx)
+		return err
+	})
+}
+
 func (r *Repository) FailOperation(ctx context.Context, pending domainboard.PendingOperation, failedAt time.Time, code, detail string) error {
 	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		operationID := uuid.MustParse(pending.Operation.ID)
@@ -1086,7 +1119,16 @@ func (r *Repository) Board(ctx context.Context) (domainboard.Snapshot, error) {
 		return domainboard.Snapshot{}, fmt.Errorf("iterate board lists: %w", err)
 	}
 
-	cardRows, err := db.Query(ctx, selectCards+` ORDER BY board_list.position, card.position, card.issue_iid`)
+	cardRows, err := db.Query(ctx, selectCards+`
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM durable_operations operation
+			WHERE operation.id = card.pending_operation_id
+			  AND operation.kind = 'delete_card'
+			  AND operation.state IN ('pending', 'processing')
+		)
+		ORDER BY board_list.position, card.position, card.issue_iid
+	`)
 	if err != nil {
 		return domainboard.Snapshot{}, fmt.Errorf("list board cards: %w", err)
 	}
@@ -1208,6 +1250,66 @@ func (r *Repository) CreateCard(ctx context.Context, mutation domainboard.Mutati
 	return result, nil
 }
 
+func (r *Repository) DeleteCard(ctx context.Context, mutation domainboard.Mutation) (domainboard.Operation, error) {
+	payload, err := json.Marshal(mutation.Payload)
+	if err != nil {
+		return domainboard.Operation{}, fmt.Errorf("encode delete card operation: %w", err)
+	}
+	err = pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		var listKey string
+		var syncState domainboard.OperationState
+		if err := tx.QueryRow(ctx, `
+			SELECT list_key, sync_state
+			FROM issue_cache
+			WHERE issue_iid = $1
+			FOR UPDATE
+		`, mutation.Card.IssueIID).Scan(&listKey, &syncState); errors.Is(err, pgx.ErrNoRows) {
+			return domainboard.ErrCardNotFound
+		} else if err != nil {
+			return err
+		}
+		if syncState != domainboard.OperationSynced {
+			return domainboard.ErrCardSyncConflict
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO durable_operations
+			    (id, kind, issue_iid, requested_by_user_id, payload, state, attempts, available_at, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $7, $7)
+		`, uuid.MustParse(mutation.Operation.ID), mutation.Operation.Kind, mutation.Card.IssueIID,
+			uuid.MustParse(mutation.RequestedByUserID), payload, mutation.Operation.State, mutation.Operation.CreatedAt); err != nil {
+			return err
+		}
+		command, err := tx.Exec(ctx, `
+			UPDATE issue_cache
+			SET sync_state = 'pending', sync_error = NULL, pending_operation_id = $2, updated_at = $3
+			WHERE issue_iid = $1 AND sync_state = 'synced'
+		`, mutation.Card.IssueIID, uuid.MustParse(mutation.Operation.ID), mutation.Card.UpdatedAt)
+		if err != nil {
+			return err
+		}
+		if command.RowsAffected() == 0 {
+			return domainboard.ErrCardSyncConflict
+		}
+		batch := newActionBatch(mutation.RequestedByUserID, mutation.Card.UpdatedAt)
+		batch.deleteCard(mutation.Card.IssueIID)
+		if err := emitLaneOrder(ctx, tx, batch, listKey); err != nil {
+			return err
+		}
+		_, err = batch.flush(ctx, tx)
+		return err
+	})
+	if operationConflict(err) {
+		return domainboard.Operation{}, domainboard.ErrOperationConflict
+	}
+	if err != nil {
+		if errors.Is(err, domainboard.ErrCardNotFound) || errors.Is(err, domainboard.ErrCardSyncConflict) {
+			return domainboard.Operation{}, err
+		}
+		return domainboard.Operation{}, fmt.Errorf("delete optimistic card transaction: %w", err)
+	}
+	return mutation.Operation, nil
+}
+
 func (r *Repository) UpdateCard(ctx context.Context, mutation domainboard.Mutation) (domainboard.Result, error) {
 	payload, err := json.Marshal(mutation.Payload)
 	if err != nil {
@@ -1225,14 +1327,25 @@ func (r *Repository) UpdateCard(ctx context.Context, mutation domainboard.Mutati
 		}
 		var currentList string
 		var currentPosition int32
+		var deleting bool
 		if err := tx.QueryRow(ctx, `
-			SELECT list_key, position
-			FROM issue_cache
-			WHERE issue_iid = $1
-		`, mutation.Card.IssueIID).Scan(&currentList, &currentPosition); errors.Is(err, pgx.ErrNoRows) {
+			SELECT card.list_key, card.position, EXISTS (
+				SELECT 1
+				FROM durable_operations pending
+				WHERE pending.id = card.pending_operation_id
+				  AND pending.kind = 'delete_card'
+				  AND pending.state IN ('pending', 'processing')
+			)
+			FROM issue_cache card
+			WHERE card.issue_iid = $1
+			FOR UPDATE OF card
+		`, mutation.Card.IssueIID).Scan(&currentList, &currentPosition, &deleting); errors.Is(err, pgx.ErrNoRows) {
 			return domainboard.ErrCardNotFound
 		} else if err != nil {
 			return err
+		}
+		if deleting {
+			return domainboard.ErrCardDeleting
 		}
 		if currentList != mutation.Card.ListKey || currentPosition != mutation.Card.Position {
 			position, err := reorderCardPositions(ctx, tx, batch, mutation.Card.IssueIID, currentList, mutation.Card.ListKey, mutation.Card.Position)
@@ -1311,7 +1424,16 @@ func (r *Repository) RetryOperation(ctx context.Context, operationID string) (do
 			`, *issueIID, uuid.MustParse(operationID)); err != nil {
 				return err
 			}
-			if err := emitCard(ctx, tx, batch, *issueIID); err != nil {
+			if operation.Kind == domainboard.OperationDeleteCard {
+				batch.deleteCard(*issueIID)
+				var listKey string
+				if err := tx.QueryRow(ctx, `SELECT list_key FROM issue_cache WHERE issue_iid = $1`, *issueIID).Scan(&listKey); err != nil {
+					return err
+				}
+				if err := emitLaneOrder(ctx, tx, batch, listKey); err != nil {
+					return err
+				}
+			} else if err := emitCard(ctx, tx, batch, *issueIID); err != nil {
 				return err
 			}
 		}
@@ -1409,7 +1531,19 @@ func emitCard(ctx context.Context, tx pgx.Tx, batch *actionBatch, issueIID int64
 // emitLaneOrder reads a lane back for the paths that shift positions with arithmetic
 // rather than by rewriting an explicit order.
 func emitLaneOrder(ctx context.Context, tx pgx.Tx, batch *actionBatch, listKey string) error {
-	rows, err := tx.Query(ctx, `SELECT issue_iid FROM issue_cache WHERE list_key = $1 ORDER BY position, issue_iid`, listKey)
+	rows, err := tx.Query(ctx, `
+		SELECT card.issue_iid
+		FROM issue_cache card
+		WHERE card.list_key = $1
+		  AND NOT EXISTS (
+		      SELECT 1
+		      FROM durable_operations operation
+		      WHERE operation.id = card.pending_operation_id
+		        AND operation.kind = 'delete_card'
+		        AND operation.state IN ('pending', 'processing')
+		  )
+		ORDER BY card.position, card.issue_iid
+	`, listKey)
 	if err != nil {
 		return err
 	}

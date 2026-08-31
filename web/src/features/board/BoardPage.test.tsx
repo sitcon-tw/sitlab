@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createCard,
 	createComment,
+	deleteCard,
 	listComments,
 	listQuickActions,
 	listQuickActionSuggestions,
@@ -44,6 +45,7 @@ vi.mock("./labelsApi", () => ({
 vi.mock("./boardApi", () => ({
 	createCard: vi.fn(),
 	createComment: vi.fn(),
+	deleteCard: vi.fn(),
 	listComments: vi.fn(),
 	listQuickActions: vi.fn(),
 	listQuickActionSuggestions: vi.fn(),
@@ -142,6 +144,7 @@ describe("SITCON Board interactions", () => {
 		window.history.replaceState(null, "", "/");
 		vi.mocked(createCard).mockReset();
 		vi.mocked(createComment).mockReset();
+		vi.mocked(deleteCard).mockReset();
 		vi.mocked(listComments).mockReset();
 		vi.mocked(listQuickActions).mockReset();
 		vi.mocked(listQuickActionSuggestions).mockReset();
@@ -257,7 +260,32 @@ describe("SITCON Board interactions", () => {
 			within(board)
 				.getAllByRole("heading", { level: 2 })
 				.map((heading) => heading.textContent)
-		).toEqual(["Waiting", "Inbox", "To do", "Doing", "Review", "Done"]);
+		).toEqual(["Waiting", "Inbox", "To do", "Doing", "Review", "Close"]);
+	});
+
+	it("shows granular GitLab statuses only in closed card details", async () => {
+		const user = userEvent.setup();
+		const initial = structuredClone(demoBootstrap);
+		const closedCard = initial.board.cards.find((card) => card.listKey === "closed")!;
+		closedCard.gitLabStatusName = "Won't do";
+		initial.board.cards.push({
+			...closedCard,
+			issueIid: 134,
+			issueId: 9134,
+			title: "重複的任務",
+			position: 1,
+			gitLabStatusName: "Duplicate"
+		});
+
+		render(<Harness initial={initial} />);
+
+		expect(screen.queryByRole("heading", { name: "Done" })).not.toBeInTheDocument();
+		const closeLane = screen.getByRole("heading", { name: "Close" }).closest("section") as HTMLElement;
+		expect(within(closeLane).queryByLabelText(/GitLab 關閉狀態/)).not.toBeInTheDocument();
+
+		await user.click(within(closeLane).getByRole("heading", { name: "[行銷組] 重複的任務" }));
+		const dialog = screen.getByRole("dialog", { name: /134 卡片詳細資料/ });
+		expect(within(dialog).getByLabelText("GitLab 關閉狀態：Duplicate")).toBeVisible();
 	});
 
 	it("filters the board to one team and clears the filter", async () => {
@@ -776,6 +804,61 @@ describe("SITCON Board interactions", () => {
 		expect(updateDetails).not.toHaveBeenCalled();
 	});
 
+	it("double-checks permanent deletion and blocks it while details are unsaved", async () => {
+		const user = userEvent.setup();
+		vi.mocked(deleteCard).mockResolvedValue({
+			operation: {
+				id: "10000000-0000-0000-0000-000000000001",
+				kind: "delete_card",
+				state: "pending",
+				attempts: 0,
+				lastError: null,
+				createdAt: "2026-08-31T08:00:00Z",
+				updatedAt: "2026-08-31T08:00:00Z"
+			}
+		});
+		render(<Harness />);
+
+		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		expect(within(dialog).getByRole("heading", { name: "永久刪除卡片" })).toBeVisible();
+		await user.click(within(dialog).getByRole("button", { name: "永久刪除" }));
+		let confirmation = screen.getByRole("alertdialog", { name: "永久刪除 #127？" });
+		expect(within(confirmation).getByText(/GitLab Issue #127/)).toBeVisible();
+		await user.click(within(confirmation).getByRole("button", { name: "取消" }));
+		expect(deleteCard).not.toHaveBeenCalled();
+
+		await user.type(within(dialog).getByLabelText("標題"), "！");
+		await user.click(within(dialog).getByRole("button", { name: "永久刪除" }));
+		expect(screen.queryByRole("alertdialog", { name: "永久刪除 #127？" })).not.toBeInTheDocument();
+		expect(within(dialog).getAllByText("請先儲存或還原變更，才能離開這張卡片").length).toBeGreaterThan(0);
+
+		await user.click(within(dialog).getByRole("button", { name: "還原" }));
+		await user.click(within(dialog).getByRole("button", { name: "永久刪除" }));
+		confirmation = screen.getByRole("alertdialog", { name: "永久刪除 #127？" });
+		await user.click(within(confirmation).getByRole("button", { name: "永久刪除" }));
+
+		await waitFor(() => expect(deleteCard).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String)));
+		await waitFor(() => expect(screen.queryByRole("dialog", { name: /127 卡片詳細資料/ })).not.toBeInTheDocument());
+		expect(screen.queryByRole("heading", { name: "[開發組] 修正報名系統寄信流程" })).not.toBeInTheDocument();
+	});
+
+	it("keeps the card and shows an inline error when deletion cannot be queued", async () => {
+		const user = userEvent.setup();
+		vi.mocked(deleteCard).mockRejectedValue(new Error("GitLab 權限不足"));
+		render(<Harness />);
+
+		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
+		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
+		await user.click(within(dialog).getByRole("button", { name: "永久刪除" }));
+		const confirmation = screen.getByRole("alertdialog", { name: "永久刪除 #127？" });
+		await user.click(within(confirmation).getByRole("button", { name: "永久刪除" }));
+
+		expect(await within(dialog).findByRole("alert")).toHaveTextContent("GitLab 權限不足");
+		expect(screen.getByRole("dialog", { name: /127 卡片詳細資料/ })).toBeVisible();
+		expect(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程", hidden: true })).toBeInTheDocument();
+	});
+
 	it("opens description in edit mode when empty and in preview when it has content", async () => {
 		const user = userEvent.setup();
 		render(<Harness />);
@@ -1016,20 +1099,20 @@ describe("SITCON Board interactions", () => {
 		initial.board.cards = [...initial.board.cards.filter((card) => card.listKey !== closedList.key), ...closedCards];
 		render(<Harness initial={initial} />);
 
-		const doneLane = screen.getByRole("heading", { name: closedList.name }).closest("section")!;
-		expect(within(doneLane).getAllByRole("article")).toHaveLength(50);
-		expect(within(doneLane).getByRole("heading", { name: /近期完成 55$/ })).toBeVisible();
-		expect(within(doneLane).queryByRole("heading", { name: /近期完成 1$/ })).not.toBeInTheDocument();
-		expect(within(doneLane).getByText("已顯示最近 50 / 55 個 Issue")).toBeVisible();
+		const closedLane = screen.getByRole("heading", { name: closedList.name }).closest("section")!;
+		expect(within(closedLane).getAllByRole("article")).toHaveLength(50);
+		expect(within(closedLane).getByRole("heading", { name: /近期完成 55$/ })).toBeVisible();
+		expect(within(closedLane).queryByRole("heading", { name: /近期完成 1$/ })).not.toBeInTheDocument();
+		expect(within(closedLane).getByText("已顯示最近 50 / 55 個 Issue")).toBeVisible();
 
-		await user.click(within(doneLane).getByRole("button", { name: "在 Done 顯示更多 5 個 Issue" }));
-		expect(within(doneLane).getAllByRole("article")).toHaveLength(55);
-		expect(within(doneLane).getByRole("heading", { name: /近期完成 1$/ })).toBeVisible();
-		expect(within(doneLane).queryByRole("button", { name: /顯示更多/ })).not.toBeInTheDocument();
+		await user.click(within(closedLane).getByRole("button", { name: "在 Close 顯示更多 5 個 Issue" }));
+		expect(within(closedLane).getAllByRole("article")).toHaveLength(55);
+		expect(within(closedLane).getByRole("heading", { name: /近期完成 1$/ })).toBeVisible();
+		expect(within(closedLane).queryByRole("button", { name: /顯示更多/ })).not.toBeInTheDocument();
 
 		await user.type(screen.getByRole("combobox", { name: "搜尋卡片" }), "近期完成");
-		await waitFor(() => expect(within(doneLane).getAllByRole("article")).toHaveLength(50));
-		expect(within(doneLane).getByText("已顯示最近 50 / 55 個 Issue")).toBeVisible();
+		await waitFor(() => expect(within(closedLane).getAllByRole("article")).toHaveLength(50));
+		expect(within(closedLane).getByText("已顯示最近 50 / 55 個 Issue")).toBeVisible();
 	});
 
 	it("switches to a URL-backed Gantt view with only open issues", async () => {

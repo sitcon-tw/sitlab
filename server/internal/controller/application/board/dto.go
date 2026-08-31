@@ -21,6 +21,12 @@ type UpdateDetailsInput struct {
 	Description string
 }
 
+type DeleteInput struct {
+	OperationID string
+	ActorUserID string
+	IssueIID    int64
+}
+
 type UpdateTeamInput struct {
 	OperationID string
 	ActorUserID string

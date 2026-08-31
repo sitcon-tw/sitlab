@@ -119,6 +119,7 @@ func TestPostgresSnapshotsOperationsAndRollingSessions(t *testing.T) {
 	verifySyncActionsAreGaplessAndCommitOrdered(t, ctx, pool, store, now)
 	verifyPruneKeepsWhatIsStillNeeded(t, ctx, pool, store, now)
 	verifySyncDeltaReplaysAndScopesByAudience(t, ctx, pool, store, user.ID, now)
+	verifyDurableCardDeletion(t, ctx, store, user.ID, now)
 
 	listenerCtx, stopListener := context.WithCancel(ctx)
 	updates, unsubscribe := store.SubscribeRevisions()
@@ -411,6 +412,7 @@ func (f *operationGitLabFake) ApplyIssue(_ context.Context, mutation appsync.Iss
 		GitLabStatusName: mutation.GitLabStatusName,
 	}, nil
 }
+func (*operationGitLabFake) DeleteIssue(context.Context, int64, string) error { return nil }
 
 func seedSnapshots(t *testing.T, ctx context.Context, pool *pgxpool.Pool, now time.Time) {
 	t.Helper()
@@ -519,6 +521,80 @@ func verifyCardReordering(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	}
 	if result.Card.Position != 0 || !slices.Equal(issueIIDs, []int64{503, 501, 502}) || !slices.Equal(positions, []int32{0, 1, 2}) {
 		t.Fatalf("reordered cards = ids %v positions %v result %#v", issueIIDs, positions, result.Card)
+	}
+}
+
+func verifyDurableCardDeletion(t *testing.T, ctx context.Context, store *pgsitcon.Repository, userID string, now time.Time) {
+	t.Helper()
+	issueID := int64(1_890)
+	card := domainboard.Card{
+		IssueIID: 189, GitLabIssueID: &issueID, Title: "永久刪除測試", ListKey: "inbox", TeamKey: "development",
+		Labels: []string{"Team::開發組"}, GitLabStatusName: "Inbox", SyncState: domainboard.OperationSynced,
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if changed, err := store.ReconcileIssue(ctx, card.IssueIID, &card, now); err != nil || !changed {
+		t.Fatalf("seed deletion card = changed %v, error %v", changed, err)
+	}
+	service := appboard.NewService(store, appdirectory.NewService(store, noop.NewTracerProvider().Tracer("test")), noop.NewTracerProvider().Tracer("test"))
+	operationID := uuid.NewString()
+	operation, err := service.Delete(ctx, appboard.DeleteInput{
+		OperationID: operationID, ActorUserID: userID, IssueIID: card.IssueIID,
+	})
+	if err != nil || operation.Kind != domainboard.OperationDeleteCard {
+		t.Fatalf("queue deletion = %#v, error %v", operation, err)
+	}
+	boardSnapshot, err := store.Board(ctx)
+	if err != nil {
+		t.Fatalf("load board after queued deletion: %v", err)
+	}
+	for _, visible := range boardSnapshot.Cards {
+		if visible.IssueIID == card.IssueIID {
+			t.Fatal("queued deletion remained visible in the board snapshot")
+		}
+	}
+	if _, err := service.UpdateDetails(ctx, appboard.UpdateDetailsInput{
+		OperationID: uuid.NewString(), ActorUserID: userID, IssueIID: card.IssueIID,
+		Title: "stale tab edit", Description: "must not replace deletion",
+	}); err == nil {
+		t.Fatal("stale edit replaced a queued deletion")
+	}
+
+	pending, err := store.ClaimOperation(ctx, now.Add(time.Second))
+	if err != nil || pending.Operation.ID != operationID {
+		t.Fatalf("claim deletion = %#v, error %v", pending.Operation, err)
+	}
+	if err := store.FailOperation(ctx, pending, now.Add(2*time.Second), "GITLAB_SYNC_FAILED", "forbidden"); err != nil {
+		t.Fatalf("fail deletion: %v", err)
+	}
+	boardSnapshot, err = store.Board(ctx)
+	if err != nil || len(boardSnapshot.Cards) == 0 {
+		t.Fatalf("failed deletion did not restore card: %#v, error %v", boardSnapshot.Cards, err)
+	}
+	if _, err := store.RetryOperation(ctx, operationID); err != nil {
+		t.Fatalf("retry deletion: %v", err)
+	}
+	boardSnapshot, err = store.Board(ctx)
+	if err != nil {
+		t.Fatalf("load board after deletion retry: %v", err)
+	}
+	for _, visible := range boardSnapshot.Cards {
+		if visible.IssueIID == card.IssueIID {
+			t.Fatal("retried deletion remained visible in the board snapshot")
+		}
+	}
+	pending, err = store.ClaimOperation(ctx, time.Now().UTC().Add(time.Second))
+	if err != nil || pending.Operation.ID != operationID {
+		t.Fatalf("claim retried deletion = %#v, error %v", pending.Operation, err)
+	}
+	if err := store.CompleteDeleteOperation(ctx, pending, time.Now().UTC()); err != nil {
+		t.Fatalf("complete deletion: %v", err)
+	}
+	if _, err := store.Card(ctx, card.IssueIID); !errors.Is(err, domainboard.ErrCardNotFound) {
+		t.Fatalf("deleted card error = %v", err)
+	}
+	stored, err := store.ByOperation(ctx, operationID)
+	if err != nil || stored.Operation.State != domainboard.OperationSynced || stored.Operation.IssueIID != nil {
+		t.Fatalf("completed deletion operation = %#v, error %v", stored.Operation, err)
 	}
 }
 

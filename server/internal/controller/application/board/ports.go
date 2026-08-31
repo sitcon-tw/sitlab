@@ -16,6 +16,7 @@ type Repository interface {
 	Card(context.Context, int64) (domain.Card, error)
 	ByOperation(context.Context, string) (domain.Result, error)
 	CreateCard(context.Context, domain.Mutation) (domain.Result, error)
+	DeleteCard(context.Context, domain.Mutation) (domain.Operation, error)
 	UpdateCard(context.Context, domain.Mutation) (domain.Result, error)
 	RetryOperation(context.Context, string) (domain.Operation, error)
 }

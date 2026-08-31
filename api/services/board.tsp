@@ -113,6 +113,19 @@ interface CardService {
 		| ServiceUnavailableProblem
 		| InternalServerProblem;
 
+	@operationId("deleteCard")
+	@summary("Permanently delete a card and its GitLab issue")
+	@delete
+	@route("/{issueIid}")
+	deleteCard(...IssueIidPath, ...CSRFHeader, @body body: DeleteCardRequest):
+		| AcceptedJson<CardDeletionResponse>
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| NotFoundProblem
+		| ConflictProblem
+		| UnprocessableEntityProblem
+		| InternalServerProblem;
+
 	@operationId("updateCardDetails")
 	@summary("Optimistically update card details")
 	@put

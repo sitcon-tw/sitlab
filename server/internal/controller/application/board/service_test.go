@@ -29,6 +29,7 @@ type repositoryFake struct {
 	card           domain.Card
 	existing       *Result
 	createMutation *Mutation
+	deleteMutation *Mutation
 	updateMutation *Mutation
 }
 
@@ -49,6 +50,10 @@ func (f *repositoryFake) CreateCard(_ context.Context, mutation Mutation) (Resul
 	f.createMutation = &mutation
 	mutation.Card.IssueIID = -1
 	return Result{Card: mutation.Card, Operation: mutation.Operation}, nil
+}
+func (f *repositoryFake) DeleteCard(_ context.Context, mutation Mutation) (domain.Operation, error) {
+	f.deleteMutation = &mutation
+	return mutation.Operation, nil
 }
 func (f *repositoryFake) UpdateCard(_ context.Context, mutation Mutation) (Result, error) {
 	f.updateMutation = &mutation
@@ -135,6 +140,55 @@ func TestCreateRejectsUnknownListBeforePersistence(t *testing.T) {
 	assertAppError(t, err, apperror.KindInvalid, "VALIDATION_FAILED")
 	if repo.createMutation != nil {
 		t.Fatal("card with an unknown list was persisted")
+	}
+}
+
+func TestCreateRejectsCloseLaneBeforePersistence(t *testing.T) {
+	t.Parallel()
+	repo := &repositoryFake{board: Snapshot{Lists: []domain.List{{Key: "closed", Closed: true}}}}
+	service := newTestService(repo)
+	_, err := service.Create(context.Background(), CreateInput{
+		OperationID: testOperationID, ActorUserID: testActorID, Title: "修正流程", TeamKey: "development", ListKey: "closed",
+	})
+	assertAppError(t, err, apperror.KindInvalid, "VALIDATION_FAILED")
+	if repo.createMutation != nil {
+		t.Fatal("card was created directly in the Close lane")
+	}
+}
+
+func TestDeleteQueuesPermanentDeletionForASyncedGitLabCard(t *testing.T) {
+	t.Parallel()
+	repo := &repositoryFake{card: domain.Card{
+		IssueIID: 42, ListKey: "inbox", SyncState: domain.OperationSynced,
+	}}
+	service := newTestService(repo)
+
+	operation, err := service.Delete(context.Background(), DeleteInput{
+		OperationID: testOperationID, ActorUserID: testActorID, IssueIID: 42,
+	})
+	if err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+	if operation.Kind != domain.OperationDeleteCard || operation.IssueIID == nil || *operation.IssueIID != 42 {
+		t.Fatalf("Delete() operation = %#v", operation)
+	}
+	if repo.deleteMutation == nil || repo.deleteMutation.Card.SyncState != domain.OperationPending ||
+		repo.deleteMutation.Card.PendingOperationID != testOperationID {
+		t.Fatalf("stored deletion = %#v", repo.deleteMutation)
+	}
+}
+
+func TestDeleteRejectsACardWithAnUnfinishedOperation(t *testing.T) {
+	t.Parallel()
+	repo := &repositoryFake{card: domain.Card{IssueIID: 42, SyncState: domain.OperationFailed}}
+	service := newTestService(repo)
+
+	_, err := service.Delete(context.Background(), DeleteInput{
+		OperationID: testOperationID, ActorUserID: testActorID, IssueIID: 42,
+	})
+	assertAppError(t, err, apperror.KindConflict, "CARD_SYNC_CONFLICT")
+	if repo.deleteMutation != nil {
+		t.Fatal("unsynced card deletion was persisted")
 	}
 }
 
@@ -226,7 +280,7 @@ func TestUpdateLabelsNormalizesScopedLabels(t *testing.T) {
 	lists := []domain.List{
 		{Key: "inbox", GitLabStatusName: "Inbox"},
 		{Key: "todo", GitLabStatusName: "To do"},
-		{Key: "closed", GitLabStatusName: "Done", Closed: true},
+		{Key: "closed", Closed: true},
 	}
 	tests := []struct {
 		name               string

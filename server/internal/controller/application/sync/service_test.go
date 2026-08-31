@@ -23,7 +23,7 @@ func TestDefaultBoardListsMatchGitLabBoard(t *testing.T) {
 		{Key: "todo", Name: "To do", GitLabStatusName: "To do", Position: 2, Color: "#ed9121"},
 		{Key: "doing", Name: "Doing", GitLabStatusName: "Doing", Position: 3, Color: "#1f75cb"},
 		{Key: "review", Name: "Review", GitLabStatusName: "Review", Position: 4, Color: "#7a07ab"},
-		{Key: "closed", Name: "Done", GitLabStatusName: "Done", Position: 5, Closed: true, Color: "#108548"},
+		{Key: "closed", Name: "Close", Position: 5, Closed: true, Color: "#108548"},
 	}
 	if !reflect.DeepEqual(DefaultBoardLists, want) {
 		t.Fatalf("DefaultBoardLists = %#v", DefaultBoardLists)
@@ -185,6 +185,8 @@ type gitLabFake struct {
 	token      string
 	lastFilter IssueFilter
 	filters    []IssueFilter
+	deletedIID int64
+	deleteErr  error
 }
 
 type actorTokensFake struct{}
@@ -254,6 +256,11 @@ func (f *gitLabFake) ApplyIssue(_ context.Context, mutation IssueMutation, token
 		StartDate: mutation.StartDate, DueDate: mutation.DueDate, State: "opened", GitLabStatusName: mutation.GitLabStatusName,
 	}, nil
 }
+func (f *gitLabFake) DeleteIssue(_ context.Context, issueIID int64, token string) error {
+	f.deletedIID = issueIID
+	f.token = token
+	return f.deleteErr
+}
 
 type repoFake struct {
 	directory        directory.Snapshot
@@ -261,6 +268,7 @@ type repoFake struct {
 	cards            []board.Card
 	pending          *PendingOperation
 	completed        bool
+	failed           bool
 	webhook          *board.WebhookDelivery
 	webhookCompleted bool
 	reconciled       *board.Card
@@ -311,7 +319,13 @@ func (f *repoFake) CompleteOperation(context.Context, PendingOperation, GitLabIs
 	f.completed = true
 	return nil
 }
-func (*repoFake) FailOperation(context.Context, PendingOperation, time.Time, string, string) error {
+func (f *repoFake) CompleteDeleteOperation(context.Context, PendingOperation, time.Time) error {
+	f.completed = true
+	return nil
+}
+
+func (f *repoFake) FailOperation(context.Context, PendingOperation, time.Time, string, string) error {
+	f.failed = true
 	return nil
 }
 func (*repoFake) EnqueueWebhook(context.Context, board.WebhookDelivery) (bool, error) {
@@ -385,8 +399,50 @@ func TestRefreshBoardMapsNativeStatusesAndSkipsUnknownTeams(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(repo.cards) != 4 || repo.cards[0].ListKey != "doing" || repo.cards[0].Title != "修正流程" || repo.cards[0].StartDate != "2026-07-17" ||
-		repo.cards[1].ListKey != "todo" || repo.cards[2].ListKey != "wating" || repo.cards[3].ListKey != "closed" {
+		repo.cards[1].ListKey != "todo" || repo.cards[2].ListKey != "wating" || repo.cards[3].ListKey != "closed" || repo.cards[3].GitLabStatusName != "Done" {
 		t.Fatalf("cards = %#v", repo.cards)
+	}
+}
+
+func TestMapIssueUsesClosedStateForLaneAndPreservesStatus(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name           string
+		state          string
+		statusName     string
+		expectedList   string
+		expectedStatus string
+		expectedError  bool
+	}{
+		{name: "closed issue retains its returned inbox status", state: "closed", statusName: "Inbox", expectedList: "closed", expectedStatus: "Inbox"},
+		{name: "closed issue retains a duplicate status", state: "closed", statusName: "Duplicate", expectedList: "closed", expectedStatus: "Duplicate"},
+		{name: "closed issue retains a canceled status", state: "closed", statusName: "Won't do", expectedList: "closed", expectedStatus: "Won't do"},
+		{name: "open issue with inbox status", state: "opened", statusName: "Inbox", expectedList: "inbox", expectedStatus: "Inbox"},
+		{name: "open issue with unknown status", state: "opened", statusName: "Won't do", expectedError: true},
+	}
+	directorySnapshot := developmentDirectory()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			card, included, err := mapIssue(GitLabIssue{
+				IssueIID: 1, GitLabIssueID: 10, Title: "[開發組] 工作",
+				Labels: []string{"Team::開發組"}, State: tt.state, GitLabStatusName: tt.statusName,
+			}, directorySnapshot, DefaultBoardLists, make(map[string]int32))
+			if tt.expectedError {
+				if err == nil {
+					t.Fatal("mapIssue() error = nil, want unmapped status error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("mapIssue() error = %v", err)
+			}
+			if !included {
+				t.Fatal("mapIssue() included = false, want true")
+			}
+			if card.ListKey != tt.expectedList || card.GitLabStatusName != tt.expectedStatus {
+				t.Fatalf("mapIssue() card = %#v, want list %q and status %q", card, tt.expectedList, tt.expectedStatus)
+			}
+		})
 	}
 }
 
@@ -474,7 +530,8 @@ func TestProcessOneBuildsCanonicalIssueMutation(t *testing.T) {
 	}
 	if gitlab.applied == nil || gitlab.applied.Title != "[開發組] 修正流程" || gitlab.applied.Description != "詳細規劃" ||
 		gitlab.applied.StartDate != "2026-07-17" || gitlab.applied.DueDate != "2026-07-21" ||
-		!slices.Equal(gitlab.applied.AssigneeGitLabUserIDs, []int64{1, 2}) || !slices.Equal(gitlab.applied.Labels, []string{"security", "組別::開發"}) || gitlab.applied.GitLabStatusName != "Doing" {
+		!slices.Equal(gitlab.applied.AssigneeGitLabUserIDs, []int64{1, 2}) || !slices.Equal(gitlab.applied.Labels, []string{"security", "組別::開發"}) ||
+		gitlab.applied.GitLabStatusName != "Doing" || gitlab.applied.State != "opened" {
 		t.Fatalf("mutation = %#v", gitlab.applied)
 	}
 	if gitlab.token != "actor-token" {
@@ -507,6 +564,66 @@ func TestProcessOneUsesStoredDescriptionAndScopesTheMutation(t *testing.T) {
 	}
 	if !gitlab.applied.Fields.Title || !gitlab.applied.Fields.Description || gitlab.applied.Fields.Labels || gitlab.applied.Fields.Assignees || gitlab.applied.Fields.Status {
 		t.Fatalf("mutation fields = %#v, want details only", gitlab.applied.Fields)
+	}
+}
+
+func TestProcessOneClosesWithoutWritingLifecycleStatus(t *testing.T) {
+	t.Parallel()
+	gitlab := &gitLabFake{}
+	repo := &repoFake{
+		directory: developmentDirectory(),
+		board:     appboard.Snapshot{Lists: DefaultBoardLists},
+		pending: &PendingOperation{
+			Operation: board.Operation{ID: "operation", Kind: board.OperationMoveCard},
+			Card: board.Card{
+				IssueIID: 42, Title: "關閉工作", TeamKey: "development", ListKey: "closed",
+				Labels: []string{"Team::開發組"},
+			},
+		},
+	}
+	service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
+	processed, err := service.ProcessOne(context.Background())
+	if err != nil || !processed {
+		t.Fatalf("ProcessOne() = %v, %v", processed, err)
+	}
+	if gitlab.applied == nil || gitlab.applied.State != "closed" || gitlab.applied.GitLabStatusName != "" {
+		t.Fatalf("mutation = %#v, want closed state with no lifecycle status write", gitlab.applied)
+	}
+}
+
+func TestProcessOnePermanentlyDeletesCardWithoutLoadingSnapshots(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		deleteErr    error
+		wantError    bool
+		wantFailed   bool
+		wantComplete bool
+	}{
+		{name: "deleted", wantComplete: true},
+		{name: "already absent", deleteErr: board.ErrCardNotFound, wantComplete: true},
+		{name: "GitLab rejected deletion", deleteErr: errors.New("forbidden"), wantError: true, wantFailed: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gitlab := &gitLabFake{deleteErr: tt.deleteErr}
+			repo := &repoFake{pending: &PendingOperation{
+				Operation: board.Operation{ID: "operation", Kind: board.OperationDeleteCard},
+				Card:      board.Card{IssueIID: 42, ListKey: "inbox"}, RequestedByUserID: "actor",
+			}}
+			service := NewService(gitlab, &directorySourceFake{}, repo, actorTokensFake{}, nil, noop.NewTracerProvider().Tracer("test"))
+
+			processed, err := service.ProcessOne(context.Background())
+			if processed != true || (err != nil) != tt.wantError {
+				t.Fatalf("ProcessOne() = %v, %v", processed, err)
+			}
+			if gitlab.deletedIID != 42 || gitlab.token != "actor-token" {
+				t.Fatalf("DeleteIssue() iid = %d token = %q", gitlab.deletedIID, gitlab.token)
+			}
+			if repo.completed != tt.wantComplete || repo.failed != tt.wantFailed {
+				t.Fatalf("completed = %v failed = %v", repo.completed, repo.failed)
+			}
+		})
 	}
 }
 

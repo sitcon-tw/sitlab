@@ -23,6 +23,7 @@ const (
 	OperationUpdateDueDate   OperationKind = "update_due_date"
 	OperationUpdateLabels    OperationKind = "update_labels"
 	OperationMoveCard        OperationKind = "move_card"
+	OperationDeleteCard      OperationKind = "delete_card"
 )
 
 // ErrCheckpointTooOld means a client cannot be caught up incrementally and has to
@@ -40,6 +41,8 @@ var (
 	ErrSnapshotNotFound    = errors.New("board snapshot not found")
 	ErrOperationNotFound   = errors.New("operation not found")
 	ErrOperationConflict   = errors.New("operation id is already used")
+	ErrCardDeleting        = errors.New("card is being deleted")
+	ErrCardSyncConflict    = errors.New("card has an unfinished operation")
 )
 
 type List struct {
@@ -195,6 +198,7 @@ type IssueMutation struct {
 	DueDate               string
 	GitLabStatusName      string
 	Fields                IssueMutationFields
+	State                 string
 }
 
 // IssueMutationFields keeps updates sparse. This is especially important for

@@ -10,6 +10,7 @@ import { useSortable } from "@dnd-kit/react/sortable";
 import {
 	Badge,
 	Button,
+	ConfirmDialog,
 	DateField,
 	Dialog,
 	Drawer,
@@ -48,6 +49,7 @@ import {
 	Settings,
 	Share2,
 	Sun,
+	Trash2,
 	Users,
 	X
 } from "lucide-react";
@@ -60,6 +62,7 @@ import { AssigneePicker } from "./AssigneePicker";
 import {
 	createCard,
 	createComment,
+	deleteCard,
 	listComments,
 	logout,
 	moveCard,
@@ -373,6 +376,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 			startDate: input.startDate,
 			dueDate: input.dueDate,
 			labels: canonicalClientLabels(bootstrap, input.labels, input.teamKey),
+			gitLabStatusName: null,
 			syncState: "pending",
 			syncError: null,
 			pendingOperationId: operationId,
@@ -435,6 +439,15 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 
 	const handleLabels = (card: BoardCard, labels: string[]) => {
 		runCardMutation(card, { labels }, "labels", (operationId) => updateLabels(card, operationId, labels));
+	};
+
+	const handleDelete = async (card: BoardCard) => {
+		await deleteCard(card, crypto.randomUUID());
+		updateBootstrap((current) => ({
+			...current,
+			board: { ...current.board, cards: current.board.cards.filter((item) => item.issueIid !== card.issueIid) }
+		}));
+		setDetailIid(null);
 	};
 
 	const handleStatusMove = (card: BoardCard, listKey: string) => {
@@ -746,6 +759,7 @@ export function BoardPage({ bootstrap, updateBootstrap, backgroundOffline, onDra
 					onStartDate={(startDate) => handleStartDate(detailCard, startDate)}
 					onDueDate={(dueDate) => handleDueDate(detailCard, dueDate)}
 					onLabels={(labels) => handleLabels(detailCard, labels)}
+					onDelete={() => handleDelete(detailCard)}
 					save={save}
 				/>
 			) : null}
@@ -850,7 +864,7 @@ function BoardHeader({
 
 function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: (input: CreateCardInput) => void }) {
 	const defaultTeam = bootstrap.preferences.defaultTeamKey ?? bootstrap.teams.find((team) => team.active)?.key ?? "";
-	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
+	const lists = bootstrap.board.lists.filter((list) => !list.closed).sort((a, b) => a.position - b.position);
 	const defaultList = lists.find((list) => list.key === "inbox")?.key ?? lists[0]?.key ?? "";
 	const [mode, setMode] = useState<"single" | "leaders">("single");
 	const [title, setTitle] = useState("");
@@ -1080,7 +1094,8 @@ function CardItem({
 	const team = bootstrap.teams.find((item) => item.key === card.teamKey);
 	const title = team && !card.title.startsWith(team.titlePrefix) ? `${team.titlePrefix} ${card.title}` : card.title;
 	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
-	const overdue = Boolean(card.dueDate && card.dueDate < taipeiDateAfter(0) && !lists.find((list) => list.key === card.listKey)?.closed);
+	const currentList = lists.find((list) => list.key === card.listKey);
+	const overdue = Boolean(card.dueDate && card.dueDate < taipeiDateAfter(0) && !currentList?.closed);
 	return (
 		<article ref={ref} className={styles.card} data-sync={card.syncState === "failed" ? "failed" : undefined} data-dragging={isDragSource || undefined}>
 			<div className={styles.cardActions}>
@@ -1181,6 +1196,7 @@ function CardDetail({
 	onStartDate,
 	onDueDate,
 	onLabels,
+	onDelete,
 	save
 }: {
 	card: BoardCard;
@@ -1198,6 +1214,7 @@ function CardDetail({
 	onStartDate: (startDate: string | null) => void;
 	onDueDate: (dueDate: string | null) => void;
 	onLabels: (labels: string[]) => void;
+	onDelete: () => Promise<void>;
 	save: FieldSaveState;
 }) {
 	const [title, setTitle] = useState(card.title);
@@ -1221,6 +1238,8 @@ function CardDetail({
 	// restarts on every attempt; 還原 and 儲存 reset it so the next round of
 	// edits starts from the plain warning again.
 	const [exitBlocked, setExitBlocked] = useState(0);
+	const [deleteOpen, setDeleteOpen] = useState(false);
+	const deleteMutation = useMutation({ mutationFn: onDelete });
 	const blockedMessage = "請先儲存或還原變更，才能離開這張卡片";
 	const guardExit =
 		<Args extends unknown[]>(leave: (...args: Args) => void) =>
@@ -1240,6 +1259,15 @@ function CardDetail({
 	};
 	const teams = bootstrap.teams.filter((team) => team.active).sort((a, b) => a.sortOrder - b.sortOrder);
 	const lists = [...bootstrap.board.lists].sort((a, b) => a.position - b.position);
+	const currentList = lists.find((list) => list.key === card.listKey);
+	const closedStatusName = currentList?.closed ? card.gitLabStatusName : null;
+	const normalizedClosedStatus = closedStatusName?.trim().toLocaleLowerCase().replaceAll("’", "'");
+	const closedStatusTone =
+		normalizedClosedStatus === "done"
+			? "done"
+			: ["duplicate", "won't do", "cancelled", "canceled"].includes(normalizedClosedStatus ?? "")
+				? "declined"
+				: "neutral";
 	const submitDetails = (event: React.FormEvent) => {
 		event.preventDefault();
 		const normalized = title.trim();
@@ -1288,6 +1316,19 @@ function CardDetail({
 				<p className={styles.srOnly} role="status" aria-live="polite">
 					{detailsDirty && exitBlocked > 0 ? blockedMessage : save.announcement}
 				</p>
+				{closedStatusName ? (
+					<div className={styles.detailClosedStatus}>
+						<span>GitLab 關閉狀態</span>
+						<StaticChip
+							className={styles.closedStatusChip}
+							data-status-tone={closedStatusTone}
+							label={closedStatusName}
+							size="sm"
+							variant="suggestion"
+							aria-label={`GitLab 關閉狀態：${closedStatusName}`}
+						/>
+					</div>
+				) : null}
 				<section className={styles.detailTitleSection}>
 					{/* The field keeps its own label for assistive tech; this heading is
 					    the visible one, mirroring the description section. */}
@@ -1433,7 +1474,40 @@ function CardDetail({
 					</div>
 					<SaveIndicator save={save.get(card.issueIid, "details")} name="標題與描述" />
 				</footer>
+				{card.issueIid > 0 && card.syncState === "synced" ? (
+					<section className={styles.detailDanger} aria-labelledby="delete-card-heading">
+						<div>
+							<h3 id="delete-card-heading">永久刪除卡片</h3>
+							<p>這會永久刪除 GitLab Issue 與看板卡片，無法復原。</p>
+							{deleteMutation.isError ? <p role="alert">{errorMessage(deleteMutation.error, "無法刪除卡片，請再試一次。")}</p> : null}
+						</div>
+						<Button
+							variant="text"
+							tone="error"
+							leadingIcon={<Trash2 size="1rem" aria-hidden="true" />}
+							loading={deleteMutation.isPending}
+							loadingLabel="刪除中"
+							onClick={guardExit(() => {
+								deleteMutation.reset();
+								setDeleteOpen(true);
+							})}
+						>
+							永久刪除
+						</Button>
+					</section>
+				) : null}
 			</form>
+			<ConfirmDialog
+				open={deleteOpen}
+				onOpenChange={setDeleteOpen}
+				title={`永久刪除 #${card.issueIid}？`}
+				description={`GitLab Issue #${card.issueIid} 與 SITCON Board 卡片都會被永久刪除。此動作無法復原。`}
+				confirmLabel="永久刪除"
+				cancelLabel="取消"
+				destructive
+				busy={deleteMutation.isPending}
+				onConfirm={() => deleteMutation.mutate()}
+			/>
 			{/* Inside the drawer because Radix marks outside content inert; the
 			    fixed-position region still pins to the viewport corner. */}
 			{shareToast ? <ToastRegion messages={[shareToast]} /> : null}

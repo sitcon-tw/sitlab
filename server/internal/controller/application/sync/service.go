@@ -21,7 +21,7 @@ var DefaultBoardLists = []board.List{
 	{Key: "todo", Name: "To do", GitLabStatusName: "To do", Position: 2, Color: "#ed9121"},
 	{Key: "doing", Name: "Doing", GitLabStatusName: "Doing", Position: 3, Color: "#1f75cb"},
 	{Key: "review", Name: "Review", GitLabStatusName: "Review", Position: 4, Color: "#7a07ab"},
-	{Key: "closed", Name: "Done", GitLabStatusName: "Done", Position: 5, Closed: true, Color: "#108548"},
+	{Key: "closed", Name: "Close", Position: 5, Closed: true, Color: "#108548"},
 }
 
 type Service struct {
@@ -306,6 +306,22 @@ func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, technical(span, "claim durable operation", err)
 	}
+	if pending.Operation.Kind == board.OperationDeleteCard {
+		actorAccessToken, err := s.actorAccessToken(ctx, pending)
+		if err != nil {
+			s.failOperation(ctx, pending, now, "GITLAB_REAUTH_REQUIRED", err)
+			return true, technical(span, "load actor GitLab authorization", err)
+		}
+		err = s.gitlab.DeleteIssue(ctx, pending.Card.IssueIID, actorAccessToken)
+		if err != nil && !errors.Is(err, board.ErrCardNotFound) {
+			s.failOperation(ctx, pending, now, "GITLAB_SYNC_FAILED", err)
+			return true, technical(span, "delete GitLab issue", err)
+		}
+		if err := s.repo.CompleteDeleteOperation(ctx, pending, now); err != nil {
+			return true, technical(span, "complete durable card deletion", err)
+		}
+		return true, nil
+	}
 	directorySnapshot, err := s.repo.Snapshot(ctx)
 	if err != nil {
 		s.failOperation(ctx, pending, now, "SNAPSHOT_NOT_READY", err)
@@ -346,6 +362,7 @@ func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
 		StartDate:             operationString(pending.Payload, "startDate", pending.Card.StartDate),
 		DueDate:               operationString(pending.Payload, "dueDate", pending.Card.DueDate),
 		GitLabStatusName:      list.GitLabStatusName,
+		State:                 issueStateForList(list),
 	}
 	if !mutation.Create {
 		switch pending.Operation.Kind {
@@ -363,16 +380,10 @@ func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
 			mutation.Fields.Labels, mutation.Fields.Status = true, true
 		}
 	}
-	if s.actors == nil {
-		err := errors.New("GitLab authorization is unavailable; sign out and sign in again")
+	actorAccessToken, err := s.actorAccessToken(ctx, pending)
+	if err != nil {
 		s.failOperation(ctx, pending, now, "GITLAB_REAUTH_REQUIRED", err)
 		return true, technical(span, "load actor GitLab authorization", err)
-	}
-	actorAccessToken, err := s.actors.AccessToken(ctx, pending.RequestedByUserID)
-	if err != nil {
-		reauthErr := fmt.Errorf("GitLab authorization is unavailable; sign out and sign in again: %w", err)
-		s.failOperation(ctx, pending, now, "GITLAB_REAUTH_REQUIRED", reauthErr)
-		return true, technical(span, "load actor GitLab authorization", reauthErr)
 	}
 	issue, err := s.gitlab.ApplyIssue(ctx, mutation, actorAccessToken)
 	if err != nil {
@@ -446,6 +457,17 @@ func operationInt64s(payload map[string]any, key string, fallback []int64) []int
 		}
 	}
 	return result
+}
+
+func (s *Service) actorAccessToken(ctx context.Context, pending PendingOperation) (string, error) {
+	if s.actors == nil {
+		return "", errors.New("GitLab authorization is unavailable; sign out and sign in again")
+	}
+	actorAccessToken, err := s.actors.AccessToken(ctx, pending.RequestedByUserID)
+	if err != nil {
+		return "", fmt.Errorf("GitLab authorization is unavailable; sign out and sign in again: %w", err)
+	}
+	return actorAccessToken, nil
 }
 
 func (s *Service) RunOperations(ctx context.Context, pollInterval time.Duration) {
@@ -687,18 +709,25 @@ func mapIssue(issue GitLabIssue, directorySnapshot directory.Snapshot, lists []b
 	if !ok {
 		return board.Card{}, false, nil
 	}
-	list, ok := boardListByStatus(lists, issue.GitLabStatusName)
+	list, ok := boardListByIssueState(lists, issue.State, issue.GitLabStatusName)
 	if !ok {
 		return board.Card{}, false, fmt.Errorf("issue !%d uses unmapped GitLab status %q", issue.IssueIID, issue.GitLabStatusName)
 	}
 	title := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(issue.Title), team.TitlePrefix))
 	position := positions[list.Key]
 	positions[list.Key]++
+	gitLabStatusName := list.GitLabStatusName
+	if list.Closed {
+		// Close is an aggregate lane for GitLab's top-level closed state. Keep
+		// the granular closed status (for example Done, Duplicate, or Won't do)
+		// as card metadata instead of replacing it with a synthetic lane status.
+		gitLabStatusName = issue.GitLabStatusName
+	}
 	return board.Card{
 		IssueIID: issue.IssueIID, GitLabIssueID: &issue.GitLabIssueID,
 		Title: title, Description: issue.Description, WebURL: issue.WebURL, ListKey: list.Key, Position: position,
 		TeamKey: team.Key, AssigneeGitLabUserIDs: append([]int64(nil), issue.AssigneeGitLabUserIDs...),
-		StartDate: issue.StartDate, DueDate: issue.DueDate, Labels: append([]string(nil), issue.Labels...), GitLabStatusName: issue.GitLabStatusName,
+		StartDate: issue.StartDate, DueDate: issue.DueDate, Labels: append([]string(nil), issue.Labels...), GitLabStatusName: gitLabStatusName,
 		SyncState: board.OperationSynced, CreatedAt: issue.CreatedAt.UTC(), UpdatedAt: issue.UpdatedAt.UTC(),
 	}, true, nil
 }
@@ -736,6 +765,25 @@ func boardListByStatus(lists []board.List, statusName string) (board.List, bool)
 		}
 	}
 	return board.List{}, false
+}
+
+func boardListByIssueState(lists []board.List, state, statusName string) (board.List, bool) {
+	if strings.EqualFold(state, "closed") {
+		for _, list := range lists {
+			if list.Closed {
+				return list, true
+			}
+		}
+		return board.List{}, false
+	}
+	return boardListByStatus(lists, statusName)
+}
+
+func issueStateForList(list board.List) string {
+	if list.Closed {
+		return "closed"
+	}
+	return "opened"
 }
 
 func canonicalLabels(existing []string, team directory.Team, _ board.List, teams []directory.Team, _ []board.List) []string {

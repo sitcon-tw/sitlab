@@ -145,7 +145,7 @@ func (c *Client) requireLifecycle(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for _, required := range []string{"Waiting", "Inbox", "To do", "Doing", "Review", "Done"} {
+	for _, required := range []string{"Waiting", "Inbox", "To do", "Doing", "Review"} {
 		if _, ok := statuses[strings.ToLower(required)]; !ok {
 			// Drop the cache so a corrected lifecycle is picked up by the next
 			// poll rather than after the TTL expires.
@@ -166,6 +166,22 @@ func (c *Client) Issue(ctx context.Context, issueIID int64) (appsync.GitLabIssue
 		return appsync.GitLabIssue{}, board.ErrCardNotFound
 	}
 	return mapWorkItem(data.Project.WorkItems.Nodes[0]), nil
+}
+
+func (c *Client) DeleteIssue(ctx context.Context, issueIID int64, actorAccessToken string) error {
+	requestURL := c.projectEndpoint("/issues/") + strconv.FormatInt(issueIID, 10)
+	response, err := c.do(ctx, http.MethodDelete, requestURL, nil, "", actorAccessToken)
+	if err != nil {
+		var statusError *httpStatusError
+		if errors.As(err, &statusError) && statusError.status == http.StatusNotFound {
+			return board.ErrCardNotFound
+		}
+		return err
+	}
+	if err := response.Body.Close(); err != nil {
+		return fmt.Errorf("close GitLab issue deletion response: %w", err)
+	}
+	return nil
 }
 
 func (c *Client) ProjectLabels(ctx context.Context) ([]appactivity.ProjectLabel, error) {
@@ -353,7 +369,7 @@ func (c *Client) ApplyIssue(ctx context.Context, mutation appsync.IssueMutation,
 			return appsync.GitLabIssue{}, err
 		}
 	}
-	if mutation.Create || mutation.Fields.Status {
+	if (mutation.Create || mutation.Fields.Status) && mutation.GitLabStatusName != "" {
 		if _, ok := metadata.statuses[strings.ToLower(mutation.GitLabStatusName)]; !ok {
 			return appsync.GitLabIssue{}, fmt.Errorf("GitLab lifecycle does not contain required status %q", mutation.GitLabStatusName)
 		}
@@ -404,11 +420,14 @@ func (c *Client) ApplyIssue(ctx context.Context, mutation appsync.IssueMutation,
 		}
 		base["startAndDueDateWidget"] = dates
 	}
-	if mutation.Create || mutation.Fields.Status {
+	if (mutation.Create || mutation.Fields.Status) && mutation.GitLabStatusName != "" {
 		base["statusWidget"] = map[string]any{"name": mutation.GitLabStatusName}
 	}
 	var data workItemMutationData
 	if mutation.Create {
+		if strings.EqualFold(mutation.State, "closed") {
+			return appsync.GitLabIssue{}, fmt.Errorf("a GitLab issue cannot be created directly in the Close lane")
+		}
 		base["namespacePath"] = c.config.ProjectPath
 		base["workItemTypeId"] = metadata.issueTypeID
 		base["labelsWidget"] = map[string]any{"labelIds": labelIDs}
@@ -417,6 +436,13 @@ func (c *Client) ApplyIssue(ctx context.Context, mutation appsync.IssueMutation,
 		current, currentErr := c.Issue(ctx, mutation.IssueIID)
 		if currentErr != nil {
 			return appsync.GitLabIssue{}, currentErr
+		}
+		if mutation.Fields.Status {
+			if strings.EqualFold(mutation.State, "closed") && !strings.EqualFold(current.State, "closed") {
+				base["stateEvent"] = "CLOSE"
+			} else if strings.EqualFold(mutation.State, "opened") && strings.EqualFold(current.State, "closed") {
+				base["stateEvent"] = "REOPEN"
+			}
 		}
 		base["id"] = fmt.Sprintf("gid://gitlab/WorkItem/%d", current.GitLabIssueID)
 		if mutation.Fields.Labels {
@@ -435,6 +461,9 @@ func (c *Client) ApplyIssue(ctx context.Context, mutation appsync.IssueMutation,
 	if len(payload.Errors) > 0 {
 		return appsync.GitLabIssue{}, fmt.Errorf("GitLab work item mutation: %s", strings.Join(payload.Errors, "; "))
 	}
+	// A CLOSE state event lets GitLab choose its configured default closed status.
+	// Preserve the returned status because the Close lane aggregates several valid
+	// closed statuses such as Done, Duplicate, and Won't do.
 	return mapWorkItem(payload.WorkItem), nil
 }
 

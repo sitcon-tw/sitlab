@@ -90,6 +90,9 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Result, error)
 	if !found {
 		return Result{}, invalidField("listKey", "INVALID_VALUE", "must identify an active board list")
 	}
+	if list.Closed {
+		return Result{}, invalidField("listKey", "INVALID_VALUE", "new cards must start in an open board list")
+	}
 
 	now := s.now().UTC()
 	operation := newOperation(input.OperationID, domain.OperationCreateCard, now)
@@ -111,6 +114,50 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Result, error)
 		return Result{}, technical(span, "create optimistic card", err)
 	}
 	return result, nil
+}
+
+func (s *Service) Delete(ctx context.Context, input DeleteInput) (domain.Operation, error) {
+	ctx, span := s.tracer.Start(ctx, "board.delete_card")
+	defer span.End()
+	if result, done, err := s.idempotent(ctx, input.OperationID, domain.OperationDeleteCard); done {
+		return result.Operation, err
+	}
+	if err := validateMutationIdentity(input.OperationID, input.ActorUserID); err != nil {
+		return domain.Operation{}, err
+	}
+	card, err := s.repo.Card(ctx, input.IssueIID)
+	if errors.Is(err, domain.ErrCardNotFound) {
+		return domain.Operation{}, apperror.NotFound("card")
+	}
+	if err != nil {
+		return domain.Operation{}, technical(span, "load card", err)
+	}
+	if card.IssueIID <= 0 || card.SyncState != domain.OperationSynced {
+		return domain.Operation{}, cardSyncConflict()
+	}
+
+	now := s.now().UTC()
+	card.SyncState, card.SyncError, card.PendingOperationID, card.UpdatedAt = domain.OperationPending, "", input.OperationID, now
+	iid := card.IssueIID
+	operation := newOperation(input.OperationID, domain.OperationDeleteCard, now)
+	operation.IssueIID = &iid
+	operation, err = s.repo.DeleteCard(ctx, Mutation{
+		Card: card, Operation: operation, RequestedByUserID: input.ActorUserID,
+		Payload: map[string]any{},
+	})
+	if errors.Is(err, domain.ErrCardSyncConflict) || errors.Is(err, domain.ErrCardDeleting) {
+		return domain.Operation{}, cardSyncConflict()
+	}
+	if errors.Is(err, domain.ErrOperationConflict) {
+		return domain.Operation{}, operationConflict()
+	}
+	if errors.Is(err, domain.ErrCardNotFound) {
+		return domain.Operation{}, apperror.NotFound("card")
+	}
+	if err != nil {
+		return domain.Operation{}, technical(span, "store card deletion", err)
+	}
+	return operation, nil
 }
 
 func (s *Service) UpdateDetails(ctx context.Context, input UpdateDetailsInput) (Result, error) {
@@ -297,6 +344,9 @@ func (s *Service) update(ctx context.Context, operationID, actorUserID string, i
 	operation := newOperation(operationID, kind, now)
 	operation.IssueIID = &iid
 	result, err := s.repo.UpdateCard(ctx, Mutation{Card: card, Operation: operation, RequestedByUserID: actorUserID, Payload: payload})
+	if errors.Is(err, domain.ErrCardDeleting) {
+		return Result{}, cardSyncConflict()
+	}
 	if errors.Is(err, domain.ErrOperationConflict) {
 		return Result{}, operationConflict()
 	}
@@ -404,6 +454,10 @@ func invalidField(name, code, message string) error {
 
 func operationConflict() error {
 	return apperror.Conflict("OPERATION_CONFLICT", "operationId was already used for another mutation")
+}
+
+func cardSyncConflict() error {
+	return apperror.Conflict("CARD_SYNC_CONFLICT", "card must finish its current operation before it can be changed")
 }
 
 func technical(span trace.Span, action string, err error) error {

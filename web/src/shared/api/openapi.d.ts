@@ -140,6 +140,23 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/cards/{issueIid}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/** Permanently delete a card and its GitLab issue */
+		delete: operations["deleteCard"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/cards/{issueIid}/assignee": {
 		parameters: {
 			query?: never;
@@ -668,6 +685,7 @@ export interface components {
 			startDate: string | null;
 			dueDate: string | null;
 			labels: string[];
+			gitLabStatusName: string | null;
 			/** @enum {string} */
 			syncState: "pending" | "processing" | "synced" | "failed";
 			syncError: string | null;
@@ -749,6 +767,9 @@ export interface components {
 		};
 		CardCommentsResponse: {
 			comments: components["schemas"]["CardComment"][];
+		};
+		CardDeletionResponse: {
+			operation: components["schemas"]["DurableOperation"];
 		};
 		CardMutationResponse: {
 			card: components["schemas"]["BoardCard"];
@@ -852,6 +873,9 @@ export interface components {
 			/** Format: int32 */
 			accessLevel: number;
 		};
+		DeleteCardRequest: {
+			operationId: components["schemas"]["uuid"];
+		};
 		/**
 		 * @example {
 		 *       "gitLabUserId": 123456,
@@ -936,7 +960,16 @@ export interface components {
 		DurableOperation: {
 			id: components["schemas"]["uuid"];
 			/** @enum {string} */
-			kind: "create_card" | "update_details" | "update_team" | "update_assignee" | "update_start_date" | "update_due_date" | "update_labels" | "move_card";
+			kind:
+				| "create_card"
+				| "update_details"
+				| "update_team"
+				| "update_assignee"
+				| "update_start_date"
+				| "update_due_date"
+				| "update_labels"
+				| "move_card"
+				| "delete_card";
 			/** @enum {string} */
 			state: "pending" | "processing" | "synced" | "failed";
 			/** Format: int32 */
@@ -1711,6 +1744,88 @@ export interface operations {
 			};
 			/** @description Service unavailable. */
 			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	deleteCard: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-CSRF-Token": components["parameters"]["CSRFHeader"];
+			};
+			path: {
+				issueIid: components["parameters"]["IssueIidPath"];
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["DeleteCardRequest"];
+			};
+		};
+		responses: {
+			/** @description The request has been accepted for processing, but processing has not yet completed. */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CardDeletionResponse"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The server cannot find the requested resource. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description The request conflicts with the current state of the server. */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Client error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
 				headers: {
 					[name: string]: unknown;
 				};

@@ -35,6 +35,29 @@ export async function createCard(input: {
 	);
 }
 
+export async function deleteCard(card: BoardCard, operationId: string) {
+	if (demo) {
+		await new Promise((resolve) => setTimeout(resolve, 250));
+		return {
+			operation: {
+				id: operationId,
+				kind: "delete_card" as const,
+				state: "pending" as const,
+				attempts: 0,
+				lastError: null,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString()
+			}
+		};
+	}
+	return expectData(
+		await api.DELETE("/cards/{issueIid}", {
+			params: { path: { issueIid: card.issueIid }, header: { "X-CSRF-Token": await getCsrfToken() } },
+			body: { operationId }
+		})
+	);
+}
+
 export async function updateDetails(card: BoardCard, operationId: string, title: string, description: string) {
 	if (demo) return demoMutation(card, { title, description }, operationId);
 	return expectData(

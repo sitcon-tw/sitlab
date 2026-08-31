@@ -9,7 +9,8 @@ alias OperationKind =
 	| "update_start_date"
 	| "update_due_date"
 	| "update_labels"
-	| "move_card";
+	| "move_card"
+	| "delete_card";
 alias SyncHealth = "synced" | "syncing" | "offline";
 
 model BoardList {
@@ -33,6 +34,7 @@ model BoardCard {
 	startDate: plainDate | null;
 	dueDate: plainDate | null;
 	labels: string[];
+	gitLabStatusName: string | null;
 	syncState: OperationState;
 	syncError: string | null;
 	pendingOperationId: uuid | null;
@@ -79,6 +81,10 @@ model DurableOperation {
 
 model CardMutationResponse {
 	card: BoardCard;
+	operation: DurableOperation;
+}
+
+model CardDeletionResponse {
 	operation: DurableOperation;
 }
 
@@ -307,6 +313,10 @@ model UpdateCardDetailsRequest {
 	title: string;
 
 	description: string;
+}
+
+model DeleteCardRequest {
+	operationId: uuid;
 }
 
 model UpdateCardTeamRequest {

@@ -88,6 +88,9 @@ func mutationResult(kind board.OperationKind) appboard.Result {
 func (boardFake) Create(context.Context, appboard.CreateInput) (appboard.Result, error) {
 	return mutationResult(board.OperationCreateCard), nil
 }
+func (boardFake) Delete(context.Context, appboard.DeleteInput) (board.Operation, error) {
+	return mutationResult(board.OperationDeleteCard).Operation, nil
+}
 func (boardFake) UpdateDetails(context.Context, appboard.UpdateDetailsInput) (appboard.Result, error) {
 	return mutationResult(board.OperationUpdateDetails), nil
 }
@@ -296,6 +299,13 @@ func TestCardMutationUsesAcceptedContractAndCSRF(t *testing.T) {
 func TestUpdateCardStartDateUsesAcceptedContract(t *testing.T) {
 	response := perform(testRouter(nil, ""), http.MethodPut, "/api/v1/cards/127/start-date", `{"operationId":"10000000-0000-0000-0000-000000000001","startDate":"2026-07-18"}`, true)
 	if response.Code != http.StatusAccepted || !strings.Contains(response.Body.String(), `"kind":"update_start_date"`) {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestDeleteCardUsesAcceptedContract(t *testing.T) {
+	response := perform(testRouter(nil, ""), http.MethodDelete, "/api/v1/cards/189", `{"operationId":"10000000-0000-0000-0000-000000000001"}`, true)
+	if response.Code != http.StatusAccepted || !strings.Contains(response.Body.String(), `"kind":"delete_card"`) || strings.Contains(response.Body.String(), `"card"`) {
 		t.Fatalf("response = %d %s", response.Code, response.Body.String())
 	}
 }

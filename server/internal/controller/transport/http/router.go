@@ -110,6 +110,7 @@ func NewRouter(dep Dependencies) http.Handler {
 			protected.Get("/directory", h.directoryState)
 			protected.Put("/me/preferences", h.updatePreferences)
 			protected.Post("/cards", h.createCard)
+			protected.Delete("/cards/{issueIid}", h.deleteCard)
 			protected.Get("/labels", h.listProjectLabels)
 			protected.Post("/labels", h.createProjectLabel)
 			protected.Put("/labels/{labelId}", h.updateProjectLabel)

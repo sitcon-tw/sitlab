@@ -194,7 +194,7 @@ test.describe("SITCON Board demo visual audit", () => {
 			await expect(closedLane.getByRole("heading", { name: /近期完成 1$/ })).toHaveCount(0);
 			await expect(closedLane.getByText("已顯示最近 50 / 55 個 Issue")).toBeVisible();
 
-			const more = closedLane.getByRole("button", { name: "在 Done 顯示更多 5 個 Issue" });
+			const more = closedLane.getByRole("button", { name: "在 Close 顯示更多 5 個 Issue" });
 			await more.scrollIntoViewIfNeeded();
 			await expect(more).toBeVisible();
 			const layout = await page.evaluate(() => ({ viewport: window.innerWidth, documentWidth: document.documentElement.scrollWidth }));

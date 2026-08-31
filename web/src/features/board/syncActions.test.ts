@@ -18,6 +18,7 @@ function card(overrides: Partial<BoardCard> = {}): BoardCard {
 		startDate: null,
 		dueDate: null,
 		labels: ["Team::Development"],
+		gitLabStatusName: "Inbox",
 		syncState: "synced",
 		syncError: null,
 		pendingOperationId: null,

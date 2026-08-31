@@ -109,6 +109,14 @@ function card(
 	dueDate: string | null,
 	syncState: BoardCard["syncState"] = "synced"
 ): BoardCard {
+	const gitLabStatusNames: Record<string, string> = {
+		wating: "Waiting",
+		inbox: "Inbox",
+		todo: "To do",
+		doing: "Doing",
+		review: "Review",
+		closed: "Done"
+	};
 	const labels = [teams.find((team) => team.key === teamKey)?.gitLabLabel, ...(issueIid === 127 ? ["Priority::High", "Backend"] : [])].filter(
 		(label): label is string => Boolean(label)
 	);
@@ -125,6 +133,7 @@ function card(
 		startDate,
 		dueDate,
 		labels,
+		gitLabStatusName: gitLabStatusNames[listKey] ?? null,
 		syncState,
 		syncError: syncState === "failed" ? "GitLab 暫時無法更新，請稍後重試。" : null,
 		pendingOperationId: syncState === "failed" ? "10000000-0000-4000-8000-000000000099" : null,
@@ -155,7 +164,7 @@ export const demoBootstrap: Bootstrap = {
 			{ key: "todo", name: "To do", position: 2, closed: false, color: "accent" },
 			{ key: "doing", name: "Doing", position: 3, closed: false, color: "info" },
 			{ key: "review", name: "Review", position: 4, closed: false, color: "warning" },
-			{ key: "closed", name: "Done", position: 5, closed: true, color: "success" }
+			{ key: "closed", name: "Close", position: 5, closed: true, color: "success" }
 		],
 		cards: [
 			card(127, "修正報名系統寄信流程", "釐清失敗重送條件，補上整合測試與觀測紀錄。", "todo", 0, "development", [114], "2026-07-17", "2026-07-21"),

@@ -107,6 +107,110 @@ func TestMissingIssueMapsToCardNotFound(t *testing.T) {
 	}
 }
 
+func TestDeleteIssueUsesTheActorTokenAndTreatsMissingAsAlreadyDeleted(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		status   int
+		expected error
+	}{
+		{name: "deleted", status: http.StatusNoContent},
+		{name: "already missing", status: http.StatusNotFound, expected: board.ErrCardNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				if request.Method != http.MethodDelete || request.URL.EscapedPath() != "/api/v4/projects/sitcon-tw%2F2027/issues/189" {
+					t.Errorf("request = %s %s", request.Method, request.URL.EscapedPath())
+				}
+				if request.Header.Get("Authorization") != "Bearer actor-token" {
+					t.Errorf("Authorization = %q", request.Header.Get("Authorization"))
+				}
+				return response(tt.status, `{}`), nil
+			})
+			client, _ := New(&http.Client{Transport: transport}, Config{
+				BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027",
+			})
+
+			err := client.DeleteIssue(context.Background(), 189, "actor-token")
+			if !errors.Is(err, tt.expected) || (tt.expected == nil && err != nil) {
+				t.Fatalf("DeleteIssue() error = %v, want %v", err, tt.expected)
+			}
+		})
+	}
+}
+
+func TestApplyIssueUsesStateEventAndPreservesReturnedStatus(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name           string
+		currentState   string
+		targetState    string
+		targetStatus   string
+		wantStateEvent string
+		wantStatus     string
+		wantReturned   string
+	}{
+		{name: "close lets GitLab choose its closed status", currentState: "OPEN", targetState: "closed", wantStateEvent: "CLOSE", wantReturned: "Done"},
+		{name: "reopen selects the requested lifecycle", currentState: "CLOSED", targetState: "opened", targetStatus: "Doing", wantStateEvent: "REOPEN", wantStatus: "Doing", wantReturned: "Doing"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var sent map[string]any
+			current := strings.Replace(testWorkItemJSON("189", "420", "[總召組] 填寫預算表"), `"state":"OPEN"`, `"state":"`+tt.currentState+`"`, 1)
+			resultState := "OPEN"
+			if tt.targetState == "closed" {
+				resultState = "CLOSED"
+			}
+			updated := strings.Replace(testWorkItemJSON("189", "420", "[總召組] 填寫預算表"), `"state":"OPEN"`, `"state":"`+resultState+`"`, 1)
+			updated = strings.Replace(updated, `"name":"To do"`, `"name":"`+tt.wantReturned+`"`, 1)
+			transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				var payload struct {
+					Query     string         `json:"query"`
+					Variables map[string]any `json:"variables"`
+				}
+				if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+					t.Fatal(err)
+				}
+				switch {
+				case strings.Contains(payload.Query, "WorkItemMetadata"):
+					return response(http.StatusOK, `{"data":{"project":{"labels":{"pageInfo":{"hasNextPage":false},"nodes":[{"id":"gid://gitlab/ProjectLabel/1","title":"Team::開發組"}]},"workItemTypes":{"nodes":[{"id":"gid://gitlab/WorkItems::Type/1","name":"Issue","widgetDefinitions":[{"allowedStatuses":[{"id":"status-1","name":"Waiting"},{"id":"status-2","name":"Inbox"},{"id":"status-3","name":"To do"},{"id":"status-4","name":"Doing"},{"id":"status-5","name":"Review"},{"id":"status-6","name":"Done"}]}]}]}}}}`), nil
+				case strings.Contains(payload.Query, "query WorkItem"):
+					return response(http.StatusOK, `{"data":{"project":{"workItems":{"nodes":[`+current+`]}}}}`), nil
+				case strings.Contains(payload.Query, "UpdateWorkItem"):
+					sent = payload.Variables["input"].(map[string]any)
+					return response(http.StatusOK, `{"data":{"workItemUpdate":{"errors":[],"workItem":`+updated+`}}}`), nil
+				default:
+					return response(http.StatusBadRequest, `{}`), nil
+				}
+			})
+			client, _ := New(&http.Client{Transport: transport}, Config{BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027"})
+			issue, err := client.ApplyIssue(context.Background(), sync.IssueMutation{
+				IssueIID: 189, Title: "[總召組] 填寫預算表", Labels: []string{"Team::開發組"},
+				State: tt.targetState, GitLabStatusName: tt.targetStatus, Fields: board.IssueMutationFields{Status: true},
+			}, "actor-token")
+			if err != nil {
+				t.Fatalf("ApplyIssue() error = %v", err)
+			}
+			if sent["stateEvent"] != tt.wantStateEvent {
+				t.Fatalf("stateEvent = %v, want %q", sent["stateEvent"], tt.wantStateEvent)
+			}
+			status, hasStatus := sent["statusWidget"].(map[string]any)
+			if tt.wantStatus == "" {
+				if hasStatus {
+					t.Fatalf("close wrote lifecycle status %#v", status)
+				}
+			} else if !hasStatus || status["name"] != tt.wantStatus {
+				t.Fatalf("statusWidget = %#v, want %q", status, tt.wantStatus)
+			}
+			if issue.GitLabStatusName != tt.wantReturned {
+				t.Fatalf("returned status = %q, want %q", issue.GitLabStatusName, tt.wantReturned)
+			}
+		})
+	}
+}
+
 func TestInvisibleProjectIsAnErrorRatherThanAnEmptyBoard(t *testing.T) {
 	t.Parallel()
 	lifecycle := `{"data":{"project":{"workItemTypes":{"nodes":[{"name":"Issue","widgetDefinitions":[{"allowedStatuses":[{"id":"status-1","name":"Waiting"},{"id":"status-2","name":"Inbox"},{"id":"status-3","name":"To do"},{"id":"status-4","name":"Doing"},{"id":"status-5","name":"Review"},{"id":"status-6","name":"Done"}]}]}]}}}}`
