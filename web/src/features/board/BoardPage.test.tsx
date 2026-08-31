@@ -194,7 +194,7 @@ describe("SITCON Board interactions", () => {
 
 		expect(screen.getByRole("button", { name: "新卡片組別" })).toHaveTextContent("開發組");
 		expect(screen.getByRole("button", { name: "選擇新卡片 Assignee" })).toHaveTextContent("Yorukot");
-		expect((screen.getByLabelText("新卡片期限") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+		expect((screen.getByLabelText("新卡片期限") as HTMLInputElement).value).toMatch(/^\d{4}\/\d{2}\/\d{2}$/);
 		const dialog = screen.getByRole("dialog", { name: "新增卡片" });
 		expect(within(dialog).getByRole("button", { name: "新卡片 Status" })).toHaveTextContent("Inbox");
 		expect(within(dialog).getByLabelText("新卡片 Description")).toHaveValue("");
@@ -223,6 +223,8 @@ describe("SITCON Board interactions", () => {
 		await user.type(within(dialog).getByLabelText("新卡片 Description"), "確認交接與值班時段");
 		await user.type(within(dialog).getByLabelText("搜尋新卡片 Label"), "Backend");
 		await user.click(await within(dialog).findByRole("checkbox", { name: "Backend" }));
+		await user.clear(within(dialog).getByLabelText("新卡片期限"));
+		await user.type(within(dialog).getByLabelText("新卡片期限"), "20260829");
 		await user.type(screen.getByLabelText("卡片標題"), "新增值班表");
 		await user.click(screen.getByRole("button", { name: "建立卡片" }));
 
@@ -239,7 +241,9 @@ describe("SITCON Board interactions", () => {
 		expect(within(doingLane as HTMLElement).getByRole("heading", { name: "[開發組] 新增值班表" })).toBeVisible();
 		expect(within(doingLane as HTMLElement).getByText("確認交接與值班時段")).toBeVisible();
 		expect(screen.queryByText("同步中")).not.toBeInTheDocument();
-		expect(createCard).toHaveBeenCalledWith(expect.objectContaining({ listKey: "doing", description: "確認交接與值班時段", labels: ["Backend"] }));
+		expect(createCard).toHaveBeenCalledWith(
+			expect.objectContaining({ listKey: "doing", description: "確認交接與值班時段", labels: ["Backend"], dueDate: "2026-08-29" })
+		);
 		await user.click(screen.getByRole("heading", { name: "[開發組] 新增值班表" }));
 		expect(screen.getByRole("dialog", { name: "新卡片詳細資料" })).toHaveTextContent("Backend");
 		await user.click(screen.getByRole("button", { name: "Close drawer" }));
@@ -545,6 +549,19 @@ describe("SITCON Board interactions", () => {
 		expect(handle).toHaveAttribute("title", "拖曳變更卡片狀態");
 	});
 
+	it("types a compact card due date without starting a drag", async () => {
+		const user = userEvent.setup();
+		vi.mocked(updateDueDate).mockReturnValue(new Promise(() => undefined));
+		render(<Harness />);
+		const input = screen.getByLabelText("[開發組] 修正報名系統寄信流程的期限");
+
+		await user.clear(input);
+		await user.type(input, "20260722");
+
+		expect(input).toHaveValue("2026/07/22");
+		expect(updateDueDate).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), "2026-07-22");
+	});
+
 	it("keeps team and status controls in card details and moves optimistically", async () => {
 		const user = userEvent.setup();
 		vi.mocked(moveCard).mockReturnValue(new Promise(() => undefined));
@@ -705,8 +722,8 @@ describe("SITCON Board interactions", () => {
 
 		await user.click(screen.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }));
 		const dialog = screen.getByRole("dialog", { name: /127 卡片詳細資料/ });
-		expect(within(dialog).getByLabelText("Start")).toHaveValue("2026-07-17");
-		expect(within(dialog).getByLabelText("Due")).toHaveValue("2026-07-21");
+		expect(within(dialog).getByLabelText("Start")).toHaveValue("2026/07/17");
+		expect(within(dialog).getByLabelText("Due")).toHaveValue("2026/07/21");
 		await user.clear(within(dialog).getByLabelText("Start"));
 		await user.type(within(dialog).getByLabelText("Start"), "2026-07-18");
 		expect(updateStartDate).toHaveBeenCalledWith(expect.objectContaining({ issueIid: 127 }), expect.any(String), "2026-07-18");

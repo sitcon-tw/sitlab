@@ -6,6 +6,7 @@ import {
 	Button,
 	Chip,
 	ConfirmDialog,
+	DateField,
 	EmptyState,
 	IconButton,
 	LinearProgress,
@@ -25,6 +26,7 @@ import {
 function ComponentCatalog() {
 	const [confirmOpen, setConfirmOpen] = useState(false);
 	const [mode, setMode] = useState<"single" | "all">("single");
+	const [date, setDate] = useState<string | null>("2026-08-29");
 	return (
 		<div className="storybook-stack">
 			<Panel title="Buttons and states" description="Commands use explicit tone and stable dimensions.">
@@ -82,6 +84,7 @@ function ComponentCatalog() {
 						]}
 					/>
 					<TextAreaField label="Description" optional />
+					<DateField label="Due date" value={date} onValueChange={setDate} calendarStart="2026-07-01" calendarEnd="2027-04-30" today="2026-08-31" />
 					<TextField label="Invalid field" error="A title is required." />
 					<TextField
 						label="Filter"

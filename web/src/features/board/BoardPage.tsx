@@ -10,6 +10,7 @@ import { useSortable } from "@dnd-kit/react/sortable";
 import {
 	Badge,
 	Button,
+	DateField,
 	Dialog,
 	Drawer,
 	IconButton,
@@ -140,6 +141,8 @@ type CreateCardInput = {
 
 const noopDraggingChange = () => undefined;
 const CLOSED_LANE_PAGE_SIZE = 50;
+const BOARD_CALENDAR_START = "2026-07-01";
+const BOARD_CALENDAR_END = "2027-04-30";
 type ClosedLaneExpansion = { scopeKey: string; limits: Record<string, number> };
 const STATUS_MOVE_SORTABLE_PLUGINS = [SortableKeyboardPlugin];
 type BoardCollisionDetector = NonNullable<DroppableInput["collisionDetector"]>;
@@ -856,7 +859,7 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 	const [description, setDescription] = useState("");
 	const [labels, setLabels] = useState<string[]>([]);
 	const [assignees, setAssignees] = useState<number[]>(preferredAssignees(bootstrap, defaultTeam));
-	const [dueDate, setDueDate] = useState(taipeiDateAfter(7));
+	const [dueDate, setDueDate] = useState<string | null>(taipeiDateAfter(7));
 	const [clearedAssignees, setClearedAssignees] = useState<number[]>([]);
 	const teams = bootstrap.teams.filter((team) => team.active).sort((a, b) => a.sortOrder - b.sortOrder);
 	const leaderTargets = teams.map((team) => ({ team, leaders: teamLeaders(bootstrap, team.key) })).filter((target) => target.leaders.length > 0);
@@ -944,14 +947,15 @@ function QuickCreate({ bootstrap, onCreate }: { bootstrap: Bootstrap; onCreate: 
 				onValueChange={setListKey}
 				options={lists.map((list) => ({ value: list.key, label: list.name }))}
 			/>
-			<TextField
+			<DateField
 				dense
-				alwaysFloatLabel
-				type="date"
 				className={styles.dateControl}
 				label="新卡片期限"
 				value={dueDate}
-				onChange={(event) => setDueDate(event.target.value)}
+				onValueChange={setDueDate}
+				calendarStart={BOARD_CALENDAR_START}
+				calendarEnd={BOARD_CALENDAR_END}
+				today={taipeiDateAfter(0)}
 			/>
 			<IconButton
 				type="submit"
@@ -1107,10 +1111,18 @@ function CardItem({
 			</button>
 			<CardLabels card={card} bootstrap={bootstrap} labelMetadata={labelMetadata} title={title} />
 			<footer className={styles.cardFooter}>
-				<label className={styles.cardDate} data-overdue={overdue}>
+				<div className={styles.cardDate} data-overdue={overdue}>
 					<span className={styles.srOnly}>期限</span>
-					<input type="date" aria-label={`${title}的期限`} value={card.dueDate ?? ""} onChange={(event) => onDueDate(event.target.value || null)} />
-				</label>
+					<DateField
+						variant="compact"
+						label={`${title}的期限`}
+						value={card.dueDate}
+						onValueChange={onDueDate}
+						calendarStart={BOARD_CALENDAR_START}
+						calendarEnd={BOARD_CALENDAR_END}
+						today={taipeiDateAfter(0)}
+					/>
+				</div>
 				<span className={styles.cardUpdated} title={`更新於 ${formatDateTime(card.updatedAt)}`}>
 					{ageLabel(card.updatedAt)}
 				</span>
@@ -1374,13 +1386,29 @@ function CardDetail({
 					</div>
 					<div className={styles.detailDates}>
 						<div className={styles.detailField}>
-							<TextField type="date" label="Start" value={card.startDate ?? ""} dense onChange={(event) => onStartDate(event.target.value || null)} />
+							<DateField
+								label="Start"
+								value={card.startDate}
+								dense
+								onValueChange={onStartDate}
+								calendarStart={BOARD_CALENDAR_START}
+								calendarEnd={BOARD_CALENDAR_END}
+								today={taipeiDateAfter(0)}
+							/>
 							<span className={styles.fieldSave}>
 								<SaveIndicator save={save.get(card.issueIid, "startDate")} name="Start" />
 							</span>
 						</div>
 						<div className={styles.detailField}>
-							<TextField type="date" label="Due" value={card.dueDate ?? ""} dense onChange={(event) => onDueDate(event.target.value || null)} />
+							<DateField
+								label="Due"
+								value={card.dueDate}
+								dense
+								onValueChange={onDueDate}
+								calendarStart={BOARD_CALENDAR_START}
+								calendarEnd={BOARD_CALENDAR_END}
+								today={taipeiDateAfter(0)}
+							/>
 							<span className={styles.fieldSave}>
 								<SaveIndicator save={save.get(card.issueIid, "dueDate")} name="Due" />
 							</span>

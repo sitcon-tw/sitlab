@@ -6,6 +6,8 @@ export { Chip, StaticChip } from "./components/Chip";
 export type { ChipProps, ChipVariant, StaticChipProps } from "./components/Chip";
 export { DataTable } from "./components/DataTable";
 export type { DataColumn, DataTableProps } from "./components/DataTable";
+export { DateField } from "./components/DateField";
+export type { DateFieldProps } from "./components/DateField";
 export { ConfirmDialog, Dialog, Drawer } from "./components/Dialog";
 export type { ConfirmDialogProps, DialogProps, DrawerProps } from "./components/Dialog";
 export { EmptyState } from "./components/EmptyState";

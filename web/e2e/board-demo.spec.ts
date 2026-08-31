@@ -640,8 +640,8 @@ test.describe("SITCON Board demo visual audit", () => {
 		const details = page.getByRole("dialog", { name: "#127 卡片詳細資料" });
 		await expect(details.getByRole("button", { name: "組別", exact: true })).toHaveText("開發組");
 		await expect(details.getByRole("button", { name: "狀態", exact: true })).toHaveText("To do");
-		await expect(details.getByLabel("Start")).toHaveValue("2026-07-17");
-		await expect(details.getByLabel("Due")).toHaveValue("2026-07-21");
+		await expect(details.getByLabel("Start")).toHaveValue("2026/07/17");
+		await expect(details.getByLabel("Due")).toHaveValue("2026/07/21");
 		await expect(details.getByText("Team::開發組")).toBeVisible();
 		await expect(details.getByText("Priority::High")).toBeVisible();
 		await expect(details.getByLabel("描述預覽")).toBeVisible();
@@ -680,7 +680,7 @@ test.describe("SITCON Board demo visual audit", () => {
 		await startDate.scrollIntoViewIfNeeded();
 		await expect(startDate).toBeInViewport();
 		await expect(startDate).toHaveValue("");
-		await expect(details.getByLabel("Due")).toHaveValue("2026-07-25");
+		await expect(details.getByLabel("Due")).toHaveValue("2026/07/25");
 		await details.getByRole("heading", { name: "Labels" }).scrollIntoViewIfNeeded();
 		await expect(details.getByLabel("新增 Label")).toBeVisible();
 		await details.getByRole("textbox", { name: "Comment" }).scrollIntoViewIfNeeded();

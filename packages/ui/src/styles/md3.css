@@ -1212,6 +1212,10 @@
 	color: var(--md-sys-color-primary);
 }
 
+.md-field--date:has(.md-date-field__trigger[data-state="open"]) .md-field__label {
+	color: var(--md-sys-color-primary);
+}
+
 .md-field[data-invalid="true"] .md-field__label {
 	color: var(--md-sys-color-error);
 }
@@ -1238,6 +1242,11 @@
 }
 
 .md-field:has(.md-field__input--select[data-state="open"]) .md-field__outline {
+	border-color: var(--md-sys-color-primary);
+	border-width: 2px;
+}
+
+.md-field--date:has(.md-date-field__trigger[data-state="open"]) .md-field__outline {
 	border-color: var(--md-sys-color-primary);
 	border-width: 2px;
 }
@@ -1273,6 +1282,220 @@
 
 .md-field:has(.md-field__input:disabled) .md-field__label {
 	color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
+}
+
+/* --- Date field and calendar --------------------------------------------
+ *
+ * The browser's native date popup cannot inherit product tokens. This shared
+ * field keeps canonical ISO values while the visible text and calendar use the
+ * same shadow-free product surfaces as every other control.
+ */
+
+.md-date-field {
+	min-width: 0;
+}
+
+.md-field--date .md-field__input {
+	padding-inline-end: 0;
+}
+
+.md-field--date .md-date-field__trigger {
+	margin-inline-end: var(--md-space-2);
+}
+
+.md-field--date[data-floating="true"] .md-field__input::placeholder {
+	opacity: 1;
+}
+
+.md-date-field--compact {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+}
+
+.md-date-field__compact-input {
+	width: 5.75rem;
+	min-width: 0;
+	height: 1.5rem;
+	padding: 0;
+	font-family: var(--md-sys-typescale-label-small-font);
+	font-size: var(--md-sys-typescale-label-small-size);
+	line-height: var(--md-sys-typescale-label-small-line-height);
+	color: inherit;
+	letter-spacing: var(--md-sys-typescale-label-small-tracking);
+	background: none;
+	border: 0;
+}
+
+.md-date-field__compact-input::placeholder {
+	color: var(--md-sys-color-on-surface-variant);
+}
+
+.md-date-field--compact .md-date-field__trigger {
+	width: 1.5rem;
+	height: 1.5rem;
+}
+
+.md-date-field--compact[data-invalid="true"] {
+	color: var(--md-sys-color-error);
+}
+
+.md-date-picker {
+	z-index: 100;
+	width: min(19.75rem, calc(100vw - 0.5rem));
+	padding: var(--md-space-1);
+	color: var(--md-sys-color-on-surface);
+	background: var(--md-sys-color-surface-container-high);
+	border: 1px solid var(--md-sys-color-outline-variant);
+	border-radius: var(--md-sys-shape-corner-large);
+}
+
+.md-date-picker--popover {
+	max-height: var(--radix-popover-content-available-height);
+}
+
+.md-date-picker--dialog {
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	z-index: 101;
+	max-height: calc(100svh - 0.5rem);
+	overflow-y: auto;
+	transform: translate(-50%, -50%);
+}
+
+.md-date-picker__overlay {
+	z-index: 100;
+}
+
+.md-date-picker__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	min-height: 2.75rem;
+	padding-inline: var(--md-space-2) var(--md-space-1);
+}
+
+.md-date-picker__header h2 {
+	margin: 0;
+	font-size: var(--md-sys-typescale-title-medium-size);
+	font-weight: var(--md-sys-typescale-title-medium-weight);
+	line-height: var(--md-sys-typescale-title-medium-line-height);
+	letter-spacing: var(--md-sys-typescale-title-medium-tracking);
+}
+
+.md-date-picker__navigation {
+	display: flex;
+	gap: var(--md-space-1);
+}
+
+.md-date-picker__scroll {
+	height: 18.5rem;
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior-y: contain;
+	scrollbar-color: var(--md-sys-color-outline-variant) transparent;
+	scrollbar-width: thin;
+}
+
+.md-date-picker__scroll::-webkit-scrollbar {
+	width: 0.375rem;
+}
+
+.md-date-picker__scroll::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.md-date-picker__scroll::-webkit-scrollbar-thumb {
+	background: var(--md-sys-color-outline-variant);
+	border-radius: var(--md-sys-shape-corner-full);
+}
+
+.md-date-picker__scroll::-webkit-scrollbar-thumb:hover {
+	background: var(--md-sys-color-outline);
+}
+
+.md-date-picker__grid {
+	width: 100%;
+	table-layout: fixed;
+	border-spacing: 0;
+	border-collapse: collapse;
+}
+
+.md-date-picker__grid thead {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: var(--md-sys-color-surface-container-high);
+}
+
+.md-date-picker__grid th {
+	height: 2rem;
+	padding: 0;
+	font-size: var(--md-sys-typescale-label-medium-size);
+	font-weight: var(--md-sys-typescale-label-medium-weight);
+	line-height: var(--md-sys-typescale-label-medium-line-height);
+	color: var(--md-sys-color-on-surface-variant);
+	letter-spacing: var(--md-sys-typescale-label-medium-tracking);
+	text-align: center;
+}
+
+.md-date-picker__grid td {
+	width: 2.75rem;
+	height: 2.75rem;
+	padding: 0;
+	text-align: center;
+}
+
+.md-date-picker__day {
+	width: 2.75rem;
+	height: 2.75rem;
+	padding: 0;
+	font-family: var(--md-sys-typescale-body-medium-font);
+	font-size: var(--md-sys-typescale-body-medium-size);
+	line-height: var(--md-sys-typescale-body-medium-line-height);
+	color: var(--md-sys-color-on-surface);
+	letter-spacing: var(--md-sys-typescale-body-medium-tracking);
+	background: none;
+	border: 1px solid transparent;
+	border-radius: var(--md-sys-shape-corner-full);
+}
+
+.md-date-picker__day[data-outside-month="true"] {
+	color: var(--sb-text-subtle);
+}
+
+.md-date-picker__day[data-today="true"]::after {
+	position: absolute;
+	bottom: var(--md-space-1);
+	left: 50%;
+	width: 0.25rem;
+	height: 0.25rem;
+	background: var(--md-sys-color-error);
+	border-radius: var(--md-sys-shape-corner-full);
+	transform: translateX(-50%);
+	content: "";
+}
+
+.md-date-picker__day[data-selected="true"] {
+	color: var(--md-sys-color-on-primary);
+	background: var(--md-sys-color-primary);
+	border-color: var(--md-sys-color-primary);
+}
+
+.md-date-picker__day[data-today="true"][data-selected="true"]::after {
+	background: var(--md-sys-color-on-primary);
+}
+
+.md-date-picker__day:disabled {
+	color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
+	cursor: not-allowed;
+}
+
+.md-date-picker__footer {
+	display: flex;
+	justify-content: space-between;
+	padding: var(--md-space-1);
 }
 
 /* --- Card (Panel) --------------------------------------------------------- */

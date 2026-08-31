@@ -14,7 +14,7 @@ function buildCard() {
 		</button>
 		<div class="labels" tabindex="0"><span class="chip">Backend</span></div>
 		<footer>
-			<label class="date"><input type="date" /></label>
+			<div class="date"><input type="text" /><button type="button">Open calendar</button></div>
 			<button type="button" class="assignee">變更 Assignee</button>
 		</footer>`;
 	const handle = card.querySelector<HTMLElement>(".handle")!;
@@ -42,6 +42,7 @@ describe("allowsCardDragActivation", () => {
 
 	it("leaves interactive controls to their own gestures", () => {
 		expect(at(".date input")).toBe(false);
+		expect(at(".date button")).toBe(false);
 		expect(at(".assignee")).toBe(false);
 		expect(at(".external")).toBe(false);
 		expect(at(".external svg")).toBe(false);

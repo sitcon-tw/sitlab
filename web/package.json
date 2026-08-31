@@ -6,6 +6,7 @@
 	"scripts": {
 		"prebuild": "pnpm --filter @project-template/ui build",
 		"build": "vite build",
+		"predev": "pnpm --filter @project-template/ui build",
 		"dev": "vite",
 		"generate:api-types": "openapi-typescript ../docs/public/openapi.json -o src/shared/api/openapi.d.ts",
 		"lint": "eslint .",

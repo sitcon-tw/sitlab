@@ -835,8 +835,8 @@
 	border-color: var(--md-sys-color-error);
 }
 
-.cardDate input {
-	width: 6.75rem;
+.cardDate :global(.md-date-field__compact-input) {
+	width: 5.5rem;
 	height: 1.5rem;
 	padding: 0;
 	font-size: var(--md-sys-typescale-label-large-size);
