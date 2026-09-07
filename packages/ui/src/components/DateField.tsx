@@ -458,7 +458,7 @@ export function DateField({
 			<DialogPrimitive.Trigger asChild>{trigger}</DialogPrimitive.Trigger>
 			<DialogPrimitive.Portal>
 				<DialogPrimitive.Overlay className="md-overlay md-date-picker__overlay" />
-				<DialogPrimitive.Content className="md-date-picker md-date-picker--dialog" onOpenAutoFocus={focusCalendarOnOpen}>
+				<DialogPrimitive.Content className="md-date-picker md-date-picker--dialog md-portalled-surface" onOpenAutoFocus={focusCalendarOnOpen}>
 					<DialogPrimitive.Title className="md-sr-only">{label}日期選擇器</DialogPrimitive.Title>
 					<DialogPrimitive.Description className="md-sr-only">可使用方向鍵選擇日期，或使用下方按鈕清除日期與選擇今天。</DialogPrimitive.Description>
 					{calendar}
@@ -470,7 +470,7 @@ export function DateField({
 			<PopoverPrimitive.Trigger asChild>{trigger}</PopoverPrimitive.Trigger>
 			<PopoverPrimitive.Portal>
 				<PopoverPrimitive.Content
-					className="md-date-picker md-date-picker--popover"
+					className="md-date-picker md-date-picker--popover md-portalled-surface"
 					align="end"
 					sideOffset={4}
 					collisionPadding={8}
@@ -528,17 +528,8 @@ export function DateField({
 	}
 
 	return (
-		<div className="md-date-field" onBlur={handleControlBlur}>
-			<FieldFrame
-				id={id}
-				label={label}
-				description={description}
-				error={inputError}
-				optional={optional}
-				dense={dense}
-				floating
-				className={classNames("md-field--date", className)}
-			>
+		<div className={classNames("md-date-field", className)} onBlur={handleControlBlur}>
+			<FieldFrame id={id} label={label} description={description} error={inputError} optional={optional} dense={dense} floating className="md-field--date">
 				{input}
 			</FieldFrame>
 		</div>

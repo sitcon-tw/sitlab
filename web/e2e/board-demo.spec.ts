@@ -67,6 +67,18 @@ async function openDesktopFilter(page: Page, label: string) {
 	return { input, picker: page.locator(`[id="${panelId}"]`) };
 }
 
+async function expectPointerHitTarget(locator: Locator) {
+	await expect
+		.poll(() =>
+			locator.evaluate((element) => {
+				const rect = element.getBoundingClientRect();
+				const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+				return hit !== null && element.contains(hit);
+			})
+		)
+		.toBe(true);
+}
+
 test.describe("SITCON Board demo visual audit", () => {
 	test.skip(!demoEnabled, "requires the explicit VITE_SITCON_DEMO server");
 
@@ -616,6 +628,75 @@ test.describe("SITCON Board demo visual audit", () => {
 		await expect(page.getByRole("dialog", { name: "新卡片詳細資料" }).getByText("Backend")).toBeVisible();
 	});
 
+	test("portalled controls stay interactive inside dialogs and drawers", async ({ page }, testInfo) => {
+		const mobile = testInfo.project.name === "mobile";
+		await page.clock.setFixedTime(new Date("2026-08-31T04:00:00Z"));
+		await page.addInitScript(() => localStorage.setItem("sitcon-board-theme", "dark"));
+		await page.setViewportSize(mobile ? { width: 320, height: 720 } : { width: 688, height: 900 });
+		await page.goto("/");
+
+		await page.getByRole("button", { name: "新增卡片" }).click();
+		const createDialog = page.getByRole("dialog", { name: "新增卡片" });
+		const dueInput = createDialog.getByRole("textbox", { name: "新卡片期限", exact: true });
+		const dateGeometry = await dueInput.evaluate((input) => {
+			const root = input.closest<HTMLElement>(".md-date-field")!;
+			return { rootWidth: root.getBoundingClientRect().width, inputWidth: input.getBoundingClientRect().width };
+		});
+		expect(dateGeometry.rootWidth).toBeGreaterThanOrEqual(mobile ? 120 : 180);
+		expect(dateGeometry.inputWidth).toBeGreaterThanOrEqual(mobile ? 80 : 130);
+
+		await chooseSelectField(page, createDialog, "新卡片 Status", "Doing");
+		await expect(createDialog.getByRole("button", { name: "新卡片 Status", exact: true })).toHaveText("Doing");
+		await expect(createDialog).toBeVisible();
+
+		const createDateTrigger = createDialog.getByRole("button", { name: "開啟新卡片期限日曆" });
+		if (mobile) await createDateTrigger.tap();
+		else await createDateTrigger.click();
+		const createPicker = page.locator(mobile ? ".md-date-picker--dialog" : ".md-date-picker--popover");
+		const createDate = createPicker.locator('[data-date="2026-09-01"]');
+		await expect(createPicker).toBeVisible();
+		await expectPointerHitTarget(createDate);
+		if (mobile) await createDate.tap();
+		else await createDate.click();
+		await expect(dueInput).toHaveValue("2026/09/01");
+		await expect(createPicker).toHaveCount(0);
+		await expect(createDialog).toBeVisible();
+
+		await createDialog.getByRole("button", { name: "選擇新卡片 Assignee" }).click();
+		const assigneeDialog = page.getByRole("dialog", { name: "選擇 Assignee" });
+		await assigneeDialog.getByRole("checkbox", { name: /沈明軒/ }).click();
+		await expect(assigneeDialog).toBeVisible();
+		await assigneeDialog.getByRole("button", { name: "完成" }).click();
+		await expect(assigneeDialog).toHaveCount(0);
+		await expect(createDialog).toBeVisible();
+		if (!mobile) await page.screenshot({ path: "../docs/assets/sitcon-board-quick-create-more-dark-desktop.png", fullPage: true });
+
+		await createDialog.getByRole("button", { name: "Close dialog" }).click();
+		await page.getByRole("heading", { name: "[開發組] 修正報名系統寄信流程" }).click();
+		const details = page.getByRole("dialog", { name: "#127 卡片詳細資料" });
+		const startInput = details.getByRole("textbox", { name: "Start", exact: true });
+		const detailDateTrigger = details.getByRole("button", { name: "開啟Start日曆" });
+		if (mobile) await detailDateTrigger.tap();
+		else await detailDateTrigger.click();
+		const detailPicker = page.locator(mobile ? ".md-date-picker--dialog" : ".md-date-picker--popover");
+		const detailDate = detailPicker.locator('[data-date="2026-09-02"]');
+		await expectPointerHitTarget(detailDate);
+		if (mobile) await detailDate.tap();
+		else await detailDate.click();
+		await expect(startInput).toHaveValue("2026/09/02");
+		await expect(details).toBeVisible();
+
+		await details.getByRole("button", { name: "編輯" }).click();
+		const description = details.getByRole("combobox", { name: "描述", exact: true });
+		await description.fill("/");
+		const autocomplete = page.getByRole("listbox", { name: "GitLab autocomplete" });
+		const suggestion = autocomplete.getByRole("option", { name: /\/close/ });
+		await expectPointerHitTarget(suggestion);
+		await suggestion.click();
+		await expect(description).toHaveValue("/close");
+		await expect(details).toBeVisible();
+	});
+
 	test("member drawer and assignee dialog are complete", async ({ page }) => {
 		await page.setViewportSize({ width: 390, height: 844 });
 		await page.goto("/");
@@ -640,13 +721,13 @@ test.describe("SITCON Board demo visual audit", () => {
 		const details = page.getByRole("dialog", { name: "#127 卡片詳細資料" });
 		await expect(details.getByRole("button", { name: "組別", exact: true })).toHaveText("開發組");
 		await expect(details.getByRole("button", { name: "狀態", exact: true })).toHaveText("To do");
-		await expect(details.getByLabel("Start")).toHaveValue("2026/07/17");
-		await expect(details.getByLabel("Due")).toHaveValue("2026/07/21");
+		await expect(details.getByRole("textbox", { name: "Start", exact: true })).toHaveValue("2026/07/17");
+		await expect(details.getByRole("textbox", { name: "Due", exact: true })).toHaveValue("2026/07/21");
 		await expect(details.getByText("Team::開發組")).toBeVisible();
 		await expect(details.getByText("Priority::High")).toBeVisible();
 		await expect(details.getByLabel("描述預覽")).toBeVisible();
 		await details.getByRole("button", { name: "編輯" }).click();
-		await details.getByRole("textbox", { name: "描述" }).fill("## 驗收條件\n\n- [ ] 補齊測試\n\n[規格](https://example.com/spec)");
+		await details.getByRole("combobox", { name: "描述", exact: true }).fill("## 驗收條件\n\n- [ ] 補齊測試\n\n[規格](https://example.com/spec)");
 		await details.getByRole("button", { name: "預覽" }).click();
 		await expect(details.getByRole("heading", { name: "驗收條件" })).toBeVisible();
 		await page.screenshot({ path: "../docs/assets/sitcon-board-details.png", fullPage: true });
@@ -659,12 +740,12 @@ test.describe("SITCON Board demo visual audit", () => {
 		// The demo title-change note carries GitLab's inline-diff HTML and must
 		// render as text, not markup.
 		await expect(details.getByText("[開發組]", { exact: true })).toBeVisible();
-		await details.getByRole("textbox", { name: "Comment" }).fill("測試與監控紀錄已補齊。");
+		await details.getByRole("combobox", { name: "Comment", exact: true }).fill("測試與監控紀錄已補齊。");
 		await details.getByRole("button", { name: "送出 Comment" }).click();
 		await expect(details.getByText("測試與監控紀錄已補齊。")).toBeVisible();
 		await details.getByRole("heading", { name: "Comment" }).scrollIntoViewIfNeeded();
 		await page.screenshot({ path: "../docs/assets/sitcon-board-tags-comments.png", fullPage: true });
-		await details.getByRole("button", { name: "儲存細節" }).click();
+		await details.getByRole("button", { name: "儲存", exact: true }).click();
 		await expect(details).toBeVisible();
 	});
 
@@ -675,18 +756,18 @@ test.describe("SITCON Board demo visual audit", () => {
 
 		const details = page.getByRole("dialog", { name: "#129 卡片詳細資料" });
 		await expect(details.getByLabel("標題")).toBeVisible();
-		await expect(details.getByRole("textbox", { name: "描述" })).toBeVisible();
-		const startDate = details.getByLabel("Start");
+		await expect(details.getByRole("combobox", { name: "描述", exact: true })).toBeVisible();
+		const startDate = details.getByRole("textbox", { name: "Start", exact: true });
 		await startDate.scrollIntoViewIfNeeded();
 		await expect(startDate).toBeInViewport();
 		await expect(startDate).toHaveValue("");
-		await expect(details.getByLabel("Due")).toHaveValue("2026/07/25");
+		await expect(details.getByRole("textbox", { name: "Due", exact: true })).toHaveValue("2026/07/25");
 		await details.getByRole("heading", { name: "Labels" }).scrollIntoViewIfNeeded();
 		await expect(details.getByLabel("新增 Label")).toBeVisible();
-		await details.getByRole("textbox", { name: "Comment" }).scrollIntoViewIfNeeded();
-		await expect(details.getByRole("textbox", { name: "Comment" })).toBeInViewport();
+		await details.getByRole("combobox", { name: "Comment", exact: true }).scrollIntoViewIfNeeded();
+		await expect(details.getByRole("combobox", { name: "Comment", exact: true })).toBeInViewport();
 		await page.screenshot({ path: "../docs/assets/sitcon-board-tags-comments-mobile.png", fullPage: true });
-		await expect(details.getByRole("button", { name: "儲存細節" })).toBeVisible();
+		await expect(details.getByRole("button", { name: "儲存", exact: true })).toHaveCount(0);
 		await page.screenshot({ path: "../docs/assets/sitcon-board-details-mobile.png", fullPage: true });
 	});
 

@@ -314,6 +314,13 @@
 
 /* --- Menu ----------------------------------------------------------------- */
 
+/* Modal dialogs make document.body inert while they are open. Interactive
+ * surfaces portalled beside that dialog must explicitly opt back into pointer
+ * events or taps fall through to the dialog content rendered behind them. */
+.md-portalled-surface {
+	pointer-events: auto;
+}
+
 .md-menu {
 	z-index: 100;
 	min-width: 7rem;

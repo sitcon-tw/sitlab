@@ -30,7 +30,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
 			{trigger ? <DialogPrimitive.Trigger asChild>{trigger}</DialogPrimitive.Trigger> : null}
 			<DialogPrimitive.Portal>
 				<DialogPrimitive.Overlay className="md-overlay" />
-				<DialogPrimitive.Content className="md-dialog">
+				<DialogPrimitive.Content className="md-dialog md-portalled-surface">
 					<header className="md-dialog__header">
 						<DialogHeader title={title} description={description} />
 						<DialogPrimitive.Close asChild>
@@ -53,7 +53,7 @@ export function Drawer({ open, onOpenChange, title, description, children, foote
 			{trigger ? <DialogPrimitive.Trigger asChild>{trigger}</DialogPrimitive.Trigger> : null}
 			<DialogPrimitive.Portal>
 				<DialogPrimitive.Overlay className="md-overlay" />
-				<DialogPrimitive.Content className="md-drawer">
+				<DialogPrimitive.Content className="md-drawer md-portalled-surface">
 					<header className="md-dialog__header">
 						<DialogHeader title={title} description={description} />
 						<DialogPrimitive.Close asChild>
@@ -96,7 +96,7 @@ export function ConfirmDialog({
 		<AlertDialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
 			<AlertDialogPrimitive.Portal>
 				<AlertDialogPrimitive.Overlay className="md-overlay" />
-				<AlertDialogPrimitive.Content className="md-dialog md-alert-dialog">
+				<AlertDialogPrimitive.Content className="md-dialog md-alert-dialog md-portalled-surface">
 					<div className="md-dialog__header">
 						<div>
 							<AlertDialogPrimitive.Title className="md-dialog__title">{title}</AlertDialogPrimitive.Title>

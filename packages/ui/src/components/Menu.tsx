@@ -27,7 +27,13 @@ export function Menu({ trigger, children, label, align = "start", open, onOpenCh
 		...(onOpenChange ? { onOpenChange } : {})
 	};
 	const content = (
-		<DropdownMenuPrimitive.Content className={classNames("md-menu", className)} align={align} sideOffset={4} aria-label={label} collisionPadding={8}>
+		<DropdownMenuPrimitive.Content
+			className={classNames("md-menu", "md-portalled-surface", className)}
+			align={align}
+			sideOffset={4}
+			aria-label={label}
+			collisionPadding={8}
+		>
 			{children}
 		</DropdownMenuPrimitive.Content>
 	);

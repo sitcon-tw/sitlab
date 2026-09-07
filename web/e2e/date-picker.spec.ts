@@ -17,11 +17,24 @@ async function firstCardDateField(board: Locator) {
 	};
 }
 
+async function expectPointerHitTarget(locator: Locator) {
+	await expect
+		.poll(() =>
+			locator.evaluate((element) => {
+				const rect = element.getBoundingClientRect();
+				const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+				return hit !== null && element.contains(hit);
+			})
+		)
+		.toBe(true);
+}
+
 test.describe("product date picker visual regression", () => {
 	test.skip(!demoEnabled, "requires the explicit VITE_SITCON_DEMO server");
 
 	test("desktop calendar stays anchored and the card footer stays aligned", async ({ page }, testInfo) => {
 		test.skip(testInfo.project.name === "mobile", "desktop geometry is covered in Chromium");
+		await page.clock.setFixedTime(new Date("2026-08-31T04:00:00Z"));
 		await page.addInitScript(() => localStorage.setItem("sitcon-board-theme", "dark"));
 		await page.setViewportSize({ width: 1440, height: 900 });
 		await page.goto("/");
@@ -77,10 +90,17 @@ test.describe("product date picker visual regression", () => {
 		await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(calendarScrollBefore);
 		await expect(picker.getByRole("heading", { name: "2026年9月" })).toBeVisible();
 		expect(await page.evaluate(() => window.scrollY)).toBe(pageScrollBefore);
+
+		const nextDate = picker.locator('[data-date="2026-09-01"]');
+		await expectPointerHitTarget(nextDate);
+		await nextDate.click();
+		await expect(input).toHaveValue("2026/09/01");
+		await expect(picker).toHaveCount(0);
 	});
 
 	test("narrow calendar is centered and keeps touch-sized dates", async ({ page }, testInfo) => {
 		test.skip(testInfo.project.name !== "mobile", "narrow geometry is covered by the mobile project");
+		await page.clock.setFixedTime(new Date("2026-08-31T04:00:00Z"));
 		await page.addInitScript(() => localStorage.setItem("sitcon-board-theme", "dark"));
 		await page.setViewportSize({ width: 390, height: 844 });
 		await page.goto("/");
@@ -88,7 +108,7 @@ test.describe("product date picker visual regression", () => {
 		const { input, trigger } = await firstCardDateField(board);
 		await expect(input).toHaveValue(/^\d{4}\/\d{2}\/\d{2}$/);
 
-		await trigger.click();
+		await trigger.tap();
 		const picker = page.getByRole("dialog", { name: /日期選擇器/ });
 		await expect(picker).toHaveClass(/md-date-picker--dialog/);
 		const geometry = await picker.evaluate((element) => {
@@ -109,5 +129,10 @@ test.describe("product date picker visual regression", () => {
 		expect(geometry.daySize).toBeGreaterThanOrEqual(44);
 
 		await page.screenshot({ path: docsAsset("sitcon-board-date-picker-dark-mobile.png") });
+		const nextDate = picker.locator('[data-date="2026-09-01"]');
+		await expectPointerHitTarget(nextDate);
+		await nextDate.tap();
+		await expect(input).toHaveValue("2026/09/01");
+		await expect(picker).toHaveCount(0);
 	});
 });

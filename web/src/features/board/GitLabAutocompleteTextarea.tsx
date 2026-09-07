@@ -183,7 +183,7 @@ export function GitLabAutocompleteTextarea({
 				? createPortal(
 						<div
 							id={menuId}
-							className={`md-menu ${styles.menu}`}
+							className={`md-menu md-portalled-surface ${styles.menu}`}
 							role="listbox"
 							aria-label="GitLab autocomplete"
 							style={{

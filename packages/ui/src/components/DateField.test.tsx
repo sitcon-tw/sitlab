@@ -28,6 +28,26 @@ function ControlledDateField({ onChange = () => undefined, ...props }: Partial<D
 	);
 }
 
+function DrawerFieldsHarness() {
+	const [open, setOpen] = useState(true);
+	const [status, setStatus] = useState("todo");
+	const [due, setDue] = useState<string | null>("2026-08-29");
+	return (
+		<Drawer open={open} onOpenChange={setOpen} title="Details">
+			<SelectField
+				label="Status"
+				value={status}
+				onValueChange={setStatus}
+				options={[
+					{ value: "todo", label: "To do" },
+					{ value: "doing", label: "Doing" }
+				]}
+			/>
+			<DateField label="Due" value={due} onValueChange={setDue} {...range} />
+		</Drawer>
+	);
+}
+
 describe("DateField", () => {
 	it("accepts compact, slash, and ISO typing while emitting canonical dates", async () => {
 		const user = userEvent.setup();
@@ -129,6 +149,13 @@ describe("DateField", () => {
 		expect(await screen.findByRole("dialog", { name: "期限日期選擇器" })).toHaveClass("md-date-picker--dialog");
 	});
 
+	it("places consumer layout classes on the component root", () => {
+		render(<DateField className="consumer-layout" label="Due" value="2026-08-29" onValueChange={() => undefined} {...range} />);
+		const input = screen.getByRole("textbox", { name: "Due" });
+		expect(input.closest(".md-date-field")).toHaveClass("consumer-layout");
+		expect(input.closest(".md-field")).not.toHaveClass("consumer-layout");
+	});
+
 	it("has no accessibility violations in field and compact variants", async () => {
 		const { container } = render(
 			<>
@@ -139,25 +166,21 @@ describe("DateField", () => {
 		expect((await axe(container)).violations).toEqual([]);
 	});
 
-	it("coexists with a portalled select inside a drawer", async () => {
+	it("keeps its parent drawer open while portalled fields are selected", async () => {
 		const user = userEvent.setup();
-		render(
-			<Drawer open onOpenChange={() => undefined} title="Details">
-				<SelectField
-					label="Status"
-					value="todo"
-					options={[
-						{ value: "todo", label: "To do" },
-						{ value: "doing", label: "Doing" }
-					]}
-				/>
-				<DateField label="Due" value="2026-08-29" onValueChange={() => undefined} {...range} />
-			</Drawer>
-		);
+		render(<DrawerFieldsHarness />);
 		await user.click(screen.getByRole("button", { name: "Status" }));
-		expect(await screen.findByRole("menu", { name: "Status選項" })).toBeVisible();
+		expect(await screen.findByRole("menu", { name: "Status選項" })).toHaveClass("md-portalled-surface");
 		await user.click(screen.getByRole("menuitemcheckbox", { name: "Doing" }));
 		expect(screen.queryByRole("menu", { name: "Status選項" })).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Status" })).toHaveTextContent("Doing");
+		expect(screen.getByRole("dialog", { name: "Details" })).toBeVisible();
+
+		await user.click(screen.getByRole("button", { name: "開啟Due日曆" }));
+		expect(await screen.findByRole("dialog", { name: "Due日期選擇器" })).toHaveClass("md-portalled-surface");
+		fireEvent.click(screen.getByRole("button", { name: /2026年9月1日/ }));
+		expect(screen.getByRole("textbox", { name: "Due" })).toHaveValue("2026/09/01");
+		expect(screen.queryByRole("dialog", { name: "Due日期選擇器" })).not.toBeInTheDocument();
 		expect(screen.getByRole("dialog", { name: "Details" })).toBeVisible();
 	});
 });
