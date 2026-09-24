@@ -17,6 +17,8 @@ type User struct {
 type OAuthState struct {
 	StateHash          []byte
 	VerifierCiphertext []byte
+	ClientKind         string
+	PKCEChallenge      string
 	ReturnPath         string
 	ExpiresAt          time.Time
 	CreatedAt          time.Time

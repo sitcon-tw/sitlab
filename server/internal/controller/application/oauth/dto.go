@@ -16,6 +16,16 @@ type CompleteInput struct {
 	State string
 }
 
+type StartMobileInput struct {
+	CodeChallenge string
+}
+
+type CompleteMobileInput struct {
+	Code         string
+	State        string
+	CodeVerifier string
+}
+
 type Authenticated struct {
 	User         identity.User
 	SessionToken string

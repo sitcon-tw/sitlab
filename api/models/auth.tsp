@@ -76,3 +76,56 @@ model GitLabOAuthCallbackQuery {
 	@minLength(1)
 	state: string;
 }
+
+model MobileOAuthStartQuery {
+	@query
+	@minLength(43)
+	@maxLength(128)
+	codeChallenge: string;
+}
+
+model MobileOAuthCallbackQuery {
+	@query
+	code?: string;
+
+	@query
+	state?: string;
+
+	@query
+	error?: string;
+}
+
+model MobileOAuthFallbackResponse {
+	...OkResponse;
+
+	@header
+	contentType: "text/html";
+
+	@body
+	body: string;
+}
+
+model MobileOAuthExchangeRequest {
+	@minLength(1)
+	code: string;
+
+	@minLength(1)
+	state: string;
+
+	@minLength(43)
+	@maxLength(128)
+	codeVerifier: string;
+}
+
+model MobileOAuthExchangeResult {
+	authenticated: true;
+}
+
+model MobileOAuthSessionResponse {
+	...OkResponse;
+
+	@header("Set-Cookie")
+	setCookie: string;
+
+	...Body<MobileOAuthExchangeResult>;
+}

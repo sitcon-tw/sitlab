@@ -22,9 +22,11 @@ func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 
 func (r *Repository) StoreOAuthState(ctx context.Context, state identity.OAuthState) error {
 	_, err := postgres.Executor(ctx, r.pool).Exec(ctx, `
-		INSERT INTO oauth_states (state_hash, verifier_ciphertext, return_path, expires_at, created_at)
-		VALUES ($1, $2, $3, $4, $5)
-	`, state.StateHash, state.VerifierCiphertext, state.ReturnPath, state.ExpiresAt, state.CreatedAt)
+		INSERT INTO oauth_states
+		    (state_hash, verifier_ciphertext, client_kind, mobile_pkce_challenge, return_path, expires_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, state.StateHash, nullableBytes(state.VerifierCiphertext), state.ClientKind, nullableString(state.PKCEChallenge),
+		state.ReturnPath, state.ExpiresAt, state.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("store oauth state: %w", err)
 	}
@@ -36,8 +38,10 @@ func (r *Repository) ConsumeOAuthState(ctx context.Context, stateHash []byte) (i
 	err := postgres.Executor(ctx, r.pool).QueryRow(ctx, `
 		DELETE FROM oauth_states
 		WHERE state_hash = $1
-		RETURNING state_hash, verifier_ciphertext, return_path, expires_at, created_at
-	`, stateHash).Scan(&state.StateHash, &state.VerifierCiphertext, &state.ReturnPath, &state.ExpiresAt, &state.CreatedAt)
+		RETURNING state_hash, COALESCE(verifier_ciphertext, ''::bytea), client_kind,
+		          COALESCE(mobile_pkce_challenge, ''), return_path, expires_at, created_at
+	`, stateHash).Scan(&state.StateHash, &state.VerifierCiphertext, &state.ClientKind, &state.PKCEChallenge,
+		&state.ReturnPath, &state.ExpiresAt, &state.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return identity.OAuthState{}, identity.ErrOAuthStateNotFound
 	}
@@ -45,6 +49,13 @@ func (r *Repository) ConsumeOAuthState(ctx context.Context, stateHash []byte) (i
 		return identity.OAuthState{}, fmt.Errorf("consume oauth state: %w", err)
 	}
 	return state, nil
+}
+
+func nullableBytes(value []byte) any {
+	if len(value) == 0 {
+		return nil
+	}
+	return value
 }
 
 func (r *Repository) UpsertUser(ctx context.Context, user identity.User) (identity.User, error) {

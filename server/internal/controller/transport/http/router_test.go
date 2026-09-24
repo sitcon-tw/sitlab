@@ -37,8 +37,14 @@ func (authFake) Start(context.Context) (appoauth.StartResult, error) {
 		StateToken:       "browser-bound-state",
 	}, nil
 }
+func (authFake) StartMobile(context.Context, appoauth.StartMobileInput) (appoauth.StartResult, error) {
+	return appoauth.StartResult{AuthorizationURL: "https://gitlab.example/oauth/authorize?mobile=true", StateToken: "mobile-state"}, nil
+}
 func (authFake) Complete(context.Context, appoauth.CompleteInput) (appoauth.Authenticated, error) {
 	return appoauth.Authenticated{SessionToken: "new-session", RedirectPath: "/"}, nil
+}
+func (authFake) CompleteMobile(context.Context, appoauth.CompleteMobileInput) (appoauth.Authenticated, error) {
+	return appoauth.Authenticated{SessionToken: "new-mobile-session"}, nil
 }
 func (authFake) VerifySession(context.Context, string) (identity.SessionClaims, error) {
 	return identity.SessionClaims{SessionID: "session-id", UserID: httpUserID, ExpiresAt: renewedExpiry}, nil
@@ -271,6 +277,30 @@ func TestGitLabOAuthCallbackRejectsStateFromAnotherBrowser(t *testing.T) {
 	if response.Code != http.StatusUnauthorized || !strings.Contains(response.Body.String(), `"code":"AUTH_OAUTH_FAILED"`) ||
 		cookieByName(response.Result().Cookies(), "test_session") != nil {
 		t.Fatalf("callback = %d body=%s cookies=%#v", response.Code, response.Body.String(), response.Result().Cookies())
+	}
+}
+
+func TestMobileOAuthUsesPublicPKCEEndpointsAndSecureCookie(t *testing.T) {
+	challenge := strings.Repeat("a", 43)
+	start := perform(testRouter(nil, ""), http.MethodGet, "/api/v1/auth/gitlab/mobile?codeChallenge="+challenge, "", false)
+	if start.Code != http.StatusFound || !strings.Contains(start.Header().Get("Location"), "mobile=true") ||
+		cookieByName(start.Result().Cookies(), "test_session_oauth_state") != nil {
+		t.Fatalf("mobile start = %d location=%s cookies=%#v", start.Code, start.Header().Get("Location"), start.Result().Cookies())
+	}
+	exchange := perform(testRouter(nil, ""), http.MethodPost, "/api/v1/auth/gitlab/mobile/exchange",
+		`{"code":"code","state":"state","codeVerifier":"`+strings.Repeat("v", 43)+`"}`, false)
+	session := cookieByName(exchange.Result().Cookies(), "test_session")
+	if exchange.Code != http.StatusOK || session == nil || !session.HttpOnly || session.SameSite != http.SameSiteStrictMode ||
+		!strings.Contains(exchange.Body.String(), `"authenticated":true`) {
+		t.Fatalf("mobile exchange = %d body=%s cookies=%#v", exchange.Code, exchange.Body.String(), exchange.Result().Cookies())
+	}
+}
+
+func TestMobileOAuthFallbackNeverReflectsCredentials(t *testing.T) {
+	response := perform(testRouter(nil, ""), http.MethodGet, "/api/v1/auth/gitlab/mobile/callback?code=secret-code&state=secret-state", "", false)
+	if response.Code != http.StatusOK || strings.Contains(response.Body.String(), "secret-code") || strings.Contains(response.Body.String(), "secret-state") ||
+		response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("fallback = %d body=%s headers=%#v", response.Code, response.Body.String(), response.Header())
 	}
 }
 

@@ -71,7 +71,6 @@ func NewRouter(dep Dependencies) http.Handler {
 	router.Use(dep.Metrics.Middleware)
 	router.Use(requestLogger(dep.Log))
 	router.Handle("/metrics", dep.Metrics.Handler())
-
 	router.Route("/api/v1", func(api chi.Router) {
 		api.Get("/", func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]string{"name": dep.APIName, "version": dep.APIVersion})
@@ -88,12 +87,15 @@ func NewRouter(dep Dependencies) http.Handler {
 			}
 			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		})
+		api.Get("/auth/gitlab/mobile/callback", mobileOAuthFallback)
 		api.Get("/openapi.json", func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write(openapi.Document())
 		})
 		api.Get("/auth/gitlab", h.startGitLabOAuth)
 		api.Get("/auth/gitlab/callback", h.completeGitLabOAuth)
+		api.Get("/auth/gitlab/mobile", h.startMobileGitLabOAuth)
+		api.Post("/auth/gitlab/mobile/exchange", h.exchangeMobileGitLabOAuth)
 		api.Post("/webhooks/gitlab/project", h.receiveProjectWebhook)
 		api.Post("/webhooks/gitlab/group", h.receiveGroupWebhook)
 

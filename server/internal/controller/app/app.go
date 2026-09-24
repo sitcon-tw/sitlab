@@ -95,6 +95,7 @@ func New(ctx context.Context) (*Application, error) {
 	store := pgsitcon.New(pool)
 	oauthService := appoauth.NewService(oauthRepo, tx, tokens, cipher, gitLabClient, appoauth.Config{
 		OAuthStateTTL: cfg.Session.OAuthStateTTL, SessionTTL: cfg.Session.TTL,
+		BrowserRedirect: cfg.GitLab.OAuthRedirectURL, MobileRedirect: cfg.GitLab.MobileOAuthRedirectURL,
 	}, tracer)
 	directoryService := appdirectory.NewService(store, tracer)
 	boardService := appboard.NewService(store, directoryService, tracer)

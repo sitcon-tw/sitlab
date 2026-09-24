@@ -494,10 +494,13 @@ func New(httpClient *http.Client, config Config) (*Client, error) {
 	return &Client{http: httpClient, config: config, base: base, now: time.Now}, nil
 }
 
-func (c *Client) AuthorizationURL(state, codeChallenge string) string {
+func (c *Client) AuthorizationURL(state, codeChallenge, redirectURI string) string {
+	if redirectURI == "" {
+		redirectURI = c.config.RedirectURI
+	}
 	values := url.Values{
 		"client_id":             {c.config.ClientID},
-		"redirect_uri":          {c.config.RedirectURI},
+		"redirect_uri":          {redirectURI},
 		"response_type":         {"code"},
 		"scope":                 {"api"},
 		"state":                 {state},
@@ -507,8 +510,8 @@ func (c *Client) AuthorizationURL(state, codeChallenge string) string {
 	return c.endpoint("/oauth/authorize") + "?" + values.Encode()
 }
 
-func (c *Client) ExchangeIdentity(ctx context.Context, code, verifier string) (appoauth.GitLabIdentity, error) {
-	tokens, err := c.exchangeToken(ctx, code, verifier)
+func (c *Client) ExchangeIdentity(ctx context.Context, code, verifier, redirectURI string) (appoauth.GitLabIdentity, error) {
+	tokens, err := c.exchangeToken(ctx, code, verifier, redirectURI)
 	if err != nil {
 		return appoauth.GitLabIdentity{}, err
 	}
@@ -535,13 +538,16 @@ func (c *Client) ExchangeIdentity(ctx context.Context, code, verifier string) (a
 	}, nil
 }
 
-func (c *Client) exchangeToken(ctx context.Context, code, verifier string) (appoauth.OAuthTokens, error) {
+func (c *Client) exchangeToken(ctx context.Context, code, verifier, redirectURI string) (appoauth.OAuthTokens, error) {
+	if redirectURI == "" {
+		redirectURI = c.config.RedirectURI
+	}
 	values := url.Values{
 		"client_id":     {c.config.ClientID},
 		"client_secret": {c.config.ClientSecret},
 		"code":          {code},
 		"grant_type":    {"authorization_code"},
-		"redirect_uri":  {c.config.RedirectURI},
+		"redirect_uri":  {redirectURI},
 		"code_verifier": {verifier},
 	}
 	return c.requestOAuthToken(ctx, values)

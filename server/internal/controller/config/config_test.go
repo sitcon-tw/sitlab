@@ -66,6 +66,7 @@ func TestProductionRequiresHTTPSAndMatchingRedirectOrigin(t *testing.T) {
 	t.Setenv("SITCON_BOARD_GITLAB_GROUP_WEBHOOK_SIGNING_TOKEN", webhookToken(2))
 	t.Setenv("SITCON_BOARD_CSRF_ALLOWED_ORIGINS", "https://board.sitcon.org")
 	t.Setenv("SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL", "https://board.sitcon.org/api/v1/auth/gitlab/callback")
+	t.Setenv("SITCON_BOARD_GITLAB_MOBILE_OAUTH_REDIRECT_URL", "https://board.sitcon.org/api/v1/auth/gitlab/mobile/callback")
 
 	t.Setenv("SITCON_BOARD_GITLAB_BASE_URL", "http://gitlab.example")
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "must use HTTPS") {
@@ -73,10 +74,12 @@ func TestProductionRequiresHTTPSAndMatchingRedirectOrigin(t *testing.T) {
 	}
 	t.Setenv("SITCON_BOARD_GITLAB_BASE_URL", "https://gitlab.example")
 	t.Setenv("SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL", "https://other.example/api/v1/auth/gitlab/callback")
+	t.Setenv("SITCON_BOARD_GITLAB_MOBILE_OAUTH_REDIRECT_URL", "https://other.example/api/v1/auth/gitlab/mobile/callback")
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "must be a CSRF allowed origin") {
 		t.Fatalf("mismatched redirect origin error = %v", err)
 	}
 	t.Setenv("SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL", "https://board.sitcon.org/api/v1/auth/gitlab/callback")
+	t.Setenv("SITCON_BOARD_GITLAB_MOBILE_OAUTH_REDIRECT_URL", "https://board.sitcon.org/api/v1/auth/gitlab/mobile/callback")
 	t.Setenv("SITCON_BOARD_CSRF_ALLOWED_ORIGINS", "http://board.sitcon.org")
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "allowed origins must use HTTPS") {
 		t.Fatalf("insecure CSRF origin error = %v", err)

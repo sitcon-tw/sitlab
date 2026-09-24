@@ -38,7 +38,7 @@ type Cipher interface {
 }
 
 type GitLab interface {
-	AuthorizationURL(state, codeChallenge string) string
-	ExchangeIdentity(context.Context, string, string) (GitLabIdentity, error)
+	AuthorizationURL(state, codeChallenge, redirectURI string) string
+	ExchangeIdentity(context.Context, string, string, string) (GitLabIdentity, error)
 	RefreshToken(context.Context, string) (OAuthTokens, error)
 }

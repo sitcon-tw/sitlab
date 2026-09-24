@@ -519,14 +519,14 @@ func TestOAuthAndProjectMembership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := client.ExchangeIdentity(context.Background(), "code", "verifier")
+	result, err := client.ExchangeIdentity(context.Background(), "code", "verifier", "https://board.example/api/v1/auth/gitlab/mobile/callback")
 	if err != nil {
 		t.Fatalf("ExchangeIdentity() error = %v", err)
 	}
 	if result.GitLabUserID != 123 || result.AccessLevel != 40 || result.Username != "yorukot" {
 		t.Fatalf("ExchangeIdentity() = %#v", result)
 	}
-	authorize, err := url.Parse(client.AuthorizationURL("state", "challenge"))
+	authorize, err := url.Parse(client.AuthorizationURL("state", "challenge", "https://board.example/api/v1/auth/gitlab/mobile/callback"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -550,7 +550,7 @@ func TestMissingProjectMemberIsForbidden(t *testing.T) {
 		}
 	})
 	client, _ := New(&http.Client{Transport: transport}, Config{BaseURL: "https://gitlab.example", ProjectPath: "sitcon-tw/2027"})
-	_, err := client.ExchangeIdentity(context.Background(), "code", "verifier")
+	_, err := client.ExchangeIdentity(context.Background(), "code", "verifier", "https://board.example/api/v1/auth/gitlab/mobile/callback")
 	if !errors.Is(err, identity.ErrProjectMemberRequired) {
 		t.Fatalf("ExchangeIdentity() error = %v", err)
 	}
