@@ -5,6 +5,7 @@ api_filter := "@project-template/api"
 docs_filter := "@project-template/docs"
 ui_filter := "@project-template/ui"
 web_filter := "@project-template/web"
+mobile_dir := "mobile"
 
 alias fmt := format
 alias generate := contract-generate
@@ -22,13 +23,13 @@ install:
 dev: backend-dev
 
 # Build every production surface.
-build: api-build backend-build ui-build web-build storybook-build docs-build
+build: api-build backend-build ui-build web-build storybook-build docs-build mobile-android-build
 
 # Run static analysis for every language surface.
-lint: api-lint backend-lint frontend-style-check web-lint ui-lint docs-check
+lint: api-lint backend-lint frontend-style-check web-lint ui-lint docs-check mobile-lint
 
 # Run all unit and component tests.
-test: backend-test web-test ui-test template-test
+test: backend-test web-test ui-test template-test mobile-test
 
 # Run all type checkers.
 typecheck: api-check web-typecheck ui-typecheck docs-check
@@ -134,6 +135,29 @@ web-test:
 # Check token and keyboard-focus policies across browser surfaces.
 frontend-style-check:
     pnpm check:frontend-style
+
+# Check Kotlin source whitespace and Android lint policy.
+mobile-lint: mobile-format-check
+    cd {{ mobile_dir }} && ./gradlew :composeApp:lintDebug
+
+# Apply Kotlin formatting through the IDE/ktfmt before committing; this gate rejects whitespace damage.
+mobile-format:
+    @echo "Format Kotlin sources with IntelliJ's Kotlin formatter (official style)."
+
+mobile-format-check:
+    git diff --check -- {{ mobile_dir }}
+
+# Run shared domain tests on the Android JVM host.
+mobile-test:
+    cd {{ mobile_dir }} && ./gradlew :composeApp:testDebugUnitTest
+
+# Build the Android application package.
+mobile-android-build:
+    cd {{ mobile_dir }} && ./gradlew :composeApp:assembleDebug
+
+# Link the simulator framework; requires macOS/Xcode.
+mobile-ios-framework:
+    cd {{ mobile_dir }} && ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64
 
 # Verify initializer rollback, retry, and one-time semantics.
 template-test:
