@@ -176,6 +176,18 @@ jobs:
       - uses: android-actions/setup-android@v4
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - run: mobile/gradlew -p mobile :composeApp:testDebugUnitTest :composeApp:lintDebug :composeApp:assembleDebug
+      - name: Upload Android APK
+        id: android-artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: sitlab-android-debug
+          path: mobile/composeApp/build/outputs/apk/debug/composeApp-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Add Android download to summary
+        run: |
+          echo "### Android build" >> "$GITHUB_STEP_SUMMARY"
+          echo "[Download debug APK](${{ steps.android-artifact.outputs.artifact-url }})" >> "$GITHUB_STEP_SUMMARY"
 
   mobile-ios:
     name: Mobile iOS framework
@@ -189,6 +201,18 @@ jobs:
           cache: gradle
       - uses: gradle/actions/setup-gradle@v6
       - run: mobile/gradlew -p mobile :composeApp:linkDebugFrameworkIosSimulatorArm64
+      - name: Upload iOS simulator framework
+        id: ios-artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: sitlab-ios-simulator-framework
+          path: mobile/composeApp/build/bin/iosSimulatorArm64/debugFramework/SitLabShared.framework
+          if-no-files-found: error
+          retention-days: 14
+      - name: Add iOS download to summary
+        run: |
+          echo "### iOS build" >> "$GITHUB_STEP_SUMMARY"
+          echo "[Download simulator framework](${{ steps.ios-artifact.outputs.artifact-url }})" >> "$GITHUB_STEP_SUMMARY"
 
   complete:
     name: CI complete
