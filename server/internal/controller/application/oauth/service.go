@@ -18,9 +18,16 @@ import (
 )
 
 type Config struct {
-	OAuthStateTTL time.Duration
-	SessionTTL    time.Duration
+	OAuthStateTTL   time.Duration
+	SessionTTL      time.Duration
+	BrowserRedirect string
+	MobileRedirect  string
 }
+
+const (
+	clientKindBrowser = "browser"
+	clientKindMobile  = "mobile"
+)
 
 type Service struct {
 	repo   Repository
@@ -55,13 +62,38 @@ func (s *Service) Start(ctx context.Context) (StartResult, error) {
 	now := s.now().UTC()
 	if err := s.repo.StoreOAuthState(ctx, identity.OAuthState{
 		StateHash: stateHash, VerifierCiphertext: ciphertext, ReturnPath: "/",
-		ExpiresAt: now.Add(s.config.OAuthStateTTL), CreatedAt: now,
+		ClientKind: clientKindBrowser,
+		ExpiresAt:  now.Add(s.config.OAuthStateTTL), CreatedAt: now,
 	}); err != nil {
 		return StartResult{}, technical(span, "store oauth state", err)
 	}
 	challenge := sha256.Sum256([]byte(verifier))
 	return StartResult{
-		AuthorizationURL: s.gitlab.AuthorizationURL(state, base64.RawURLEncoding.EncodeToString(challenge[:])),
+		AuthorizationURL: s.gitlab.AuthorizationURL(state, base64.RawURLEncoding.EncodeToString(challenge[:]), s.config.BrowserRedirect),
+		StateToken:       state,
+	}, nil
+}
+
+func (s *Service) StartMobile(ctx context.Context, input StartMobileInput) (StartResult, error) {
+	ctx, span := s.tracer.Start(ctx, "auth.gitlab.mobile.start")
+	defer span.End()
+	challenge := strings.TrimSpace(input.CodeChallenge)
+	if !validPKCEChallenge(challenge) {
+		return StartResult{}, apperror.Malformed("codeChallenge must be an S256 PKCE challenge")
+	}
+	state, stateHash, err := s.tokens.New()
+	if err != nil {
+		return StartResult{}, technical(span, "create mobile oauth state", err)
+	}
+	now := s.now().UTC()
+	if err := s.repo.StoreOAuthState(ctx, identity.OAuthState{
+		StateHash: stateHash, ClientKind: clientKindMobile, PKCEChallenge: challenge,
+		ReturnPath: "/api/v1/auth/gitlab/mobile/callback", ExpiresAt: now.Add(s.config.OAuthStateTTL), CreatedAt: now,
+	}); err != nil {
+		return StartResult{}, technical(span, "store mobile oauth state", err)
+	}
+	return StartResult{
+		AuthorizationURL: s.gitlab.AuthorizationURL(state, challenge, s.config.MobileRedirect),
 		StateToken:       state,
 	}, nil
 }
@@ -82,11 +114,44 @@ func (s *Service) Complete(ctx context.Context, input CompleteInput) (Authentica
 	if !s.now().UTC().Before(state.ExpiresAt) {
 		return Authenticated{}, apperror.Unauthorized("AUTH_OAUTH_FAILED", "OAuth state has expired")
 	}
+	if state.ClientKind != "" && state.ClientKind != clientKindBrowser {
+		return Authenticated{}, apperror.Unauthorized("AUTH_OAUTH_FAILED", "OAuth state belongs to another client")
+	}
 	verifier, err := s.cipher.Open(state.VerifierCiphertext)
 	if err != nil {
 		return Authenticated{}, technical(span, "open PKCE verifier", err)
 	}
-	gitLabIdentity, err := s.gitlab.ExchangeIdentity(ctx, input.Code, verifier)
+	return s.completeIdentity(ctx, span, input.Code, verifier, s.config.BrowserRedirect, state.ReturnPath)
+}
+
+func (s *Service) CompleteMobile(ctx context.Context, input CompleteMobileInput) (Authenticated, error) {
+	ctx, span := s.tracer.Start(ctx, "auth.gitlab.mobile.complete")
+	defer span.End()
+	if strings.TrimSpace(input.Code) == "" || strings.TrimSpace(input.State) == "" || !validPKCEValue(input.CodeVerifier) {
+		return Authenticated{}, apperror.Malformed("mobile exchange requires code, state, and a valid PKCE verifier")
+	}
+	state, err := s.repo.ConsumeOAuthState(ctx, s.tokens.Digest(input.State))
+	if errors.Is(err, identity.ErrOAuthStateNotFound) {
+		return Authenticated{}, apperror.Unauthorized("AUTH_OAUTH_FAILED", "OAuth state is invalid or already used")
+	}
+	if err != nil {
+		return Authenticated{}, technical(span, "consume mobile oauth state", err)
+	}
+	if !s.now().UTC().Before(state.ExpiresAt) {
+		return Authenticated{}, apperror.Unauthorized("AUTH_OAUTH_FAILED", "OAuth state has expired")
+	}
+	if state.ClientKind != clientKindMobile {
+		return Authenticated{}, apperror.Unauthorized("AUTH_OAUTH_FAILED", "OAuth state belongs to another client")
+	}
+	challenge := sha256.Sum256([]byte(input.CodeVerifier))
+	if !constantTimeStringEqual(base64.RawURLEncoding.EncodeToString(challenge[:]), state.PKCEChallenge) {
+		return Authenticated{}, apperror.Unauthorized("AUTH_OAUTH_FAILED", "PKCE verifier does not match")
+	}
+	return s.completeIdentity(ctx, span, input.Code, input.CodeVerifier, s.config.MobileRedirect, "/api/v1/auth/gitlab/mobile/callback")
+}
+
+func (s *Service) completeIdentity(ctx context.Context, span trace.Span, code, verifier, redirectURI, returnPath string) (Authenticated, error) {
+	gitLabIdentity, err := s.gitlab.ExchangeIdentity(ctx, code, verifier, redirectURI)
 	if errors.Is(err, identity.ErrProjectMemberRequired) {
 		return Authenticated{}, apperror.Forbidden("FORBIDDEN", "an active SITCON 2027 project membership is required")
 	}
@@ -139,7 +204,46 @@ func (s *Service) Complete(ctx context.Context, input CompleteInput) (Authentica
 	if err != nil {
 		return Authenticated{}, technical(span, "create GitLab session", err)
 	}
-	return Authenticated{User: user, SessionToken: rawSession, RedirectPath: state.ReturnPath}, nil
+	return Authenticated{User: user, SessionToken: rawSession, RedirectPath: returnPath}, nil
+}
+
+func validPKCEValue(value string) bool {
+	if len(value) < 43 || len(value) > 128 {
+		return false
+	}
+	for _, character := range value {
+		if (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') || strings.ContainsRune("-._~", character) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validPKCEChallenge(value string) bool {
+	if len(value) != 43 {
+		return false
+	}
+	for _, character := range value {
+		if (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') || character == '-' || character == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func constantTimeStringEqual(left, right string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	var difference byte
+	for index := range left {
+		difference |= left[index] ^ right[index]
+	}
+	return difference == 0
 }
 
 func (s *Service) AccessToken(ctx context.Context, userID string) (string, error) {

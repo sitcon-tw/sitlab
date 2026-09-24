@@ -2,12 +2,53 @@ package httpserver
 
 import (
 	"crypto/subtle"
+	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"example.com/project-template/internal/controller/application/apperror"
 	appoauth "example.com/project-template/internal/controller/application/oauth"
 )
+
+func (h handler) startMobileGitLabOAuth(w http.ResponseWriter, r *http.Request) {
+	result, err := h.auth.StartMobile(r.Context(), appoauth.StartMobileInput{
+		CodeChallenge: r.URL.Query().Get("codeChallenge"),
+	})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	http.Redirect(w, r, result.AuthorizationURL, http.StatusFound)
+}
+
+func (h handler) exchangeMobileGitLabOAuth(w http.ResponseWriter, r *http.Request) {
+	var input appoauth.CompleteMobileInput
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		writeError(w, r, apperror.Malformed("request body must be valid JSON"))
+		return
+	}
+	result, err := h.auth.CompleteMobile(r.Context(), input)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	h.setSessionCookie(w, result.SessionToken, time.Now().UTC().Add(h.cookie.TTL))
+	writeJSON(w, http.StatusOK, map[string]bool{"authenticated": true})
+}
+
+func mobileOAuthFallback(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(strings.TrimSpace(`<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Open SitLab</title><body><main><h1>Continue in SitLab</h1>
+<p>Install or open the SitLab mobile app, then start sign-in again. No authorization details are displayed on this page.</p>
+</main></body></html>`)))
+}
 
 func (h handler) startGitLabOAuth(w http.ResponseWriter, r *http.Request) {
 	result, err := h.auth.Start(r.Context())

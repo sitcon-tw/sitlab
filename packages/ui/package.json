@@ -19,7 +19,7 @@
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json && mkdir -p dist/styles && cp src/styles/*.css dist/styles/",
 		"build:storybook": "storybook build",
-		"generate:tokens": "node --import ./scripts/register-resolve.mjs scripts/generate-tokens.mjs",
+		"generate:tokens": "node --import ./scripts/register-resolve.mjs scripts/generate-tokens.mjs --kotlin ../../mobile/composeApp/src/commonMain/kotlin/org/sitcon/sitlab/ui/theme/GeneratedSitLabColors.kt",
 		"lint": "eslint .",
 		"storybook": "storybook dev -p 6006",
 		"test": "vitest run",

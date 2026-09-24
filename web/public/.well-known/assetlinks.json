@@ -1,0 +1,10 @@
+[
+	{
+		"relation": ["delegate_permission/common.handle_all_urls"],
+		"target": {
+			"namespace": "android_app",
+			"package_name": "org.sitcon.sitlab",
+			"sha256_cert_fingerprints": ["D9:BF:94:91:4E:4D:1C:7B:E8:3D:D9:D3:11:D1:54:43:4A:1D:C3:35:0E:8E:DA:51:42:A7:9D:C0:98:AC:EF:17"]
+		}
+	}
+]

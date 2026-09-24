@@ -15,11 +15,13 @@ Choose the production origin, for example `https://board.example.com`.
 Create a GitLab OAuth application:
 
 - Name: `SITCON Board`
-- Redirect URI: `https://board.example.com/api/v1/auth/gitlab/callback`
+- Redirect URIs (register both):
+  - `https://board.example.com/api/v1/auth/gitlab/callback`
+  - `https://board.example.com/api/v1/auth/gitlab/mobile/callback`
 - Confidential: enabled
 - Scope: `api`
 
-The redirect URI must exactly match the public URL used in Dokploy.
+Both redirect URIs must exactly match the public URL used in Dokploy.
 
 Create a project access token in `sitcon-tw/2027`:
 
@@ -127,7 +129,7 @@ Back up the `sitcon-board-postgres` volume or configure Dokploy database backups
 - `production session cookie must be Secure`: confirm `SITCON_BOARD_ENV=production` and use this Dokploy Compose file, which forces `SITCON_BOARD_SESSION_COOKIE_SECURE=true`.
 - `initial source sync` with a directory file error: verify the image was rebuilt from a revision containing `.sitcon/board-directory.yml`.
 - `initial source sync` with a GitLab error: verify the project access token and its role/scope in `sitcon-tw/2027`.
-- OAuth callback error: compare the GitLab Redirect URI and the generated `${SITCON_BOARD_PUBLIC_URL}/api/v1/auth/gitlab/callback` character for character.
+- OAuth callback error: compare both GitLab redirect URIs with the generated `${SITCON_BOARD_PUBLIC_URL}/api/v1/auth/gitlab/callback` and `${SITCON_BOARD_PUBLIC_URL}/api/v1/auth/gitlab/mobile/callback` values character for character.
 - Webhook `401`: confirm the complete generated `whsec_...` value is stored under the matching project or group environment key, and that GitLab and the app clocks are synchronized.
 - Webhook `400`: confirm the project is exactly `sitcon-tw/2027`, the group is exactly `sitcon-tw`, and no custom webhook template is configured.
 - Webhook succeeds but the board is stale: inspect `gitlab_webhook_deliveries_total`, `gitlab_webhook_processing_duration_seconds`, and GitLab Recent events; the 5-second Board poll remains the issue catch-up fallback.

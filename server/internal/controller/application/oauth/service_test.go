@@ -2,6 +2,8 @@ package oauth
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"strings"
 	"testing"
@@ -110,10 +112,10 @@ type gitLabFake struct {
 	verifier string
 }
 
-func (*gitLabFake) AuthorizationURL(state, challenge string) string {
+func (*gitLabFake) AuthorizationURL(state, challenge, _ string) string {
 	return "https://gitlab.com/oauth/authorize?state=" + state + "&code_challenge=" + challenge
 }
-func (f *gitLabFake) ExchangeIdentity(_ context.Context, _, verifier string) (GitLabIdentity, error) {
+func (f *gitLabFake) ExchangeIdentity(_ context.Context, _, verifier, _ string) (GitLabIdentity, error) {
 	f.verifier = verifier
 	return f.identity, f.err
 }
@@ -221,6 +223,55 @@ func TestCompleteConsumesStateAndCreatesSessionTransaction(t *testing.T) {
 		t.Fatalf("AccessToken() = %q, %v", accessToken, err)
 	}
 	_, err = service.Complete(context.Background(), CompleteInput{Code: "code", State: "state"})
+	assertAppError(t, err, apperror.KindUnauthorized, "AUTH_OAUTH_FAILED")
+}
+
+func TestMobileOAuthVerifiesPKCEKindAndIsSingleUse(t *testing.T) {
+	t.Parallel()
+	repo, tx, tokens := &repoFake{}, &txFake{}, &tokensFake{}
+	gitlab := &gitLabFake{identity: GitLabIdentity{
+		GitLabUserID: 123, Username: "yorukot", DisplayName: "Yorukot",
+		ProfileURL: "https://gitlab.com/yorukot", AccessLevel: 40, State: "active",
+		Tokens: OAuthTokens{AccessToken: "access", RefreshToken: "refresh", ExpiresAt: time.Unix(20_000, 0)},
+	}}
+	service := newService(repo, tx, tokens, gitlab)
+	service.config.BrowserRedirect = "https://sitlab.sitcon.org/api/v1/auth/gitlab/callback"
+	service.config.MobileRedirect = "https://sitlab.sitcon.org/api/v1/auth/gitlab/mobile/callback"
+	verifier := strings.Repeat("v", 43)
+	challengeBytes := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(challengeBytes[:])
+	start, err := service.StartMobile(context.Background(), StartMobileInput{CodeChallenge: challenge})
+	if err != nil || repo.state.ClientKind != clientKindMobile || repo.state.PKCEChallenge != challenge || len(repo.state.VerifierCiphertext) != 0 {
+		t.Fatalf("StartMobile() = %#v, state=%#v, error=%v", start, repo.state, err)
+	}
+	result, err := service.CompleteMobile(context.Background(), CompleteMobileInput{Code: "code", State: start.StateToken, CodeVerifier: verifier})
+	if err != nil || result.SessionToken == "" || gitlab.verifier != verifier {
+		t.Fatalf("CompleteMobile() = %#v, verifier=%q, error=%v", result, gitlab.verifier, err)
+	}
+	_, err = service.CompleteMobile(context.Background(), CompleteMobileInput{Code: "code", State: start.StateToken, CodeVerifier: verifier})
+	assertAppError(t, err, apperror.KindUnauthorized, "AUTH_OAUTH_FAILED")
+}
+
+func TestMobileOAuthRejectsVerifierMismatchAndBrowserState(t *testing.T) {
+	t.Parallel()
+	service := newService(&repoFake{}, &txFake{}, &tokensFake{}, &gitLabFake{})
+	verifier := strings.Repeat("v", 43)
+	challengeBytes := sha256.Sum256([]byte(verifier))
+	_, err := service.StartMobile(context.Background(), StartMobileInput{
+		CodeChallenge: base64.RawURLEncoding.EncodeToString(challengeBytes[:]),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.CompleteMobile(context.Background(), CompleteMobileInput{Code: "code", State: "state", CodeVerifier: strings.Repeat("x", 43)})
+	assertAppError(t, err, apperror.KindUnauthorized, "AUTH_OAUTH_FAILED")
+
+	repo := &repoFake{}
+	service = newService(repo, &txFake{}, &tokensFake{}, &gitLabFake{})
+	if _, err = service.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.CompleteMobile(context.Background(), CompleteMobileInput{Code: "code", State: "state", CodeVerifier: verifier})
 	assertAppError(t, err, apperror.KindUnauthorized, "AUTH_OAUTH_FAILED")
 }
 

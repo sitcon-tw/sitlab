@@ -9,11 +9,13 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const tempRoot = mkdtempSync(path.join(repoRoot, "scripts", ".contract-"));
 const generatedOpenAPI = path.join(tempRoot, "openapi.json");
 const generatedTypes = path.join(tempRoot, "openapi.d.ts");
+const generatedKotlin = path.join(tempRoot, "ApiModels.kt");
 
 const artifacts = [
 	["docs OpenAPI", path.join(repoRoot, "docs/public/openapi.json"), generatedOpenAPI],
 	["backend embedded OpenAPI", path.join(repoRoot, "server/internal/controller/transport/http/openapi/openapi.json"), generatedOpenAPI],
-	["web API types", path.join(repoRoot, "web/src/shared/api/openapi.d.ts"), generatedTypes]
+	["web API types", path.join(repoRoot, "web/src/shared/api/openapi.d.ts"), generatedTypes],
+	["mobile Kotlin API models", path.join(repoRoot, "mobile/composeApp/src/commonMain/kotlin/org/sitcon/sitlab/api/generated/ApiModels.kt"), generatedKotlin]
 ];
 
 try {
@@ -23,6 +25,7 @@ try {
 		{ cwd: repoRoot }
 	);
 	run("pnpm", ["exec", "openapi-typescript", generatedOpenAPI, "-o", generatedTypes], { cwd: repoRoot });
+	run("node", [path.join(repoRoot, "scripts/generate-kotlin-contract.mjs"), generatedOpenAPI, generatedKotlin], { cwd: repoRoot });
 	run(
 		"pnpm",
 		[

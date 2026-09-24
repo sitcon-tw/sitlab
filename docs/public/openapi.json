@@ -216,6 +216,175 @@
 				"tags": ["Auth"]
 			}
 		},
+		"/auth/gitlab/mobile": {
+			"get": {
+				"operationId": "startMobileGitLabOAuth",
+				"summary": "Start GitLab OAuth for a mobile PKCE client",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/MobileOAuthStartQuery"
+					}
+				],
+				"responses": {
+					"302": {
+						"description": "Redirection",
+						"headers": {
+							"Location": {
+								"required": true,
+								"schema": {
+									"type": "string"
+								}
+							},
+							"Set-Cookie": {
+								"required": false,
+								"schema": {
+									"type": "string"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The server could not understand the request due to invalid syntax.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Auth"]
+			}
+		},
+		"/auth/gitlab/mobile/callback": {
+			"get": {
+				"operationId": "completeMobileGitLabOAuthCallback",
+				"summary": "Open the mobile GitLab callback or show a safe fallback page",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/MobileOAuthCallbackQuery.code"
+					},
+					{
+						"$ref": "#/components/parameters/MobileOAuthCallbackQuery.state"
+					},
+					{
+						"$ref": "#/components/parameters/MobileOAuthCallbackQuery.error"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The request has succeeded.",
+						"content": {
+							"text/html": {
+								"schema": {
+									"type": "string"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Auth"]
+			}
+		},
+		"/auth/gitlab/mobile/exchange": {
+			"post": {
+				"operationId": "exchangeMobileGitLabOAuth",
+				"summary": "Exchange a mobile GitLab callback for a SITCON session",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "The request has succeeded.",
+						"headers": {
+							"Set-Cookie": {
+								"required": true,
+								"schema": {
+									"type": "string"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/MobileOAuthExchangeResult"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The server could not understand the request due to invalid syntax.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access is unauthorized.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Access is forbidden.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Service unavailable.",
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProblemDetails"
+								}
+							}
+						}
+					}
+				},
+				"tags": ["Auth"],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/MobileOAuthExchangeRequest"
+							}
+						}
+					}
+				}
+			}
+		},
 		"/auth/logout": {
 			"post": {
 				"operationId": "logoutUser",
@@ -3697,6 +3866,44 @@
 					"format": "int64"
 				}
 			},
+			"MobileOAuthCallbackQuery.code": {
+				"name": "code",
+				"in": "query",
+				"required": false,
+				"schema": {
+					"type": "string"
+				},
+				"explode": false
+			},
+			"MobileOAuthCallbackQuery.error": {
+				"name": "error",
+				"in": "query",
+				"required": false,
+				"schema": {
+					"type": "string"
+				},
+				"explode": false
+			},
+			"MobileOAuthCallbackQuery.state": {
+				"name": "state",
+				"in": "query",
+				"required": false,
+				"schema": {
+					"type": "string"
+				},
+				"explode": false
+			},
+			"MobileOAuthStartQuery": {
+				"name": "codeChallenge",
+				"in": "query",
+				"required": true,
+				"schema": {
+					"type": "string",
+					"minLength": 43,
+					"maxLength": 128
+				},
+				"explode": false
+			},
 			"OperationIdPath": {
 				"name": "operationId",
 				"in": "path",
@@ -4794,6 +5001,35 @@
 					}
 				],
 				"description": "The full milestone calendar. Replaced wholesale: the set is small, changes rarely, and per-row keying would need delete/upsert pairs on every rename."
+			},
+			"MobileOAuthExchangeRequest": {
+				"type": "object",
+				"required": ["code", "state", "codeVerifier"],
+				"properties": {
+					"code": {
+						"type": "string",
+						"minLength": 1
+					},
+					"state": {
+						"type": "string",
+						"minLength": 1
+					},
+					"codeVerifier": {
+						"type": "string",
+						"minLength": 43,
+						"maxLength": 128
+					}
+				}
+			},
+			"MobileOAuthExchangeResult": {
+				"type": "object",
+				"required": ["authenticated"],
+				"properties": {
+					"authenticated": {
+						"type": "boolean",
+						"enum": [true]
+					}
+				}
 			},
 			"MoveCardRequest": {
 				"type": "object",

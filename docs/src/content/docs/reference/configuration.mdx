@@ -24,6 +24,7 @@ Configuration uses the `SITCON_BOARD_` prefix and is validated before the HTTP s
 | `SITCON_BOARD_GITLAB_CLIENT_ID`                     | Production       | OAuth application client ID.                                             |
 | `SITCON_BOARD_GITLAB_CLIENT_SECRET`                 | Production       | OAuth application client secret.                                         |
 | `SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL`            | Production       | Exact registered callback URL.                                           |
+| `SITCON_BOARD_GITLAB_MOBILE_OAUTH_REDIRECT_URL`     | Production       | Exact same-origin callback at `/api/v1/auth/gitlab/mobile/callback`.     |
 | `SITCON_BOARD_GITLAB_PROJECT_ACCESS_TOKEN`          | Production       | Reads members, issues, and canonical webhook state.                      |
 | `SITCON_BOARD_GITLAB_PROJECT_WEBHOOK_SIGNING_TOKEN` | Production       | GitLab-generated `whsec_...` key for Project Work item events.           |
 | `SITCON_BOARD_GITLAB_GROUP_WEBHOOK_SIGNING_TOKEN`   | Production       | Separate GitLab-generated key for Group Member events.                   |

@@ -72,6 +72,57 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/auth/gitlab/mobile": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Start GitLab OAuth for a mobile PKCE client */
+		get: operations["startMobileGitLabOAuth"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/gitlab/mobile/callback": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Open the mobile GitLab callback or show a safe fallback page */
+		get: operations["completeMobileGitLabOAuthCallback"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/gitlab/mobile/exchange": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Exchange a mobile GitLab callback for a SITCON session */
+		post: operations["exchangeMobileGitLabOAuth"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/auth/logout": {
 		parameters: {
 			query?: never;
@@ -1015,6 +1066,15 @@ export interface components {
 			entity: "milestone";
 			milestones: components["schemas"]["DirectoryMilestone"][];
 		} & WithRequired<components["schemas"]["SyncAction"], "entity">;
+		MobileOAuthExchangeRequest: {
+			code: string;
+			state: string;
+			codeVerifier: string;
+		};
+		MobileOAuthExchangeResult: {
+			/** @enum {boolean} */
+			authenticated: true;
+		};
 		MoveCardRequest: {
 			operationId: components["schemas"]["uuid"];
 			listKey: string;
@@ -1375,6 +1435,10 @@ export interface components {
 		"GitLabWebhookHeaders.webhookSignature": string;
 		"GitLabWebhookHeaders.webhookTimestamp": string;
 		IssueIidPath: number;
+		"MobileOAuthCallbackQuery.code": string;
+		"MobileOAuthCallbackQuery.error": string;
+		"MobileOAuthCallbackQuery.state": string;
+		MobileOAuthStartQuery: string;
 		OperationIdPath: components["schemas"]["uuid"];
 		ProjectLabelPath: number;
 		WorkItemIdPath: number;
@@ -1504,6 +1568,140 @@ export interface operations {
 			};
 			/** @description Access is unauthorized. */
 			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Service unavailable. */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	startMobileGitLabOAuth: {
+		parameters: {
+			query: {
+				codeChallenge: components["parameters"]["MobileOAuthStartQuery"];
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Redirection */
+			302: {
+				headers: {
+					Location: string;
+					"Set-Cookie"?: string;
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description The server could not understand the request due to invalid syntax. */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+		};
+	};
+	completeMobileGitLabOAuthCallback: {
+		parameters: {
+			query?: {
+				code?: components["parameters"]["MobileOAuthCallbackQuery.code"];
+				state?: components["parameters"]["MobileOAuthCallbackQuery.state"];
+				error?: components["parameters"]["MobileOAuthCallbackQuery.error"];
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description The request has succeeded. */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"text/html": string;
+				};
+			};
+		};
+	};
+	exchangeMobileGitLabOAuth: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["MobileOAuthExchangeRequest"];
+			};
+		};
+		responses: {
+			/** @description The request has succeeded. */
+			200: {
+				headers: {
+					"Set-Cookie": string;
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["MobileOAuthExchangeResult"];
+				};
+			};
+			/** @description The server could not understand the request due to invalid syntax. */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is unauthorized. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/problem+json": components["schemas"]["ProblemDetails"];
+				};
+			};
+			/** @description Access is forbidden. */
+			403: {
 				headers: {
 					[name: string]: unknown;
 				};

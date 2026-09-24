@@ -56,6 +56,7 @@ type GitLab struct {
 	ClientID                   string
 	ClientSecret               string
 	OAuthRedirectURL           string
+	MobileOAuthRedirectURL     string
 	ProjectAccessToken         string
 	ProjectWebhookSigningToken string
 	GroupWebhookSigningToken   string
@@ -117,6 +118,7 @@ func Load() (Config, error) {
 			BaseURL:  value("GITLAB_BASE_URL", "https://gitlab.com"),
 			ClientID: value("GITLAB_CLIENT_ID", ""), ClientSecret: value("GITLAB_CLIENT_SECRET", ""),
 			OAuthRedirectURL:           value("GITLAB_OAUTH_REDIRECT_URL", "http://localhost:8080/api/v1/auth/gitlab/callback"),
+			MobileOAuthRedirectURL:     value("GITLAB_MOBILE_OAUTH_REDIRECT_URL", "http://localhost:8080/api/v1/auth/gitlab/mobile/callback"),
 			ProjectAccessToken:         value("GITLAB_PROJECT_ACCESS_TOKEN", ""),
 			ProjectWebhookSigningToken: value("GITLAB_PROJECT_WEBHOOK_SIGNING_TOKEN", ""),
 			GroupWebhookSigningToken:   value("GITLAB_GROUP_WEBHOOK_SIGNING_TOKEN", ""),
@@ -178,8 +180,9 @@ func (c Config) Validate() error {
 		return errors.New("sync intervals must be positive")
 	}
 	for name, raw := range map[string]string{
-		"SITCON_BOARD_GITLAB_BASE_URL":           c.GitLab.BaseURL,
-		"SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL": c.GitLab.OAuthRedirectURL,
+		"SITCON_BOARD_GITLAB_BASE_URL":                  c.GitLab.BaseURL,
+		"SITCON_BOARD_GITLAB_OAUTH_REDIRECT_URL":        c.GitLab.OAuthRedirectURL,
+		"SITCON_BOARD_GITLAB_MOBILE_OAUTH_REDIRECT_URL": c.GitLab.MobileOAuthRedirectURL,
 	} {
 		parsed, err := url.Parse(raw)
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
@@ -209,8 +212,14 @@ func (c Config) Validate() error {
 		}
 		gitLabBase, _ := url.Parse(c.GitLab.BaseURL)
 		redirect, _ := url.Parse(c.GitLab.OAuthRedirectURL)
-		if !strings.EqualFold(gitLabBase.Scheme, "https") || !strings.EqualFold(redirect.Scheme, "https") {
+		mobileRedirect, _ := url.Parse(c.GitLab.MobileOAuthRedirectURL)
+		if !strings.EqualFold(gitLabBase.Scheme, "https") || !strings.EqualFold(redirect.Scheme, "https") ||
+			!strings.EqualFold(mobileRedirect.Scheme, "https") {
 			return errors.New("production GitLab base and OAuth redirect URLs must use HTTPS")
+		}
+		if mobileRedirect.Path != "/api/v1/auth/gitlab/mobile/callback" || mobileRedirect.RawQuery != "" || mobileRedirect.Fragment != "" ||
+			!strings.EqualFold(redirect.Scheme, mobileRedirect.Scheme) || !strings.EqualFold(redirect.Host, mobileRedirect.Host) {
+			return errors.New("production mobile OAuth redirect must use the browser redirect origin and exact /api/v1/auth/gitlab/mobile/callback path")
 		}
 		redirectOrigin := strings.ToLower(redirect.Scheme + "://" + redirect.Host)
 		redirectAllowed := false

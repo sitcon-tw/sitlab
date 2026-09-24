@@ -21,6 +21,30 @@ interface AuthService {
 	@route("/gitlab/callback")
 	completeGitLabOAuth(...GitLabOAuthCallbackQuery): OAuthRedirect | BadRequestProblem | UnauthorizedProblem | ServiceUnavailableProblem | InternalServerProblem;
 
+	@operationId("startMobileGitLabOAuth")
+	@summary("Start GitLab OAuth for a mobile PKCE client")
+	@get
+	@route("/gitlab/mobile")
+	startMobileGitLabOAuth(...MobileOAuthStartQuery): OAuthRedirect | BadRequestProblem | InternalServerProblem;
+
+	@operationId("completeMobileGitLabOAuthCallback")
+	@summary("Open the mobile GitLab callback or show a safe fallback page")
+	@get
+	@route("/gitlab/mobile/callback")
+	completeMobileGitLabOAuthCallback(...MobileOAuthCallbackQuery): MobileOAuthFallbackResponse;
+
+	@operationId("exchangeMobileGitLabOAuth")
+	@summary("Exchange a mobile GitLab callback for a SITCON session")
+	@post
+	@route("/gitlab/mobile/exchange")
+	exchangeMobileGitLabOAuth(@body body: MobileOAuthExchangeRequest):
+		| MobileOAuthSessionResponse
+		| BadRequestProblem
+		| UnauthorizedProblem
+		| ForbiddenProblem
+		| ServiceUnavailableProblem
+		| InternalServerProblem;
+
 	@operationId("logoutUser")
 	@summary("Log out user")
 	@useAuth(SessionCookieAuth)

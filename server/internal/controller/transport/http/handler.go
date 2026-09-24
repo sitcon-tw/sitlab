@@ -19,7 +19,9 @@ import (
 
 type AuthService interface {
 	Start(context.Context) (appoauth.StartResult, error)
+	StartMobile(context.Context, appoauth.StartMobileInput) (appoauth.StartResult, error)
 	Complete(context.Context, appoauth.CompleteInput) (appoauth.Authenticated, error)
+	CompleteMobile(context.Context, appoauth.CompleteMobileInput) (appoauth.Authenticated, error)
 	VerifySession(context.Context, string) (identity.SessionClaims, error)
 	VerifyCSRFToken(context.Context, string, string) (identity.SessionClaims, error)
 	IssueCSRF(context.Context, identity.SessionClaims) (string, error)

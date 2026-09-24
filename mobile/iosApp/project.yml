@@ -1,0 +1,27 @@
+name: SitLab
+options:
+  bundleIdPrefix: org.sitcon
+settings:
+  base:
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    PRODUCT_BUNDLE_IDENTIFIER: org.sitcon.sitlab
+    SWIFT_VERSION: "6.0"
+targets:
+  SitLab:
+    type: application
+    platform: iOS
+    sources: [SitLab]
+    settings:
+      base:
+        INFOPLIST_FILE: SitLab/Info.plist
+        CODE_SIGN_ENTITLEMENTS: SitLab/SitLab.entitlements
+        FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+    dependencies:
+      - framework: "$(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)/SitLabShared.framework"
+        embed: false
+    preBuildScripts:
+      - name: Build shared Kotlin framework
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
+        basedOnDependencyAnalysis: false
