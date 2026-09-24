@@ -12,7 +12,10 @@ import org.sitcon.sitlab.persistence.IosDatabaseFactory
 import org.sitcon.sitlab.sync.SyncEngine
 import org.sitcon.sitlab.ui.SitLabApp
 import platform.Foundation.NSUUID
+import kotlin.native.Platform
+import kotlin.experimental.ExperimentalNativeApi
 
+@OptIn(ExperimentalNativeApi::class)
 private object IosAppRuntime {
     val scope = MainScope()
     val session = IosSecureSessionStore()
@@ -34,6 +37,7 @@ private object IosAppRuntime {
         syncEngine = sync,
         newOperationId = { NSUUID().UUIDString },
         startPlatformLogin = oauth::start,
+        debugToolsEnabled = Platform.isDebugBinary,
         preferencesStore = preferences,
         haptics = IosHaptics(),
         backgroundRefresh = background,

@@ -58,6 +58,7 @@ class SitLabStore(
     private val syncEngine: SyncEngine,
     private val newOperationId: () -> String,
     private val startPlatformLogin: () -> Unit,
+    private val debugToolsEnabled: Boolean = false,
     private val haptics: Haptics? = null,
     private val preferencesStore: PreferencesStore? = null,
     private val backgroundRefresh: BackgroundRefresh? = null,
@@ -68,11 +69,12 @@ class SitLabStore(
     private val sessionCleared: suspend () -> Unit = {},
 ) : AppActions {
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
-    private val mutableState = MutableStateFlow(AppUiState())
+    private val mutableState = MutableStateFlow(AppUiState(debugToolsEnabled = debugToolsEnabled))
     val state: StateFlow<AppUiState> = mutableState.asStateFlow()
     private var realtimeJob: Job? = null
     private var pendingCardIid: Long? = null
     private val mutationMutex = Mutex()
+    private var fakeMode = false
 
     init {
         observeCache()
@@ -248,6 +250,11 @@ class SitLabStore(
     override fun moveCard(issueIid: Long, listKey: String?) {
         val target = listKey ?: mutableState.value.lists.firstOrNull { it.key != mutableState.value.cards.firstOrNull { card -> card.issueIid == issueIid }?.listKey }?.key ?: return
         val card = mutableState.value.cards.firstOrNull { it.issueIid == issueIid } ?: return
+        if (fakeMode) {
+            mutableState.value = mutableState.value.copy(cards = mutableState.value.cards.map { if (it.issueIid == issueIid) it.copy(listKey = target) else it })
+            haptics?.perform(HapticEffect.Confirm)
+            return
+        }
         val operationId = newOperationId()
         scope.launchMutation(operationId, "move_card", issueIid, json.encodeToString(MoveCardRequest(operationId, target))) {
             val entity = database.dao().card(issueIid) ?: return@launchMutation
@@ -259,6 +266,11 @@ class SitLabStore(
     }
 
     override fun saveCard(issueIid: Long, title: String, description: String) {
+        if (fakeMode) {
+            mutableState.value = mutableState.value.copy(cards = mutableState.value.cards.map { if (it.issueIid == issueIid) it.copy(title = title.trim(), description = description) else it })
+            haptics?.perform(HapticEffect.Success)
+            return
+        }
         val operationId = newOperationId()
         val request = UpdateCardDetailsRequest(operationId, title.trim(), description)
         scope.launchMutation(operationId, "update_details", issueIid, json.encodeToString(request)) {
@@ -271,6 +283,13 @@ class SitLabStore(
     }
 
     override fun createCard(title: String, teamKey: String, listKey: String) {
+        if (fakeMode) {
+            val iid = (mutableState.value.cards.maxOfOrNull(Card::issueIid) ?: 100L) + 1
+            val team = mutableState.value.teams.first { it.key == teamKey }
+            val card = Card(iid, title.trim(), "", listKey, Int.MAX_VALUE, teamKey, team.name, emptyList(), null, null, emptyList(), "Debug fixture")
+            mutableState.value = mutableState.value.copy(cards = mutableState.value.cards + card, route = Route.CardDetail(iid))
+            return
+        }
         val operationId = newOperationId()
         val temporaryIid = -kotlin.random.Random.nextLong(1, Long.MAX_VALUE)
         val request = CreateCardRequest(operationId, title.trim(), teamKey, listKey, "", emptyList(), emptyList(), null, null)
@@ -287,6 +306,10 @@ class SitLabStore(
     }
 
     override fun deleteCard(issueIid: Long) {
+        if (fakeMode) {
+            mutableState.value = mutableState.value.copy(cards = mutableState.value.cards.filterNot { it.issueIid == issueIid }, route = Route.Board)
+            return
+        }
         val operationId = newOperationId()
         scope.launchMutation(operationId, "delete_card", issueIid, json.encodeToString(DeleteCardRequest(operationId))) {
             api.deleteCard(issueIid, csrf(), DeleteCardRequest(operationId))
@@ -296,6 +319,10 @@ class SitLabStore(
     }
 
     override fun refresh() {
+        if (fakeMode) {
+            mutableState.value = mutableState.value.copy(lastSync = "Debug fixture · refreshed", syncing = false)
+            return
+        }
         if (!mutableState.value.authenticated || mutableState.value.syncing) return
         mutableState.value = mutableState.value.copy(syncing = true, error = null)
         scope.launch {
@@ -309,6 +336,11 @@ class SitLabStore(
     }
 
     override fun logout() {
+        if (fakeMode) {
+            fakeMode = false
+            mutableState.value = AppUiState(debugToolsEnabled = debugToolsEnabled)
+            return
+        }
         scope.launch {
             runCatching { api.logout(csrf()) }
             expireSession()
@@ -316,6 +348,10 @@ class SitLabStore(
     }
 
     override fun retryPending() {
+        if (fakeMode) {
+            mutableState.value = mutableState.value.copy(cards = mutableState.value.cards.map { it.copy(syncError = null) })
+            return
+        }
         scope.launch {
             database.dao().pendingRequests().filter { it.permanentError != null }.forEach {
                 database.dao().upsertPendingRequest(it.copy(permanentError = null))
@@ -326,6 +362,7 @@ class SitLabStore(
     }
 
     override fun loadCardActivity(issueIid: Long) {
+        if (fakeMode) return
         scope.launch {
             runCatching { api.comments(issueIid).comments }
                 .onSuccess { values -> mutableState.value = mutableState.value.copy(comments = mutableState.value.comments + (issueIid to values)) }
@@ -334,6 +371,14 @@ class SitLabStore(
     }
 
     override fun addComment(issueIid: Long, body: String) {
+        if (fakeMode) {
+            val user = mutableState.value.currentUser ?: return
+            val author = org.sitcon.sitlab.api.generated.CardCommentAuthor(user.gitLabUserId, user.username, user.displayName, user.avatarUrl, user.profileUrl)
+            val existing = mutableState.value.comments[issueIid].orEmpty()
+            val comment = org.sitcon.sitlab.api.generated.CardComment(-(existing.size + 1L), body.trim(), author, false, "Debug fixture", "Debug fixture")
+            mutableState.value = mutableState.value.copy(comments = mutableState.value.comments + (issueIid to (existing + comment)))
+            return
+        }
         scope.launch {
             runCatching { api.createComment(issueIid, csrf(), CreateCardCommentRequest(body.trim())) }
                 .onSuccess { loadCardActivity(issueIid); haptics?.perform(HapticEffect.Success) }
@@ -342,6 +387,7 @@ class SitLabStore(
     }
 
     override fun loadRelationships(issueIid: Long) {
+        if (fakeMode) return
         scope.launch {
             val children = runCatching { api.childItems(issueIid).items }.getOrElse { emptyList() }
             val links = runCatching { api.linkedItems(issueIid).items }.getOrElse { emptyList() }
@@ -353,6 +399,7 @@ class SitLabStore(
     }
 
     override fun loadLabels() {
+        if (fakeMode) return
         scope.launch {
             runCatching { api.labels().labels }
                 .onSuccess { mutableState.value = mutableState.value.copy(projectLabels = it) }
@@ -361,6 +408,11 @@ class SitLabStore(
     }
 
     override fun createLabel(name: String, color: String) {
+        if (fakeMode) {
+            val next = (mutableState.value.projectLabels.maxOfOrNull { it.id } ?: 0L) + 1
+            mutableState.value = mutableState.value.copy(projectLabels = mutableState.value.projectLabels + org.sitcon.sitlab.api.generated.ProjectLabel(next, name.trim(), color.trim(), "#FFFFFF", null))
+            return
+        }
         scope.launch {
             runCatching { api.createLabel(csrf(), CreateProjectLabelRequest(name.trim(), color.trim(), null)) }
                 .onSuccess { loadLabels(); haptics?.perform(HapticEffect.Success) }
@@ -423,6 +475,11 @@ class SitLabStore(
     }
 
     override fun updateCardTeam(issueIid: Long, teamKey: String) {
+        if (fakeMode) {
+            val team = mutableState.value.teams.firstOrNull { it.key == teamKey } ?: return
+            mutableState.value = mutableState.value.copy(cards = mutableState.value.cards.map { if (it.issueIid == issueIid) it.copy(teamKey = teamKey, teamName = team.name) else it })
+            return
+        }
         val operationId = newOperationId()
         val request = UpdateCardTeamRequest(operationId, teamKey)
         scope.launchMutation(operationId, "update_team", issueIid, json.encodeToString(request)) {
@@ -433,6 +490,11 @@ class SitLabStore(
     }
 
     override fun updateCardAssignees(issueIid: Long, memberIds: List<Long>) {
+        if (fakeMode) {
+            val members = mutableState.value.members.filter { it.gitLabUserId in memberIds }
+            mutableState.value = mutableState.value.copy(cards = mutableState.value.cards.map { if (it.issueIid == issueIid) it.copy(assignees = members) else it })
+            return
+        }
         val operationId = newOperationId()
         val request = UpdateCardAssigneeRequest(operationId, memberIds.distinct())
         scope.launchMutation(operationId, "update_assignees", issueIid, json.encodeToString(request)) {
@@ -443,6 +505,10 @@ class SitLabStore(
     }
 
     override fun updateCardDates(issueIid: Long, startDate: String?, dueDate: String?) {
+        if (fakeMode) {
+            mutableState.value = mutableState.value.copy(cards = mutableState.value.cards.map { if (it.issueIid == issueIid) it.copy(startDate = startDate, dueDate = dueDate) else it })
+            return
+        }
         val current = mutableState.value.cards.firstOrNull { it.issueIid == issueIid } ?: return
         scope.launch {
             if (startDate != current.startDate) updateStartDate(issueIid, startDate)
@@ -471,6 +537,10 @@ class SitLabStore(
     }
 
     override fun updateCardLabels(issueIid: Long, labels: List<String>) {
+        if (fakeMode) {
+            mutableState.value = mutableState.value.copy(cards = mutableState.value.cards.map { if (it.issueIid == issueIid) it.copy(labels = labels) else it })
+            return
+        }
         val operationId = newOperationId()
         val request = UpdateCardLabelsRequest(operationId, labels.distinct())
         scope.launchMutation(operationId, "update_labels", issueIid, json.encodeToString(request)) {
@@ -482,6 +552,14 @@ class SitLabStore(
 
     override fun loadMoreClosedCards() {
         mutableState.value = mutableState.value.copy(closedPage = mutableState.value.closedPage + 1)
+    }
+
+    override fun loadDebugFixture() {
+        if (!debugToolsEnabled) return
+        realtimeJob?.cancel()
+        realtimeJob = null
+        fakeMode = true
+        mutableState.value = debugFixture(debugToolsEnabled)
     }
 
     private fun updatePreferences(transform: org.sitcon.sitlab.persistence.MobilePreferences.() -> org.sitcon.sitlab.persistence.MobilePreferences) {
@@ -498,7 +576,7 @@ class SitLabStore(
         val dao = database.dao()
         dao.clearCards(); dao.clearLists(); dao.clearTeams(); dao.clearMembers(); dao.clearMilestones()
         dao.clearMetadata(); dao.clearPendingRequests(); dao.clearActivityCache(); dao.clearNotificationLedger()
-        mutableState.value = AppUiState(route = Route.Login)
+        mutableState.value = AppUiState(route = Route.Login, debugToolsEnabled = debugToolsEnabled)
     }
 
     private suspend fun csrf(): String = database.dao().metadata(CsrfKey)?.value ?: api.csrf().token

@@ -69,6 +69,7 @@ data class AppUiState(
     val onboardingComplete: Boolean = false,
     val notificationPermission: PermissionStatus = PermissionStatus.NotDetermined,
     val supportsDynamicColor: Boolean = false,
+    val debugToolsEnabled: Boolean = false,
     val closedPage: Int = 1,
     val error: String? = null,
 )
@@ -104,6 +105,7 @@ interface AppActions {
     fun updateCardDates(issueIid: Long, startDate: String?, dueDate: String?) {}
     fun updateCardLabels(issueIid: Long, labels: List<String>) {}
     fun loadMoreClosedCards() {}
+    fun loadDebugFixture() {}
 }
 
 @Composable
@@ -146,6 +148,14 @@ private fun LoginScreen(state: AppUiState, actions: AppActions) {
             Text("SITCON Lab", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
             Text("Plan and synchronize SITCON 2027 work from Android or iOS.")
             Button(onClick = actions::startLogin) { Text("Continue with GitLab") }
+            if (state.debugToolsEnabled) {
+                FilledTonalButton(onClick = actions::loadDebugFixture) {
+                    Icon(Icons.Default.BugReport, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Load debug fixture")
+                }
+                Text("Debug builds only · no server connection", style = MaterialTheme.typography.labelMedium)
+            }
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
     }

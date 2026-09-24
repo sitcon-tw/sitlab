@@ -1,6 +1,7 @@
 package org.sitcon.sitlab
 
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import android.os.Build
 import android.view.HapticFeedbackConstants
@@ -50,6 +51,7 @@ class MainActivity : ComponentActivity() {
             syncEngine = syncEngine,
             newOperationId = { UUID.randomUUID().toString() },
             startPlatformLogin = { MobileOAuthCoordinator(this).start() },
+            debugToolsEnabled = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
             haptics = AndroidHaptics(this),
             preferencesStore = preferences,
             backgroundRefresh = AndroidBackgroundRefresh(applicationContext),
