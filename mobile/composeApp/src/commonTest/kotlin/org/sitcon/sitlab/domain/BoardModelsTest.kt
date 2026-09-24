@@ -67,4 +67,12 @@ class BoardModelsTest {
         assertTrue(planReminders(cards, setOf("todo"), 101, 1, now, emptySet(), emptySet()).scheduled.isEmpty())
         assertTrue(planReminders(listOf(cards[0].copy(synchronized = false)), setOf("doing"), 101, 1, now, emptySet(), emptySet()).scheduled.isEmpty())
     }
+
+    @Test fun configuredAndWorkflowLabelsAreReserved() {
+        val teams = listOf(Team("dev", "Development", true, 1, emptyList(), "組別::開發組"))
+        assertTrue(isReservedLabel("Team::New", teams))
+        assertTrue(isReservedLabel("Status::Doing", teams))
+        assertTrue(isReservedLabel("組別::開發組", teams))
+        assertFalse(isReservedLabel("mobile", teams))
+    }
 }

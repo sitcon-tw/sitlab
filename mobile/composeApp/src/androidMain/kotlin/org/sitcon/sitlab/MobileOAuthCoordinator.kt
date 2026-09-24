@@ -8,6 +8,8 @@ import java.security.SecureRandom
 import java.util.Base64
 import org.sitcon.sitlab.network.ProductionOrigin
 
+data class MobileOAuthCallback(val code: String, val state: String, val verifier: String)
+
 class MobileOAuthCoordinator(private val context: Context) {
     private val preferences = context.getSharedPreferences("oauth_transient", Context.MODE_PRIVATE)
 
@@ -20,13 +22,17 @@ class MobileOAuthCoordinator(private val context: Context) {
         CustomTabsIntent.Builder().build().launchUrl(context, uri)
     }
 
-    fun complete(uri: Uri): java.util.UUID? {
+    fun complete(uri: Uri): MobileOAuthCallback? {
+        if (uri.scheme != "https" || uri.host != "sitlab.sitcon.org" || uri.path != CallbackPath) return null
+        if (uri.getQueryParameter("error") != null) return null
         val code = uri.getQueryParameter("code") ?: return null
         val state = uri.getQueryParameter("state") ?: return null
         val verifier = preferences.getString("verifier", null) ?: return null
         preferences.edit().remove("verifier").apply()
-        return MobileOAuthExchange.enqueue(context, code, state, verifier)
+        return MobileOAuthCallback(code, state, verifier)
     }
+
+    companion object { const val CallbackPath = "/api/v1/auth/gitlab/mobile/callback" }
 }
 
 private fun ByteArray.base64Url(): String = Base64.getUrlEncoder().withoutPadding().encodeToString(this)

@@ -4,6 +4,7 @@ import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.delay
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.sitcon.sitlab.api.generated.BoardCard
@@ -22,6 +23,7 @@ import org.sitcon.sitlab.api.generated.SyncStatusSyncAction
 import org.sitcon.sitlab.api.generated.TeamSyncAction
 import org.sitcon.sitlab.network.ApiProblem
 import org.sitcon.sitlab.network.SitLabApi
+import org.sitcon.sitlab.network.SyncStreamEvent
 import org.sitcon.sitlab.persistence.BoardListEntity
 import org.sitcon.sitlab.persistence.CardEntity
 import org.sitcon.sitlab.persistence.MemberEntity
@@ -37,7 +39,7 @@ class SyncEngine(
 ) {
     private val mutex = Mutex()
     private var dragging = false
-    private val delayedOrderActions = mutableListOf<CardOrderSyncAction>()
+    private var refreshAfterDrag = false
 
     suspend fun cachedCheckpoint(): String? = database.dao().metadata(Checkpoint)?.value
 
@@ -57,14 +59,46 @@ class SyncEngine(
         afterSuccessfulSync(null)
     }
 
-    suspend fun observeForeground(): Nothing = api.observeSyncEvents { refresh() }
+    suspend fun observeForeground(): Nothing {
+        var retryDelay = 1_000L
+        while (true) {
+            runCatching {
+                api.observeSyncEvents(cachedCheckpoint()) { event ->
+                    when (event) {
+                        is SyncStreamEvent.Delta, is SyncStreamEvent.Heartbeat -> requestRealtimeRefresh()
+                        is SyncStreamEvent.Reset -> replaceFromBootstrapUnlessDragging()
+                    }
+                }
+            }
+            delay(retryDelay)
+            retryDelay = (retryDelay * 2).coerceAtMost(30_000L)
+        }
+    }
 
     suspend fun beginDrag() = mutex.withLock { dragging = true }
 
-    suspend fun endDrag() = mutex.withLock {
-        dragging = false
-        delayedOrderActions.forEach { applyAction(it) }
-        delayedOrderActions.clear()
+    suspend fun endDrag() {
+        val shouldRefresh = mutex.withLock {
+            dragging = false
+            refreshAfterDrag.also { refreshAfterDrag = false }
+        }
+        if (shouldRefresh) refresh()
+    }
+
+    private suspend fun requestRealtimeRefresh() {
+        val shouldRefresh = mutex.withLock {
+            if (dragging) refreshAfterDrag = true
+            !dragging
+        }
+        if (shouldRefresh) refresh()
+    }
+
+    private suspend fun replaceFromBootstrapUnlessDragging() {
+        val shouldReplace = mutex.withLock {
+            if (dragging) refreshAfterDrag = true
+            !dragging
+        }
+        if (shouldReplace) mutex.withLock { replaceWithBootstrap(api.bootstrap()) }
     }
 
     private suspend fun applyDeltas(initialCheckpoint: String) {
@@ -74,9 +108,7 @@ class SyncEngine(
             val delta = api.sync(checkpoint)
             database.useWriterConnection { connection ->
                 connection.immediateTransaction {
-                    delta.actions.forEach { action ->
-                        if (dragging && action is CardOrderSyncAction) delayedOrderActions += action else applyAction(action)
-                    }
+                    delta.actions.forEach { action -> applyAction(action) }
                     database.dao().upsertMetadata(MetadataEntity(Checkpoint, delta.checkpoint))
                 }
             }
@@ -108,7 +140,17 @@ class SyncEngine(
     private suspend fun applyAction(action: SyncAction) {
         val dao = database.dao()
         when (action) {
-            is CardSyncAction -> if (action.operation == "delete" || action.card == null) dao.deleteCard(action.entityId.toLong()) else dao.upsertCards(listOf(cardEntity(action.card)))
+            is CardSyncAction -> {
+                if (action.operation == "delete" || action.card == null) {
+                    dao.deleteCard(action.entityId.toLong())
+                } else {
+                    val existing = dao.card(action.card.issueIid)
+                    val incomingOperation = action.card.pendingOperationId
+                    if (existing?.pendingOperationId == null || existing.pendingOperationId == incomingOperation) {
+                        dao.upsertCards(listOf(cardEntity(action.card)))
+                    }
+                }
+            }
             is CardOrderSyncAction -> {
                 val positions = action.order.issueIids.withIndex().associate { it.value to it.index }
                 dao.upsertCards(dao.allCards().map { card -> positions[card.issueIid]?.let { card.copy(listKey = action.order.listKey, position = it) } ?: card })

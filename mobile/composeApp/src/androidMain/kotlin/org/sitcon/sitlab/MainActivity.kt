@@ -2,54 +2,87 @@ package org.sitcon.sitlab
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.Build
+import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.work.WorkInfo
-import androidx.work.WorkManager
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
+import java.util.UUID
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
-import org.sitcon.sitlab.domain.BoardList
-import org.sitcon.sitlab.domain.Card
-import org.sitcon.sitlab.domain.Member
+import kotlinx.coroutines.CompletableDeferred
+import org.sitcon.sitlab.app.SitLabStore
 import org.sitcon.sitlab.network.SitLabApi
 import org.sitcon.sitlab.network.platformHttpClient
 import org.sitcon.sitlab.persistence.AndroidDatabaseFactory
-import org.sitcon.sitlab.persistence.CardEntity
-import org.sitcon.sitlab.persistence.MemberEntity
-import org.sitcon.sitlab.persistence.SitLabDatabase
-import org.sitcon.sitlab.persistence.TeamEntity
+import org.sitcon.sitlab.platform.HapticEffect
+import org.sitcon.sitlab.platform.Haptics
+import org.sitcon.sitlab.platform.BackgroundInterval
 import org.sitcon.sitlab.sync.SyncEngine
-import org.sitcon.sitlab.ui.AppActions
-import org.sitcon.sitlab.ui.AppUiState
 import org.sitcon.sitlab.ui.SitLabApp
 
-class MainActivity : ComponentActivity(), AppActions {
-    private var state by mutableStateOf(AppUiState())
+class MainActivity : ComponentActivity() {
     private lateinit var sessionStore: AndroidSecureSessionStore
-    private lateinit var database: SitLabDatabase
     private lateinit var api: SitLabApi
-    private lateinit var syncEngine: SyncEngine
-    private val json = Json { ignoreUnknownKeys = true }
+    private lateinit var store: SitLabStore
+    private var permissionRequest: CompletableDeferred<Boolean>? = null
+    private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        permissionRequest?.complete(granted)
+        permissionRequest = null
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         sessionStore = AndroidSecureSessionStore(applicationContext)
-        database = AndroidDatabaseFactory(applicationContext).create()
-        api = SitLabApi(platformHttpClient(), sessionCookie = sessionStore::readCookie)
-        syncEngine = SyncEngine(api, database)
-        observeCachedBoard()
-        handleDeepLink(intent)
-        setContent { SitLabApp(state, this) }
+        val database = AndroidDatabaseFactory(applicationContext).create()
+        val preferences = AndroidPreferencesStore(applicationContext)
+        val notifications = AndroidLocalNotifications(applicationContext, ::requestNotificationPermission)
+        val reminders = AndroidReminderCoordinator(database, preferences, notifications)
+        api = SitLabApi(platformHttpClient(), sessionCookie = sessionStore::readCookie, sessionCookieUpdated = sessionStore::writeCookie)
+        val syncEngine = SyncEngine(api, database) { reminders.reconcile() }
+        store = SitLabStore(
+            scope = lifecycleScope,
+            api = api,
+            database = database,
+            sessionStore = sessionStore,
+            syncEngine = syncEngine,
+            newOperationId = { UUID.randomUUID().toString() },
+            startPlatformLogin = { MobileOAuthCoordinator(this).start() },
+            haptics = AndroidHaptics(this),
+            preferencesStore = preferences,
+            backgroundRefresh = AndroidBackgroundRefresh(applicationContext),
+            notifications = notifications,
+            shareSheet = AndroidShareSheet(applicationContext),
+            systemAppearance = AndroidSystemAppearance(applicationContext),
+            remindersChanged = reminders::reconcile,
+            sessionCleared = reminders::clear,
+        )
         lifecycleScope.launch {
-            state = state.copy(authenticated = sessionStore.readCookie() != null)
-            if (state.authenticated) refresh()
+            val hours = preferences.read().backgroundHours
+            val scheduler = AndroidBackgroundRefresh(applicationContext)
+            if (hours == null) scheduler.cancel() else scheduler.replace(BackgroundInterval.entries.first { it.hours == hours })
         }
+        handleDeepLink(intent)
+        setContent {
+            val state by store.state.collectAsStateWithLifecycle()
+            SitLabApp(state, store)
+        }
+    }
+
+    private suspend fun requestNotificationPermission(): Boolean {
+        if (Build.VERSION.SDK_INT < 33) return true
+        val pending = permissionRequest ?: CompletableDeferred<Boolean>().also {
+            permissionRequest = it
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+        return pending.await()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::store.isInitialized) store.onForeground()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -61,66 +94,29 @@ class MainActivity : ComponentActivity(), AppActions {
     private fun handleDeepLink(intent: Intent?) {
         val uri = intent?.data ?: return
         when {
-            uri.path == "/api/v1/auth/gitlab/mobile/callback" -> MobileOAuthCoordinator(this).complete(uri)?.let(::observeOAuthExchange)
-            uri.path?.startsWith("/mobile/cards/") == true -> uri.lastPathSegment?.toLongOrNull()?.let(::openCard)
-        }
-    }
-
-    private fun observeOAuthExchange(requestId: java.util.UUID) {
-        lifecycleScope.launch {
-            val result = WorkManager.getInstance(applicationContext).getWorkInfoByIdFlow(requestId)
-                .first { it?.state?.isFinished == true }
-            if (result?.state == WorkInfo.State.SUCCEEDED) {
-                state = state.copy(authenticated = true, error = null)
-                refresh()
-            } else {
-                state = state.copy(error = "GitLab sign-in could not be completed")
+            uri.path == MobileOAuthCoordinator.CallbackPath -> {
+                val callback = MobileOAuthCoordinator(this).complete(uri)
+                if (callback != null) lifecycleScope.launch {
+                    runCatching { api.exchange(callback.code, callback.state, callback.verifier) }
+                        .onSuccess { cookie -> sessionStore.writeCookie(cookie); store.onSessionEstablished() }
+                        .onFailure { store.reportError(it.message ?: "GitLab sign-in failed") }
+                }
+                else uri.getQueryParameter("error")?.let { store.reportError("GitLab sign-in failed: $it") }
             }
+            uri.scheme == "https" && uri.host == "sitlab.sitcon.org" && uri.path?.startsWith("/mobile/cards/") == true ->
+                uri.lastPathSegment?.toLongOrNull()?.let(store::openCard)
         }
     }
+}
 
-    private fun observeCachedBoard() {
-        val dao = database.dao()
-        lifecycleScope.launch {
-            combine(dao.observeLists(), dao.observeCards(), dao.observeTeams(), dao.observeMembers()) { lists, cards, teams, members ->
-                val teamNames = teams.associateBy(TeamEntity::key, TeamEntity::displayName)
-                val memberModels = members.associate { it.gitLabUserId to it.toDomain() }
-                lists.map { BoardList(it.key, it.name, it.position, it.closed, it.color) } to
-                    cards.map { it.toDomain(teamNames, memberModels) }
-            }.collect { (lists, cards) -> state = state.copy(lists = lists, cards = cards) }
+private class AndroidHaptics(private val activity: ComponentActivity) : Haptics {
+    override fun perform(effect: HapticEffect) {
+        val feedback = when (effect) {
+            HapticEffect.Selection, HapticEffect.ReorderTarget -> HapticFeedbackConstants.CLOCK_TICK
+            HapticEffect.PickUp -> HapticFeedbackConstants.LONG_PRESS
+            HapticEffect.Warning, HapticEffect.Error -> if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.REJECT else HapticFeedbackConstants.LONG_PRESS
+            HapticEffect.Confirm, HapticEffect.Success -> if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.KEYBOARD_TAP
         }
+        activity.window.decorView.performHapticFeedback(feedback)
     }
-
-    override fun startLogin() = MobileOAuthCoordinator(this).start()
-    override fun updateQuery(value: String) { state = state.copy(filter = state.filter.copy(query = value)) }
-    override fun openCard(issueIid: Long) { /* Detail navigation is restored after cached bootstrap loads. */ }
-    override fun moveCard(issueIid: Long) { /* Opens the accessible lane chooser in the populated app graph. */ }
-    override fun refresh() {
-        if (!state.authenticated || state.syncing) return
-        state = state.copy(syncing = true, error = null)
-        lifecycleScope.launch {
-            runCatching { syncEngine.refresh() }
-                .onSuccess { state = state.copy(syncing = false, error = null) }
-                .onFailure { state = state.copy(syncing = false, error = it.message ?: "Synchronization failed") }
-        }
-    }
-
-    private fun MemberEntity.toDomain() = Member(gitLabUserId, username, displayName, json.decodeFromString(teamKeysJson))
-
-    private fun CardEntity.toDomain(teamNames: Map<String, String>, members: Map<Long, Member>) = Card(
-        issueIid = issueIid,
-        title = title,
-        description = description,
-        listKey = listKey,
-        position = position,
-        teamKey = teamKey,
-        teamName = teamNames[teamKey] ?: teamKey,
-        assignees = json.decodeFromString<List<Long>>(assigneeIdsJson).mapNotNull(members::get),
-        startDate = startDate,
-        dueDate = dueDate,
-        labels = json.decodeFromString(labelsJson),
-        updatedAt = updatedAt,
-        synchronized = syncState == "synced",
-        syncError = syncError,
-    )
 }

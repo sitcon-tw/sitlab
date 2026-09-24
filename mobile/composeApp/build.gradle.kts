@@ -41,6 +41,7 @@ kotlin {
             implementation(libs.room.runtime)
             implementation(libs.sqlite.bundled)
             implementation(libs.datastore.core.okio)
+            implementation(libs.datastore.preferences)
             implementation(libs.navigation.compose)
             implementation(libs.lifecycle.runtime.compose)
             implementation(libs.coil.compose)
@@ -51,6 +52,7 @@ kotlin {
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.work.runtime)
             implementation(libs.androidx.browser)
+            implementation(libs.androidx.core)
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
@@ -58,6 +60,8 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.mock)
+            implementation(libs.coroutines.test)
         }
     }
 }

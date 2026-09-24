@@ -24,7 +24,32 @@ data class Card(
     val updatedAt: String,
     val synchronized: Boolean = issueIid > 0,
     val syncError: String? = null,
+    val webUrl: String? = null,
+    val gitLabStatusName: String? = null,
+    val pendingOperationId: String? = null,
 )
+
+data class Team(
+    val key: String,
+    val name: String,
+    val active: Boolean,
+    val position: Int,
+    val leaderGitLabUserIds: List<Long>,
+    val gitLabLabel: String,
+)
+
+private val deprecatedBoardLabels = setOf(
+    "Wating", "Waiting", "Inbox", "To Do", "Todo", "Doing", "Review", "Closed",
+    "組別::總召", "組別::行政", "組別::開發",
+)
+
+fun isReservedLabel(name: String, teams: List<Team>): Boolean {
+    val value = name.trim()
+    return value.isEmpty() || value.startsWith("Team::") || value.startsWith("Status::") ||
+        value in deprecatedBoardLabels || teams.any { it.gitLabLabel == value }
+}
+
+data class Milestone(val name: String, val date: String, val kind: String)
 
 enum class SortField { Manual, Due, Start, Updated }
 enum class SortDirection { Ascending, Descending }

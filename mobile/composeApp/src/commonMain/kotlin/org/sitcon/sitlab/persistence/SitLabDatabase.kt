@@ -105,8 +105,10 @@ interface SitLabDao {
     @Query("SELECT * FROM cards WHERE issueIid = :issueIid") suspend fun card(issueIid: Long): CardEntity?
     @Query("SELECT * FROM cards") suspend fun allCards(): List<CardEntity>
     @Query("SELECT * FROM metadata WHERE key = :key") suspend fun metadata(key: String): MetadataEntity?
+    @Query("SELECT * FROM metadata WHERE key = :key") fun observeMetadata(key: String): Flow<MetadataEntity?>
     @Query("SELECT * FROM pending_requests ORDER BY createdAtEpochMillis") suspend fun pendingRequests(): List<PendingRequestEntity>
     @Query("SELECT * FROM notification_ledger") suspend fun notificationLedger(): List<NotificationLedgerEntity>
+    @Query("SELECT * FROM notification_ledger WHERE notificationId = :id") suspend fun notificationLedger(id: String): NotificationLedgerEntity?
 
     @Upsert suspend fun upsertLists(values: List<BoardListEntity>)
     @Upsert suspend fun upsertCards(values: List<CardEntity>)
@@ -129,6 +131,9 @@ interface SitLabDao {
     @Query("DELETE FROM teams") suspend fun clearTeams()
     @Query("DELETE FROM members") suspend fun clearMembers()
     @Query("DELETE FROM milestones") suspend fun clearMilestones()
+    @Query("DELETE FROM metadata") suspend fun clearMetadata()
+    @Query("DELETE FROM pending_requests") suspend fun clearPendingRequests()
+    @Query("DELETE FROM activity_cache") suspend fun clearActivityCache()
 }
 
 @Database(
